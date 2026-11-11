@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { z } from "zod";
 import { BRANDS, FOCAL_BRAND } from "./brands";
 import { getDb, type Row } from "./db";
@@ -38,9 +39,27 @@ export interface ChatTurnInput {
 type MsgParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlock = Anthropic.Beta.BetaContentBlockParam;
 
-export function llmMode(): "claude" | "mock" {
+export type LlmMode = "openai" | "claude" | "mock";
+
+/** Provider selection: OpenAI when its key is present, otherwise Claude, otherwise the scripted demo. */
+export function llmMode(): LlmMode {
   if (process.env.MOCK_LLM === "1") return "mock";
+  const forced = process.env.LLM_PROVIDER?.trim().toLowerCase();
+  if (forced === "openai" && openAiKey()) return "openai";
+  if (forced === "claude" && process.env.ANTHROPIC_API_KEY) return "claude";
+  if (openAiKey()) return "openai";
   return process.env.ANTHROPIC_API_KEY ? "claude" : "mock";
+}
+
+function openAiKey(): string | undefined {
+  return process.env.OPEN_AI_KEY?.trim() || process.env.OPENAI_API_KEY?.trim() || undefined;
+}
+
+export function llmModel(): string {
+  const mode = llmMode();
+  if (mode === "openai") return OPENAI_MODEL;
+  if (mode === "claude") return MODEL;
+  return "demo";
 }
 
 export function hasWorkspaceHeader(): boolean {
@@ -61,6 +80,7 @@ function friendlyApiError(err: InstanceType<typeof Anthropic.APIError>): string 
 }
 
 const MODEL = process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
+const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-5.2";
 const EFFORT = (process.env.CLAUDE_EFFORT ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max";
 const MAX_TOOL_ROUNDS = 8;
 const TOOL_RESULT_CHAR_CAP = 7000;
@@ -165,8 +185,14 @@ interface StoredMessage {
   role: "user" | "assistant";
   content: string;
   proposals: Array<{ widget: WidgetSpec; replaces?: string }> | null;
-  api_content: ContentBlock[] | string;
+  api_content: ContentBlock[] | string | OpenAiStored;
   followups?: string[] | null;
+}
+
+/** Envelope for rows written by the OpenAI provider (kept apart from Claude's block arrays). */
+interface OpenAiStored {
+  provider: "openai";
+  message: OpenAI.Chat.Completions.ChatCompletionMessageParam;
 }
 
 const FOLLOWUP_MARKER = "FOLLOWUPS:";
@@ -229,10 +255,11 @@ async function loadHistory(dashboardId: string): Promise<MsgParam[]> {
      ) t ORDER BY id ASC`,
     [dashboardId],
   );
-  const msgs: MsgParam[] = rows.map((r) => ({
-    role: r.role as "user" | "assistant",
-    content: (typeof r.api_content === "string" ? JSON.parse(r.api_content) : r.api_content) as ContentBlock[],
-  }));
+  const msgs: MsgParam[] = rows
+    .map((r) => ({ role: r.role, api: typeof r.api_content === "string" ? JSON.parse(r.api_content) : r.api_content }))
+    // Rows written by the OpenAI provider are objects, not block arrays; they cannot be replayed to Claude.
+    .filter((r) => Array.isArray(r.api))
+    .map((r) => ({ role: r.role as "user" | "assistant", content: r.api as ContentBlock[] }));
   // The window must start at a real user text message, never at a tool result.
   while (msgs.length) {
     const m = msgs[0];
@@ -387,8 +414,13 @@ async function executeTool(
 
 export async function* runChatTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]): AsyncGenerator<ChatEvent> {
   await ensureReady();
-  if (llmMode() === "mock") {
+  const mode = llmMode();
+  if (mode === "mock") {
     yield* mockTurn(input, existingWidgets);
+    return;
+  }
+  if (mode === "openai") {
+    yield* openAiTurn(input, existingWidgets);
     return;
   }
 
@@ -641,4 +673,170 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
     followups,
   });
   yield { type: "done", messageId: id };
+}
+
+/* ------------------------------------------------------------------ */
+/* OpenAI provider (used when OPEN_AI_KEY is set)                         */
+/* ------------------------------------------------------------------ */
+
+type OaiMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
+const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = TOOLS.filter(
+  (t): t is Anthropic.Beta.BetaTool => "input_schema" in t,
+).map((t) => ({
+  type: "function",
+  function: { name: t.name, description: t.description ?? "", parameters: t.input_schema as Record<string, unknown> },
+}));
+
+function friendlyOpenAiError(err: InstanceType<typeof OpenAI.APIError>): string {
+  const msg = err.message ?? "";
+  if (err.status === 401) return "The OpenAI API key was rejected (401). Check OPEN_AI_KEY in the deployment's environment variables and redeploy.";
+  if (err.status === 404 || /model_not_found|does not exist/i.test(msg)) {
+    return `The OpenAI model "${OPENAI_MODEL}" is not available to this key. Set OPENAI_MODEL in the deployment's environment variables to a model you can use (for example gpt-5.2 or gpt-4.1) and redeploy.`;
+  }
+  if (err.status === 429) return "OpenAI is rate limiting this key (429). Try again in a moment.";
+  return `OpenAI API error ${err.status}: ${msg}`;
+}
+
+async function loadOpenAiHistory(dashboardId: string): Promise<OaiMessage[]> {
+  const db = await getDb();
+  const rows = await db.query<{ role: string; api_content: unknown }>(
+    `SELECT role, api_content FROM (
+       SELECT id, role, api_content FROM chat_messages WHERE dashboard_id = $1 AND api_content IS NOT NULL ORDER BY id DESC LIMIT ${HISTORY_ROWS}
+     ) t ORDER BY id ASC`,
+    [dashboardId],
+  );
+  const msgs: OaiMessage[] = [];
+  for (const r of rows) {
+    const api = (typeof r.api_content === "string" ? JSON.parse(r.api_content) : r.api_content) as unknown;
+    if (api && typeof api === "object" && !Array.isArray(api) && (api as OpenAiStored).provider === "openai") {
+      msgs.push((api as OpenAiStored).message);
+    } else if (Array.isArray(api) && r.role === "user") {
+      // Plain user text written by another provider or demo mode is still useful context.
+      const text = (api as Array<{ type?: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
+      if (text) msgs.push({ role: "user", content: text });
+    } else if (Array.isArray(api) && r.role === "assistant") {
+      const text = (api as Array<{ type?: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
+      if (text) msgs.push({ role: "assistant", content: text });
+    }
+  }
+  // The window must start at a user message, and tool results may only follow an assistant tool call.
+  while (msgs.length && msgs[0].role !== "user") msgs.shift();
+  const out: OaiMessage[] = [];
+  let inToolRun = false;
+  for (const m of msgs) {
+    if (m.role === "tool") {
+      if (!inToolRun) continue;
+    } else {
+      inToolRun = m.role === "assistant" && !!(m as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam).tool_calls?.length;
+    }
+    out.push(m);
+  }
+  // A trailing assistant tool call with no results would be rejected; drop it.
+  const last = out[out.length - 1];
+  if (last && last.role === "assistant" && (last as OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam).tool_calls?.length) out.pop();
+  return out;
+}
+
+interface ToolCallAcc {
+  id: string;
+  name: string;
+  args: string;
+}
+
+async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]): AsyncGenerator<ChatEvent> {
+  const client = new OpenAI({ apiKey: openAiKey(), maxRetries: 2, timeout: 180_000 });
+  const history = await loadOpenAiHistory(input.dashboardId);
+  const userApiText = `${input.instruction ?? input.userText}\n\n${contextBlock(input.widgets)}`;
+  const userMsg: OaiMessage = { role: "user", content: userApiText };
+  const messages: OaiMessage[] = [{ role: "system", content: SYSTEM_PROMPT }, ...history, userMsg];
+  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: { provider: "openai", message: userMsg } });
+
+  const pending: StoredMessage[] = [];
+  const proposals: Array<{ widget: WidgetSpec; replaces?: string }> = [];
+  let lastId: number | null = null;
+
+  try {
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      const gate = new TextGate();
+      const stream = await client.chat.completions.create({
+        model: OPENAI_MODEL,
+        messages,
+        tools: OPENAI_TOOLS,
+        stream: true,
+        max_completion_tokens: 8000,
+        ...(process.env.OPENAI_REASONING_EFFORT ? { reasoning_effort: process.env.OPENAI_REASONING_EFFORT as OpenAI.ReasoningEffort } : {}),
+      });
+      let rawText = "";
+      const calls = new Map<number, ToolCallAcc>();
+      let finish: string | null = null;
+      for await (const chunk of stream) {
+        const choice = chunk.choices?.[0];
+        if (!choice) continue;
+        const delta = choice.delta;
+        if (delta?.content) {
+          rawText += delta.content;
+          const visible = gate.push(delta.content);
+          if (visible) yield { type: "text", delta: visible };
+        }
+        for (const tc of delta?.tool_calls ?? []) {
+          const acc = calls.get(tc.index) ?? { id: "", name: "", args: "" };
+          if (tc.id) acc.id = tc.id;
+          if (tc.function?.name) acc.name += tc.function.name;
+          if (tc.function?.arguments) acc.args += tc.function.arguments;
+          calls.set(tc.index, acc);
+        }
+        if (choice.finish_reason) finish = choice.finish_reason;
+      }
+      const flushed = gate.flush();
+      if (flushed.rest) yield { type: "text", delta: flushed.rest };
+      const text = stripFollowups(rawText);
+      const followups = flushed.followups.length ? flushed.followups : parseFollowups(rawText);
+      const toolCalls = [...calls.entries()].sort((a, b) => a[0] - b[0]).map(([, c]) => c).filter((c) => c.name);
+
+      if (!toolCalls.length) {
+        const assistantMsg: OaiMessage = { role: "assistant", content: rawText };
+        if (followups.length) yield { type: "followups", items: followups };
+        pending.push({ role: "assistant", content: text, proposals: null, api_content: { provider: "openai", message: assistantMsg }, followups });
+        if (finish === "length") yield { type: "text", delta: "\n\n(The reply was cut short.)" };
+        break;
+      }
+
+      const assistantMsg: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
+        role: "assistant",
+        content: rawText || null,
+        tool_calls: toolCalls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: c.args || "{}" } })),
+      };
+      messages.push(assistantMsg);
+      const turnProposalsStart = proposals.length;
+      const assistantPending: StoredMessage = { role: "assistant", content: text, proposals: null, api_content: { provider: "openai", message: assistantMsg } };
+      pending.push(assistantPending);
+
+      for (const c of toolCalls) {
+        let parsedArgs: unknown;
+        try {
+          parsedArgs = JSON.parse(c.args || "{}");
+        } catch {
+          parsedArgs = null;
+        }
+        const toolEvents: ChatEvent[] = [];
+        const r = parsedArgs === null
+          ? { content: "INVALID_JSON: tool arguments could not be parsed; call the tool again.", isError: true }
+          : await executeTool(c.name, parsedArgs, existingWidgets, (e) => toolEvents.push(e), proposals);
+        for (const e of toolEvents) yield e;
+        const toolMsg: OaiMessage = { role: "tool", tool_call_id: c.id, content: r.content };
+        messages.push(toolMsg);
+        pending.push({ role: "user", content: "", proposals: null, api_content: { provider: "openai", message: toolMsg } });
+      }
+      const made = proposals.slice(turnProposalsStart);
+      if (made.length) assistantPending.proposals = made;
+      yield { type: "status", text: "Thinking" };
+    }
+  } catch (err) {
+    const msg = err instanceof OpenAI.APIError ? friendlyOpenAiError(err) : (err as Error).message;
+    yield { type: "error", message: msg };
+  }
+
+  for (const m of pending) lastId = await storeMessage(input.dashboardId, m);
+  yield { type: "done", messageId: lastId };
 }

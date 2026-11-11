@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { ensureReady } from "@/lib/schema";
-import { hasWorkspaceHeader, llmMode } from "@/lib/claude";
+import { hasWorkspaceHeader, llmMode, llmModel } from "@/lib/claude";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function GET() {
       posts: p.n,
       comments: c.n,
       llm: llmMode(),
-      model: process.env.CLAUDE_MODEL ?? "claude-opus-5-5",
+      model: llmModel(),
       workspaceHeader: hasWorkspaceHeader(),
     });
   } catch (e) {

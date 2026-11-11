@@ -3,7 +3,7 @@
 A standalone IMAI-themed workspace where a brand team chats with an analyst over social-listening data, approves the dashboard elements it proposes, and saves a custom dashboard.
 
 - **Data**: a preloaded export of 6,168 creator posts, 31,688 analysed comments and 3,332 creator profiles about Venus (the focal brand) and five competitors: Estrid, Veet, Philips OneBlade, Wilkinson Sword and Mercadona.
-- **Chat**: Claude (`claude-opus-5-5`) with two tools, `run_sql` (read-only Postgres) and `propose_widget`. Every answer is grounded in a query; proposals appear as live preview cards the person can add, replace, refine or dismiss.
+- **Chat**: an LLM analyst (OpenAI when `OPEN_AI_KEY` is set, otherwise Claude) with two tools, `run_sql` (read-only Postgres) and `propose_widget`. Every answer is grounded in a query; proposals appear as live preview cards the person can add, replace, refine or dismiss.
 - **Dashboard**: a 12-column drag-and-resize grid with KPI rows, bar, stacked bar, line and segmented charts, tables, section headers, notes and insight cards. Every widget is a saved SQL query plus a rendering recipe, editable in place.
 - **Persistence**: Postgres (hosted) so everyone internally sees the same dashboards and chat history. No auth in this version. Share and Export are placeholders.
 
@@ -28,7 +28,7 @@ Open http://localhost:3000, create a dashboard from the default template (twelve
 1. Create a Postgres database (Vercel Postgres / Neon) and copy its connection string.
 2. Import this repository in Vercel and set the environment variables:
    - `DATABASE_URL` – the Postgres connection string
-   - `ANTHROPIC_API_KEY` – a Claude API key
+   - `OPEN_AI_KEY` – an OpenAI API key (or `ANTHROPIC_API_KEY` for Claude)
 3. Deploy. The first request after deploy creates the tables and seeds the dataset from `data/seed/*.json.gz` (bundled with the functions; takes 20 to 60 seconds on a hosted database, only once). To seed ahead of time instead, run `DATABASE_URL=... npm run db:seed` from your machine.
 
 Serverless functions have a 300 second limit configured for the chat route (`maxDuration`); adjust for your plan if needed.
@@ -37,7 +37,9 @@ Serverless functions have a 300 second limit configured for the chat route (`max
 
 | Variable | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | Enables Claude. Without it the app runs in demo mode with scripted answers. |
+| `OPEN_AI_KEY` | Enables the OpenAI provider (default model `gpt-5.2`, override with `OPENAI_MODEL`; optional `OPENAI_REASONING_EFFORT`). Takes precedence over Claude. |
+| `LLM_PROVIDER` | `openai` or `claude` to force a provider when both keys are set. |
+| `ANTHROPIC_API_KEY` | Enables Claude. Without any key the app runs in demo mode with scripted answers. |
 | `ANTHROPIC_WORKSPACE_ID` | Only for organisation-level keys not scoped to a workspace; the API otherwise rejects requests asking for the `anthropic-workspace-id` header. |
 | `DATABASE_URL` | Postgres connection. Empty means embedded PGlite (local only). |
 | `CLAUDE_MODEL` | Defaults to `claude-opus-5-5`. |
