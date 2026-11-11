@@ -43,6 +43,23 @@ export function llmMode(): "claude" | "mock" {
   return process.env.ANTHROPIC_API_KEY ? "claude" : "mock";
 }
 
+export function hasWorkspaceHeader(): boolean {
+  return !!process.env.ANTHROPIC_WORKSPACE_ID?.trim();
+}
+
+/** Turns the most common configuration errors into instructions the person can act on. */
+function friendlyApiError(err: InstanceType<typeof Anthropic.APIError>): string {
+  const msg = err.message ?? "";
+  if (/anthropic-workspace-id/i.test(msg)) {
+    return hasWorkspaceHeader()
+      ? "The Claude API rejected the workspace ID in ANTHROPIC_WORKSPACE_ID. Check the value in the Anthropic Console under Settings > Workspaces, or create an API key inside a workspace and use that instead."
+      : "The Claude API key is an organisation-level key that is not tied to a workspace. Either create an API key inside a workspace in the Anthropic Console and set it as ANTHROPIC_API_KEY, or add ANTHROPIC_WORKSPACE_ID (Settings > Workspaces) to the deployment's environment variables. Redeploy after changing either.";
+  }
+  if (err.status === 401) return "The Claude API key was rejected (401). Check ANTHROPIC_API_KEY in the deployment's environment variables and redeploy.";
+  if (err.status === 429) return "The Claude API is rate limiting this key (429). Try again in a moment.";
+  return `Claude API error ${err.status}: ${msg}`;
+}
+
 const MODEL = process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
 const EFFORT = (process.env.CLAUDE_EFFORT ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max";
 const MAX_TOOL_ROUNDS = 8;
@@ -466,7 +483,7 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
       yield { type: "status", text: "Thinking" };
     }
   } catch (err) {
-    const msg = err instanceof Anthropic.APIError ? `Claude API error ${err.status}: ${err.message}` : (err as Error).message;
+    const msg = err instanceof Anthropic.APIError ? friendlyApiError(err) : (err as Error).message;
     yield { type: "error", message: msg };
   }
 

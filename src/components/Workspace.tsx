@@ -107,16 +107,20 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     <Shell
       title={name}
       titleSlot={
-        <div className="row" style={{ minWidth: 0 }}>
+        <div className="row title-edit" style={{ minWidth: 0 }}>
           <input
+            id="dashboard-name"
             aria-label="Dashboard name"
-            className="im-input"
-            style={{ fontWeight: 600, fontSize: 15, border: "1px solid transparent", background: "transparent", padding: "0.3rem 0.5rem", width: "min(420px, 40vw)" }}
+            className="im-input title-edit__input"
+            placeholder="Untitled dashboard"
+            title="Click to rename this dashboard"
             value={name}
             onChange={(e) => { setName(e.target.value); setDirty(true); }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = "var(--Base-04)")}
-            onBlur={(e) => (e.currentTarget.style.borderColor = "transparent")}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
           />
+          <label htmlFor="dashboard-name" className="title-edit__pencil" title="Rename" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 20h4l10-10-4-4L4 16v4z" /><path d="M12.5 7.5l4 4" /></svg>
+          </label>
           <span className="im-text-description" style={{ whiteSpace: "nowrap" }}>
             {dirty ? <span className="im-badge im-badge-warning">Unsaved changes</span> : <span className="im-badge im-badge-success">Saved {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
           </span>

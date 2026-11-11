@@ -4,6 +4,14 @@
 .ws__canvas { min-width: 0; overflow: auto; padding: 1.25rem 1.5rem 4rem; }
 @media (max-width: 1100px) { .ws { grid-template-columns: 1fr; height: auto; } .ws__chat { height: 70vh; border-right: 0; border-bottom: 1px solid var(--Base-03); } }
 
+/* Editable dashboard title */
+.title-edit { gap: 0.35rem; }
+.title-edit__input { font-weight: 600; font-size: 15px; border: 1px solid transparent; background: transparent; padding: 0.3rem 0.5rem; width: min(420px, 40vw); border-radius: 0.5rem; }
+.title-edit__input:hover { border-color: var(--Base-04); background: var(--Base-01); }
+.title-edit__input:focus { border-color: var(--Primary-300); background: var(--Base-00); }
+.title-edit__pencil { color: var(--Base-05); display: inline-flex; cursor: text; }
+.title-edit:hover .title-edit__pencil, .title-edit:focus-within .title-edit__pencil { color: var(--Primary-600); }
+
 /* Chat */
 .chat__head { padding: 0.9rem 1rem; border-bottom: 1px solid var(--Base-03); display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .chat__head h2 { font-size: 14px; display: flex; align-items: center; gap: 0.5rem; }
