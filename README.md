@@ -38,6 +38,7 @@ Serverless functions have a 300 second limit configured for the chat route (`max
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables Claude. Without it the app runs in demo mode with scripted answers. |
+| `ANTHROPIC_WORKSPACE_ID` | Only for organisation-level keys not scoped to a workspace; the API otherwise rejects requests asking for the `anthropic-workspace-id` header. |
 | `DATABASE_URL` | Postgres connection. Empty means embedded PGlite (local only). |
 | `CLAUDE_MODEL` | Defaults to `claude-opus-5-5`. |
 | `CLAUDE_EFFORT` | `low`, `medium` (default), `high`, `xhigh`, `max`. |

@@ -292,6 +292,26 @@ export const INTENTS: Intent[] = [
 export const START_SCAN_LABEL = "Where should I start?";
 export const START_SCAN_INSTRUCTION = `Where should I start? Run a quick scan of the data for me: query share of voice by brand and platform, the monthly engagement trend, comment sentiment and purchase intent by brand, and the top objections. Then give me exactly three short observations about Venus versus its competitors (one or two sentences each, with the key numbers), and call propose_widget once for each observation so I can add a matching element. Keep the whole reply under 170 words.`;
 
+/** Builds the chat request sent when the person clicks "Ask AI" on a dashboard element. */
+export function askAboutWidget(w: WidgetSpec): { text: string; instruction: string } {
+  const text = `Tell me about "${w.title}"`;
+  const lines = [
+    `Tell me about the dashboard element "${w.title}"${w.subtitle ? ` (${w.subtitle})` : ""}. Its id is ${w.id} and its type is ${w.type}.`,
+  ];
+  if (w.sql) {
+    lines.push(`It is defined by this SQL:\n${w.sql}`);
+    lines.push(
+      "Run that query (and any follow-up queries you need), explain in plain language what it shows with the key numbers, point out the single most notable pattern, and say what it means for Venus. Then suggest one way to refine or extend this element; if you propose a replacement, call propose_widget with replaces_widget_id set to the id above.",
+    );
+  } else if (w.content) {
+    lines.push(`Its content is:\n${w.content}`);
+    lines.push("Comment on it against the data: confirm or challenge it with one or two queries, and suggest an element that would support it.");
+  } else {
+    lines.push("It is a section header. Suggest two or three elements that would belong under it, and propose the most useful one.");
+  }
+  return { text, instruction: lines.join("\n\n") };
+}
+
 /** Starter questions surfaced in the chat panel. */
 export const STARTER_QUESTIONS: string[] = [
   "Which competitor is winning on TikTok, and why?",

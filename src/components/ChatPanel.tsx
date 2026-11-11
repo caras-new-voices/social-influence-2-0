@@ -25,6 +25,7 @@ export function ChatPanel({
   onAddWidget,
   prefill,
   onPrefillConsumed,
+  ask,
 }: {
   dashboardId: string;
   widgets: WidgetSpec[];
@@ -32,6 +33,8 @@ export function ChatPanel({
   onAddWidget: (widget: WidgetSpec, replaces?: string) => void;
   prefill?: string;
   onPrefillConsumed: () => void;
+  /** A programmatic question (from an element's Ask AI button); nonce changes on every click. */
+  ask?: { text: string; instruction: string; nonce: number };
 }) {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
@@ -72,6 +75,13 @@ export function ChatPanel({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  const sendRef = useRef<(text: string, instruction?: string) => Promise<void>>(async () => {});
+  useEffect(() => {
+    if (!ask) return;
+    const t = setTimeout(() => void sendRef.current(ask.text, ask.instruction), 0);
+    return () => clearTimeout(t);
+  }, [ask]);
 
   const send = useCallback(
     async (text: string, instruction?: string) => {
@@ -133,6 +143,8 @@ export function ChatPanel({
     },
     [busy, dashboardId, widgets],
   );
+
+  sendRef.current = send;
 
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {

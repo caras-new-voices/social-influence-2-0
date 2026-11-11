@@ -85,8 +85,12 @@
 .widget__head:active { cursor: grabbing; }
 .widget__title { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
 .widget__sub { font-size: 11.5px; color: var(--Base-06); margin-top: 0.1rem; }
+.widget__toolbar { display: flex; align-items: center; gap: 0.35rem; flex: none; }
 .widget__actions { display: flex; gap: 0.15rem; opacity: 0; transition: opacity var(--Motion-fast); flex: none; }
 .widget:hover .widget__actions, .widget:focus-within .widget__actions { opacity: 1; }
+.widget__ask { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.28rem 0.6rem; border-radius: 999px; border: 1px solid var(--Primary-200); background: var(--Primary-50); color: var(--Primary-700); font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background var(--Motion-fast), border-color var(--Motion-fast); }
+.widget__ask:hover { background: var(--Primary-100); border-color: var(--Primary-400); }
+.widget--section .widget__ask { margin-right: 0.25rem; }
 .widget__body { flex: 1; min-height: 0; padding: 0.25rem 0.75rem 0.75rem; display: flex; flex-direction: column; }
 .widget__state { flex: 1; display: grid; place-items: center; color: var(--Base-05); font-size: 12px; text-align: center; padding: 0.5rem; }
 .widget__state--error { color: #b91c1c; }

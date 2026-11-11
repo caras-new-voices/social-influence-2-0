@@ -375,7 +375,13 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
     return;
   }
 
-  const client = new Anthropic({ maxRetries: 2, timeout: 180_000 });
+  // Keys created at organisation level (not inside a workspace) must name a workspace on every request.
+  const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID?.trim();
+  const client = new Anthropic({
+    maxRetries: 2,
+    timeout: 180_000,
+    ...(workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {}),
+  });
   const history = await loadHistory(input.dashboardId);
   const userApiText = `${input.instruction ?? input.userText}\n\n${contextBlock(input.widgets)}`;
   const messages: MsgParam[] = [...history, { role: "user", content: [{ type: "text", text: userApiText }] }];

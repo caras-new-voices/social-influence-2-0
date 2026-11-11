@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Layout } from "react-grid-layout";
 import { useRouter } from "next/navigation";
-import { defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
+import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
 import { AddWidgetDrawer } from "./AddWidgetDrawer";
 import { ChatPanel } from "./ChatPanel";
 import { DashboardCanvas } from "./DashboardCanvas";
@@ -20,6 +20,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [editing, setEditing] = useState<WidgetSpec | null>(null);
   const [adding, setAdding] = useState(false);
   const [prefill, setPrefill] = useState<string | undefined>();
+  const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number } | undefined>();
   const [demo, setDemo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
 
@@ -138,6 +139,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           onAddWidget={addWidget}
           prefill={prefill}
           onPrefillConsumed={() => setPrefill(undefined)}
+          ask={ask}
         />
         <div className="ws__canvas">
           <DashboardCanvas
@@ -145,6 +147,10 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
             onLayoutChange={onLayoutChange}
             onEdit={(id) => setEditing(widgets.find((w) => w.id === id) ?? null)}
             onRemove={(id) => { mutate((ws) => ws.filter((w) => w.id !== id)); toast("Element removed"); }}
+            onAsk={(id) => {
+              const w = widgets.find((x) => x.id === id);
+              if (w) setAsk({ ...askAboutWidget(w), nonce: Date.now() });
+            }}
             onAddClick={() => setAdding(true)}
           />
         </div>

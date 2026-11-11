@@ -43,9 +43,10 @@ const I = {
   table: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M9 5v14" /></svg>,
   chart: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 19V5M4 19h16" /><path d="M8 15v-4M12 15V8M16 15v-6" /></svg>,
   trash: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>,
+  spark: <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>,
 };
 
-export function WidgetCard({ spec, onEdit, onRemove }: { spec: WidgetSpec; onEdit: () => void; onRemove: () => void }) {
+export function WidgetCard({ spec, onEdit, onRemove, onAsk }: { spec: WidgetSpec; onEdit: () => void; onRemove: () => void; onAsk: () => void }) {
   const { rows, loading, error } = useWidgetRows(spec);
   const [tableView, setTableView] = useState(false);
   const chartLike = ["bar", "stacked_bar", "line", "segmented", "kpi"].includes(spec.type);
@@ -58,6 +59,7 @@ export function WidgetCard({ spec, onEdit, onRemove }: { spec: WidgetSpec; onEdi
           {spec.subtitle && <span className="widget__sub">{spec.subtitle}</span>}
           <span className="grow" />
           <span className="widget__actions no-drag">
+            <button className="widget__ask" onClick={onAsk} aria-label={`Ask AI about ${spec.title}`}>{I.spark} Ask AI</button>
             <button className="im-btn im-btn-ghost im-btn-icon" onClick={onEdit} aria-label="Edit section">{I.edit}</button>
             <button className="im-btn im-btn-ghost im-btn-icon" onClick={onRemove} aria-label="Remove section">{I.trash}</button>
           </span>
@@ -73,7 +75,9 @@ export function WidgetCard({ spec, onEdit, onRemove }: { spec: WidgetSpec; onEdi
           <div className="widget__title">{spec.title}</div>
           {spec.subtitle && <div className="widget__sub">{spec.subtitle}</div>}
         </div>
-        <div className="widget__actions no-drag">
+        <div className="widget__toolbar no-drag">
+          <button className="widget__ask" onClick={onAsk} aria-label={`Ask AI about ${spec.title}`} title="Chat with the analyst about this element">{I.spark} Ask AI</button>
+          <div className="widget__actions">
           {chartLike && (
             <button className="im-btn im-btn-ghost im-btn-icon" onClick={() => setTableView((v) => !v)} aria-label={tableView ? "Show chart" : "Show as table"} title={tableView ? "Show chart" : "Show as table"}>
               {tableView ? I.chart : I.table}
@@ -81,6 +85,7 @@ export function WidgetCard({ spec, onEdit, onRemove }: { spec: WidgetSpec; onEdi
           )}
           <button className="im-btn im-btn-ghost im-btn-icon" onClick={onEdit} aria-label="Edit widget" title="Edit">{I.edit}</button>
           <button className="im-btn im-btn-ghost im-btn-icon" onClick={onRemove} aria-label="Remove widget" title="Remove">{I.trash}</button>
+          </div>
         </div>
       </div>
       <div className="widget__body no-drag">
