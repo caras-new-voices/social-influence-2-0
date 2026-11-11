@@ -144,6 +144,19 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
         if (!sdpRes.ok) throw new Error(`Could not connect the audio session (${sdpRes.status})`);
         const answer = await sdpRes.text();
         await pc.setRemoteDescription({ type: "answer", sdp: answer });
+        // Signalling succeeded; if the media/data connection never comes up the network is blocking WebRTC.
+        setTimeout(() => {
+          if (!cancelled && dc.readyState !== "open") {
+            setError("The voice connection could not be established. Your network may block WebRTC (UDP) traffic; try another network or VPN setting.");
+            setStatus("error");
+          }
+        }, 20000);
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+            setError("The voice connection dropped.");
+            setStatus("error");
+          }
+        };
       } catch (e) {
         if (cancelled) return;
         const msg = (e as Error).name === "NotAllowedError" ? "Microphone access was blocked. Allow the microphone and try again." : (e as Error).message;
