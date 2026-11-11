@@ -62,7 +62,7 @@ export default async function DataPage() {
         {/* 1. Overview */}
         <section className="ds__section">
           <h2 className="im-text-header">What this dataset is</h2>
-          <p className="im-text-description">A social-listening export covering creator posts about six {`female hair removal`} brands, the audience comments on those posts, and profiles of the creators. Collected with Brandwatch queries per brand, enriched by IMAI, and loaded here as four tables. Everything on this page describes the data as it is; it does not interpret it.</p>
+          <p className="im-text-description">A social-listening export covering creator posts about six {`female hair removal`} brands, the audience comments on those posts, and profiles of the creators. Collected per brand by IMAI's social listening, enriched with creator data, and loaded here as four tables. Everything on this page describes the data as it is; it does not interpret it.</p>
           <div className="ds__cards">
             <div className="ds__card"><span className="im-micro-label">Posts</span><b>{formatNumber(counts.posts)}</b><small>one row per creator post per brand</small></div>
             <div className="ds__card"><span className="im-micro-label">Comments</span><b>{formatNumber(counts.comments)}</b><small>one row per comment, each with an AI analysis</small></div>
@@ -88,19 +88,14 @@ export default async function DataPage() {
         {/* 2. Brands */}
         <section className="ds__section">
           <h2 className="im-text-header">Brands</h2>
-          <p className="im-text-description">Each brand is a Brandwatch segment. Expand a row to see the exact query that collected its posts.</p>
+          <p className="im-text-description">Each brand is a tracked segment: posts were collected per brand with a keyword query covering the brand, its product names and its official accounts.</p>
           <div className="im-card" style={{ overflow: "hidden" }}>
             <table className="tbl">
               <thead><tr><th>Brand</th><th>Role</th><th className="num">Posts</th><th className="num">Creators</th><th className="num">Comments</th><th className="num">TikTok</th><th className="num">Instagram</th><th className="num">YouTube</th><th>Posts from</th><th>Posts to</th></tr></thead>
               <tbody>
                 {s.brands.map((b) => (
                   <tr key={b.brand}>
-                    <td>
-                      <details className="ds__details">
-                        <summary><span className="row"><i className="dot" style={{ background: color(b.brand) }} />{b.brand}</span></summary>
-                        <pre className="ds__query">{b.query ?? "–"}</pre>
-                      </details>
-                    </td>
+                    <td><span className="row"><i className="dot" style={{ background: color(b.brand) }} />{b.brand}</span></td>
                     <td>{b.role}</td>
                     <td className="num">{formatNumber(b.posts)}</td><td className="num">{formatNumber(b.creators)}</td><td className="num">{formatNumber(b.comments)}</td>
                     <td className="num">{formatNumber(b.tiktok)}</td><td className="num">{formatNumber(b.instagram)}</td><td className="num">{formatNumber(b.youtube)}</td>
@@ -222,7 +217,7 @@ export default async function DataPage() {
             <div className="im-card im-card--pad">
               <h3 className="im-text-sub-header">Where the data comes from</h3>
               <ol className="ds__list">
-                <li>Posts were collected per brand with the Brandwatch queries shown above, across TikTok, Instagram and YouTube.</li>
+                <li>Posts were collected per brand by IMAI's social listening, using a keyword query per brand across TikTok, Instagram and YouTube.</li>
                 <li>IMAI enriched each post with creator data (tier, followers, country, estimated fee, earned media value) and fetched the comments.</li>
                 <li>Every comment was run through an analysis model that assigned the labels listed above and extracted verbatim phrases.</li>
                 <li>Creator profiles were pulled from IMAI reports where available, including audience demographics.</li>

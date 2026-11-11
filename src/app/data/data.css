@@ -12,10 +12,6 @@
 .ds__grid-3--top { align-items: start; }
 .ds__mini { background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.9rem; padding: 0.8rem 1rem; font-size: 13px; }
 .ds__mini b { display: block; text-transform: capitalize; margin-bottom: 0.2rem; }
-.ds__details summary { cursor: pointer; list-style: none; }
-.ds__details summary::-webkit-details-marker { display: none; }
-.ds__details[open] summary { color: var(--Primary-700); }
-.ds__query { white-space: pre-wrap; word-break: break-word; font-size: 11px; background: var(--Base-02); border-radius: 0.5rem; padding: 0.6rem; margin: 0.5rem 0 0; max-width: 900px; max-height: 220px; overflow: auto; }
 .ds__dual { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; margin-top: 0.5rem; }
 .ds__cards, .ds__grid-2, .ds__grid-3 { min-width: 0; }
 .cols { display: flex; align-items: flex-end; gap: 4px; height: 150px; padding-top: 1rem; }

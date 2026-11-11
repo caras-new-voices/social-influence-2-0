@@ -47,7 +47,7 @@ audience_credibility double, brand_safety_score double (0..100), avg_comment_sen
 Join to posts on (segment_id, influencer_id).
 
 ## Table segments (one row per brand with precomputed AI strategy insights)
-id int, name text, brand text, role text ('focal'|'competitor'), brandwatch_query text,
+id int, name text, brand text, role text ('focal'|'competitor'),
 insight_headline text, insight_framing text, insight_assess text, insight_act text, insight_anticipate text (HTML fragments with h3/ul/li/strong),
 insights_by_platform jsonb ({tiktok:{headline,assess,act,anticipate}, instagram:{...}, youtube:{...}}),
 comment_insights jsonb (per-platform payload with faq_gaps, objections, purchase_intent, loyalty_signals, crisis_backlash, safety_complaints, feature_requests, competitor_mentions, cross_brand_affinity, partnership_perception, use_case_discovery, engagement_quality, synthesis{summary, findings[]}),

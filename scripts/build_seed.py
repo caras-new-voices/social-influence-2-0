@@ -58,7 +58,6 @@ for _, r in seg.iterrows():
     stats = ag.get("stats", {})
     segments.append({
         "id": sid, "name": r["name"], "brand": short, "role": role,
-        "brandwatch_query": txt(r["brandwatch_query"], 4000),
         "scan_start_date": txt(r["scan_start_date"]),
         "insight_headline": (plat.get("all") or {}).get("headline"),
         "insight_framing": (plat.get("all") or {}).get("framing"),

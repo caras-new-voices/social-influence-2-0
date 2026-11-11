@@ -8,7 +8,7 @@ import { getDb } from "./db";
 export const DDL = `
 CREATE TABLE IF NOT EXISTS segments (
   id integer PRIMARY KEY,
-  name text, brand text, role text, brandwatch_query text, scan_start_date timestamptz,
+  name text, brand text, role text, scan_start_date timestamptz,
   insight_headline text, insight_framing text, insight_assess text, insight_act text, insight_anticipate text,
   insights_by_platform jsonb, comment_insights jsonb,
   total_emv double precision, total_engagement double precision, estimated_impressions double precision,
@@ -74,6 +74,11 @@ CREATE INDEX IF NOT EXISTS chat_messages_dash_idx ON chat_messages (dashboard_id
 CREATE TABLE IF NOT EXISTS app_meta (key text PRIMARY KEY, value text);
 `;
 
+/** Idempotent changes applied to databases created by earlier versions. */
+const MIGRATIONS = `
+ALTER TABLE segments DROP COLUMN IF EXISTS brandwatch_query;
+`;
+
 const SEED_VERSION = "2026-11-11.1";
 
 function seedDir() {
@@ -87,7 +92,7 @@ function readSeed(name: string): Row[] {
 }
 
 export const COLUMNS: Record<string, string[]> = {
-  segments: ["id","name","brand","role","brandwatch_query","scan_start_date","insight_headline","insight_framing","insight_assess","insight_act","insight_anticipate","insights_by_platform","comment_insights","total_emv","total_engagement","estimated_impressions","total_unique_influencers","invested_budget_min","invested_budget_max"],
+  segments: ["id","name","brand","role","scan_start_date","insight_headline","insight_framing","insight_assess","insight_act","insight_anticipate","insights_by_platform","comment_insights","total_emv","total_engagement","estimated_impressions","total_unique_influencers","invested_budget_min","invested_budget_max"],
   posts: ["post_id","segment_id","brand","influencer_id","username","platform","post_type","url","title","text","published_at","likes","comments","shares","views","saves","engagement","is_paid","tier","country","language","sentiment","emv","followers","budget_min","budget_max","image_url","video_url"],
   comments: ["comment_id","segment_id","brand","post_id","username","text","likes","reply_count","published_at","sentiment","sentiment_score","emotion","language","topics","keywords","toxicity","spam_rate","moderation","automated_response","authenticity_score","authenticity_flag","purchase_intent_type","purchase_intent_score","purchase_blocker","objection_category","objection_context","objection_phrase","competitor_name","competitor_favored","competitor_mention_type","loyalty_type","loyalty_phrase","repeat_buyer","faq_topic","faq_phrase","feature_request_type","feature_request","safety_complaint_type","safety_severity","crisis_risk_type","crisis_urgency","crisis_phrase","partnership_perception","partnership_intensity","brand_affinity_name","brand_affinity_category","use_case","use_case_segment","caption_relevance"],
   influencers: ["segment_id","brand","influencer_id","username","fullname","network","url","picture","followers","engagements","engagement_rate","avg_views","is_verified","imai_score","country","language","ai_summary","has_report","audience_female","audience_male","audience_ages","audience_countries","audience_credibility","brand_safety_score","avg_comment_sentiment"],
@@ -150,6 +155,7 @@ export function ensureReady(): Promise<void> {
     g.__siReady = (async () => {
       const db = await getDb();
       await db.exec(DDL);
+      await db.exec(MIGRATIONS);
       const rows = await db.query<{ value: string }>(`SELECT value FROM app_meta WHERE key = 'seed_version'`);
       if (rows[0]?.value !== SEED_VERSION) {
         await seedDatabase(db, (m) => console.log("[seed]", m));

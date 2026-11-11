@@ -24,7 +24,7 @@ export interface DatasetStats {
   platforms: Array<{ platform: string; posts: number; video: number; image: number; comments: number }>;
   brands: Array<{
     brand: string; role: string; posts: number; creators: number; comments: number; tiktok: number; instagram: number; youtube: number;
-    first: string; last: string; query: string | null;
+    first: string; last: string;
   }>;
   monthly: Array<{ month: string; posts: number; comments: number }>;
   tiers: Array<{ tier: string; posts: number; creators: number; minFollowers: number; maxFollowers: number }>;
@@ -75,8 +75,8 @@ async function computeDatasetStats(): Promise<DatasetStats> {
     SELECT s.brand, s.role, count(p.post_id)::int AS posts, count(DISTINCT p.influencer_id)::int AS creators,
            (SELECT count(*)::int FROM comments c WHERE c.segment_id = s.id) AS comments,
            count(*) FILTER (WHERE p.platform='tiktok')::int AS tiktok, count(*) FILTER (WHERE p.platform='instagram')::int AS instagram, count(*) FILTER (WHERE p.platform='youtube')::int AS youtube,
-           min(p.published_at) AS first, max(p.published_at) AS last, s.brandwatch_query AS query
-    FROM segments s LEFT JOIN posts p ON p.segment_id = s.id GROUP BY s.id, s.brand, s.role, s.brandwatch_query ORDER BY posts DESC`);
+           min(p.published_at) AS first, max(p.published_at) AS last
+    FROM segments s LEFT JOIN posts p ON p.segment_id = s.id GROUP BY s.id, s.brand, s.role ORDER BY posts DESC`);
 
   const monthly = await q<DatasetStats["monthly"][number]>(`
     SELECT m.month, coalesce(p.n, 0)::int AS posts, coalesce(c.n, 0)::int AS comments FROM
