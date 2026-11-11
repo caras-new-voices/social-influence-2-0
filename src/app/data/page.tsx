@@ -1,7 +1,7 @@
 import { Shell } from "@/components/Shell";
 import { BRANDS } from "@/lib/brands";
 import { getDatasetStats } from "@/lib/dataset-stats";
-import { formatNumber, prettyKey } from "@/lib/format";
+import { formatNumber, languageName, prettyKey } from "@/lib/format";
 import "./data.css";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +40,12 @@ function Columns({ data, valueKey, labelKey, total }: { data: Array<Record<strin
   );
 }
 
-function Rows({ data, valueKey, labelKey, total }: { data: Array<Record<string, unknown>>; valueKey: string; labelKey: string; total: number }) {
+function Rows({ data, valueKey, labelKey, total, labelTitle }: { data: Array<Record<string, unknown>>; valueKey: string; labelKey: string; total: number; labelTitle?: (label: string) => string }) {
   return (
     <div className="rows">
       {data.map((d) => (
         <div className="rows__item" key={String(d[labelKey])}>
-          <span className="rows__label">{String(d[labelKey])}</span>
+          <span className={`rows__label ${labelTitle ? "rows__label--hint" : ""}`} title={labelTitle ? labelTitle(String(d[labelKey])) : undefined}>{String(d[labelKey])}</span>
           <Meter value={Number(d[valueKey])} total={total} label={`${formatNumber(Number(d[valueKey]))} · ${pct(Number(d[valueKey]), total)}`} />
         </div>
       ))}
@@ -148,34 +148,13 @@ export default async function DataPage() {
             <div className="im-card im-card--pad">
               <h3 className="im-text-sub-header">Post languages</h3>
               <p className="im-text-description">Detected caption language. Unknown is common because captions are short or emoji-only.</p>
-              <Rows data={s.languages.posts} valueKey="n" labelKey="language" total={counts.posts} />
+              <Rows data={s.languages.posts} valueKey="n" labelKey="language" total={counts.posts} labelTitle={languageName} />
             </div>
             <div className="im-card im-card--pad">
               <h3 className="im-text-sub-header">Comment languages</h3>
-              <Rows data={s.languages.comments} valueKey="n" labelKey="language" total={counts.comments} />
+              <p className="im-text-description">Hover a code for the language name.</p>
+              <Rows data={s.languages.comments} valueKey="n" labelKey="language" total={counts.comments} labelTitle={languageName} />
             </div>
-          </div>
-        </section>
-
-        {/* 4. Coverage */}
-        <section className="ds__section">
-          <h2 className="im-text-header">Fields and completeness</h2>
-          <p className="im-text-description">Every column in the three main tables, what it holds, and how many rows have a value. Posts use a composite key of segment and post, so a post that mentions two brands appears once under each ({s.caveats.crossSegmentPosts} posts do).</p>
-          <div className="ds__grid-3 ds__grid-3--top">
-            {(["posts", "comments", "influencers"] as const).map((t) => (
-              <div className="im-card im-card--pad" key={t}>
-                <h3 className="im-text-sub-header">{t}</h3>
-                <div className="ds__fields">
-                  {s.fill[t].map((f) => (
-                    <div className="ds__field" key={f.col}>
-                      <div className="ds__field-head"><code>{f.col}</code><span>{pct(f.filled, f.total)}</span></div>
-                      <div className="meter__track"><div className="meter__fill" style={{ width: `${Math.max(1, (100 * f.filled) / f.total)}%` }} /></div>
-                      <small>{f.doc}</small>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -256,6 +235,7 @@ export default async function DataPage() {
                 <li>Views are present on {pct(s.caveats.viewsFilled, counts.posts)} of posts. Sums of views undercount.</li>
                 <li>Caption language is known for {pct(s.caveats.languageKnown, counts.posts)} of posts; comment language is more complete.</li>
                 <li>Audience demographics exist for {formatNumber(s.caveats.audienceCoverage)} of {formatNumber(counts.influencers)} creator rows ({pct(s.caveats.audienceCoverage, counts.influencers)}); a profile report exists for {pct(s.caveats.reportCoverage, counts.influencers)}.</li>
+                <li>Posts are keyed by brand and post, so a post that mentions two brands appears once under each; {s.caveats.crossSegmentPosts} posts do.</li>
                 <li>Mercadona has {s.caveats.mercadonaPosts} posts. Treat its figures as anecdotal.</li>
                 <li>Free-text analysis fields (safety complaint type, FAQ topic, backlash type, brand affinity) are not normalised: the same idea appears with different spellings.</li>
                 <li>Counts for likes, views and comments are as of collection time, not live.</li>

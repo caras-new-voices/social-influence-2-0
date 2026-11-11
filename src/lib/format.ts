@@ -59,6 +59,24 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+const SPECIAL_LANGUAGES: Record<string, string> = {
+  und: "Undetermined (could not be detected)",
+  unknown: "Unknown (not detected)",
+  null: "Not recorded",
+};
+
+/** Full language name for an ISO 639-1 code, e.g. "de" -> "German". */
+export function languageName(code: string | null | undefined): string {
+  const c = (code ?? "null").toLowerCase();
+  if (SPECIAL_LANGUAGES[c]) return SPECIAL_LANGUAGES[c];
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "language" }).of(c);
+    return name && name !== c ? `${name} (${c})` : c;
+  } catch {
+    return c;
+  }
+}
+
 const ALLOWED_TAGS = new Set(["h3", "h4", "p", "ul", "ol", "li", "strong", "em", "b", "i", "br", "span"]);
 
 /** Minimal HTML sanitizer for the precomputed insight fragments: allow-listed tags, no attributes. */

@@ -27,6 +27,7 @@
 .rows { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
 .rows__item { display: grid; grid-template-columns: 140px 1fr; gap: 0.75rem; align-items: center; font-size: 12.5px; }
 .rows__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rows__label--hint { cursor: help; text-decoration: underline dotted var(--Base-04); text-underline-offset: 3px; }
 .meter { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
 .meter__track { flex: 1; height: 8px; background: var(--Base-03); border-radius: 4px; overflow: hidden; }
 .meter__fill { height: 100%; background: var(--Primary-600); border-radius: 4px; }

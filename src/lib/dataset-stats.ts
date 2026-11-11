@@ -1,117 +1,5 @@
 import { getDb, type Row } from "./db";
-import { COLUMNS, ensureReady } from "./schema";
-
-/** Short, non-interpretive definitions shown on the Dataset page. */
-export const FIELD_DOCS: Record<string, Record<string, string>> = {
-  posts: {
-    post_id: "Post identifier from the listening platform",
-    segment_id: "Brand segment the post was collected for",
-    brand: "Brand name of the segment",
-    influencer_id: "Creator identifier",
-    username: "Creator handle",
-    platform: "tiktok, instagram or youtube",
-    post_type: "video or image",
-    url: "Link to the post",
-    title: "Post title (YouTube mostly)",
-    text: "Caption text",
-    published_at: "Publication timestamp",
-    likes: "Like count at collection time",
-    comments: "Comment count at collection time",
-    shares: "Share count",
-    views: "View or play count",
-    saves: "Save count",
-    engagement: "likes + comments + shares + saves",
-    is_paid: "Paid or sponsored disclosure detected",
-    tier: "Creator size band by followers: nano, micro, mid, macro, mega",
-    country: "Creator country",
-    language: "Detected caption language (ISO code)",
-    sentiment: "Post sentiment: positive, neutral, negative",
-    emv: "Earned media value estimate, USD",
-    followers: "Creator followers at collection time",
-    budget_min: "Estimated creator fee, low end, USD",
-    budget_max: "Estimated creator fee, high end, USD",
-    image_url: "Thumbnail",
-    video_url: "Video file link",
-  },
-  comments: {
-    comment_id: "Comment identifier",
-    segment_id: "Brand segment of the post",
-    brand: "Brand of the post the comment is on",
-    post_id: "Post the comment belongs to",
-    username: "Commenter handle",
-    text: "Comment text",
-    likes: "Comment likes",
-    reply_count: "Replies to the comment",
-    published_at: "Comment timestamp",
-    sentiment: "AI label: positive, neutral, negative",
-    sentiment_score: "AI score 0 to 1",
-    emotion: "AI label: happy, surprised, sad, angry, disgusted, fearful, other",
-    language: "Detected comment language",
-    topics: "AI free-form topic tags",
-    keywords: "AI extracted keywords",
-    toxicity: "AI toxicity score 0 to 1",
-    spam_rate: "AI spam likelihood 0 to 1",
-    moderation: "AI moderation flag: spam, sexual, hate, violence, other",
-    automated_response: "Looks like a bot reply",
-    authenticity_score: "AI engagement authenticity 0 to 1",
-    authenticity_flag: "Reason when authenticity is low",
-    purchase_intent_type: "AI label: explicit, aspirational, conditional",
-    purchase_intent_score: "AI intent strength 0 to 1",
-    purchase_blocker: "AI free text: what stops the purchase",
-    objection_category: "AI label: quality, price, shipping_availability, trust_credibility, comparison_based, ethics, ingredients_composition, fit_sizing",
-    objection_context: "AI free text: product context of the objection",
-    objection_phrase: "Verbatim objection",
-    competitor_name: "Other brand named in the comment",
-    competitor_favored: "AI label: competitor, focal_brand, neither, unclear",
-    competitor_mention_type: "AI label: preference, comparison, rhetorical_putdown",
-    loyalty_type: "AI label: advocacy, long_term_use, repeat_buyer, other",
-    loyalty_phrase: "Verbatim loyalty statement",
-    repeat_buyer: "Repeat purchase mentioned",
-    faq_topic: "AI free text: topic of an unanswered question",
-    faq_phrase: "Verbatim question",
-    feature_request_type: "AI label: variant, feature, color, format, size, modification, other",
-    feature_request: "Verbatim request",
-    safety_complaint_type: "AI free text: type of safety complaint",
-    safety_severity: "AI label: low, med, high",
-    crisis_risk_type: "AI free text: backlash risk type",
-    crisis_urgency: "AI label: low, med, high",
-    crisis_phrase: "Verbatim backlash phrase",
-    partnership_perception: "AI label: how the sponsorship is perceived",
-    partnership_intensity: "AI label: low, med, high",
-    brand_affinity_name: "Other brand the commenter expresses affinity for",
-    brand_affinity_category: "Category of that brand",
-    use_case: "AI free text: non-standard product use described",
-    use_case_segment: "AI free text: audience segment implied by the use case",
-    caption_relevance: "AI score: how much the comment relates to the caption",
-  },
-  influencers: {
-    segment_id: "Brand segment the creator was collected for",
-    brand: "Brand name",
-    influencer_id: "Creator identifier",
-    username: "Handle",
-    fullname: "Display name",
-    network: "tiktok, instagram or youtube",
-    url: "Profile link",
-    picture: "Avatar",
-    followers: "Followers",
-    engagements: "Average engagements per post",
-    engagement_rate: "Engagements divided by followers",
-    avg_views: "Average views per post",
-    is_verified: "Verified badge",
-    imai_score: "IMAI quality score 0 to 100",
-    country: "Creator country from the profile report",
-    language: "Creator language from the profile report",
-    ai_summary: "Short profile summary from the report",
-    has_report: "A full audience report exists",
-    audience_female: "Female share of audience (from report)",
-    audience_male: "Male share of audience (from report)",
-    audience_ages: "Audience age bands with shares (from report)",
-    audience_countries: "Top audience countries with shares (from report)",
-    audience_credibility: "Audience credibility score (from report)",
-    brand_safety_score: "Brand safety score 0 to 100 (from report)",
-    avg_comment_sentiment: "Average sentiment of the creator's comments (from report)",
-  },
-};
+import { ensureReady } from "./schema";
 
 export const ANALYSIS_FIELDS: Array<{ col: string; label: string; kind: "label" | "free" }> = [
   { col: "sentiment", label: "Sentiment", kind: "label" },
@@ -138,7 +26,6 @@ export interface DatasetStats {
     brand: string; role: string; posts: number; creators: number; comments: number; tiktok: number; instagram: number; youtube: number;
     first: string; last: string; query: string | null;
   }>;
-  fill: Record<string, Array<{ col: string; filled: number; total: number; doc: string }>>;
   monthly: Array<{ month: string; posts: number; comments: number }>;
   tiers: Array<{ tier: string; posts: number; creators: number; minFollowers: number; maxFollowers: number }>;
   countries: Array<{ country: string; posts: number }>;
@@ -149,8 +36,6 @@ export interface DatasetStats {
   samples: { posts: Row[]; comments: Row[] };
   caveats: { viewsFilled: number; languageKnown: number; audienceCoverage: number; reportCoverage: number; mercadonaPosts: number; crossSegmentPosts: number };
 }
-
-const TABLE_NAMES = ["posts", "comments", "influencers"] as const;
 
 const CACHE_MS = 10 * 60 * 1000;
 const g = globalThis as unknown as { __siStats?: { at: number; value: Promise<DatasetStats> } };
@@ -192,15 +77,6 @@ async function computeDatasetStats(): Promise<DatasetStats> {
            count(*) FILTER (WHERE p.platform='tiktok')::int AS tiktok, count(*) FILTER (WHERE p.platform='instagram')::int AS instagram, count(*) FILTER (WHERE p.platform='youtube')::int AS youtube,
            min(p.published_at) AS first, max(p.published_at) AS last, s.brandwatch_query AS query
     FROM segments s LEFT JOIN posts p ON p.segment_id = s.id GROUP BY s.id, s.brand, s.role, s.brandwatch_query ORDER BY posts DESC`);
-
-  const fill: DatasetStats["fill"] = {};
-  for (const t of TABLE_NAMES) {
-    const cols = COLUMNS[t];
-    const sel = cols.map((col) => `count(${col})::int AS "${col}"`).join(", ");
-    const [row] = await q(`SELECT count(*)::int AS __total, ${sel} FROM ${t}`);
-    const total = Number(row.__total);
-    fill[t] = cols.map((col) => ({ col, filled: Number(row[col]), total, doc: FIELD_DOCS[t]?.[col] ?? "" }));
-  }
 
   const monthly = await q<DatasetStats["monthly"][number]>(`
     SELECT m.month, coalesce(p.n, 0)::int AS posts, coalesce(c.n, 0)::int AS comments FROM
@@ -268,7 +144,6 @@ async function computeDatasetStats(): Promise<DatasetStats> {
     dates: { firstPost: iso(d.fp), lastPost: iso(d.lp), firstComment: iso(d.fc), lastComment: iso(d.lc), exported: "2026-09-07" },
     platforms,
     brands: brands.map((b) => ({ ...b, first: iso(b.first), last: iso(b.last) })),
-    fill,
     monthly,
     tiers,
     countries,
