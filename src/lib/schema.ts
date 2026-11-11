@@ -86,7 +86,7 @@ function readSeed(name: string): Row[] {
   return JSON.parse(buf.toString("utf8")) as Row[];
 }
 
-const COLUMNS: Record<string, string[]> = {
+export const COLUMNS: Record<string, string[]> = {
   segments: ["id","name","brand","role","brandwatch_query","scan_start_date","insight_headline","insight_framing","insight_assess","insight_act","insight_anticipate","insights_by_platform","comment_insights","total_emv","total_engagement","estimated_impressions","total_unique_influencers","invested_budget_min","invested_budget_max"],
   posts: ["post_id","segment_id","brand","influencer_id","username","platform","post_type","url","title","text","published_at","likes","comments","shares","views","saves","engagement","is_paid","tier","country","language","sentiment","emv","followers","budget_min","budget_max","image_url","video_url"],
   comments: ["comment_id","segment_id","brand","post_id","username","text","likes","reply_count","published_at","sentiment","sentiment_score","emotion","language","topics","keywords","toxicity","spam_rate","moderation","automated_response","authenticity_score","authenticity_flag","purchase_intent_type","purchase_intent_score","purchase_blocker","objection_category","objection_context","objection_phrase","competitor_name","competitor_favored","competitor_mention_type","loyalty_type","loyalty_phrase","repeat_buyer","faq_topic","faq_phrase","feature_request_type","feature_request","safety_complaint_type","safety_severity","crisis_risk_type","crisis_urgency","crisis_phrase","partnership_perception","partnership_intensity","brand_affinity_name","brand_affinity_category","use_case","use_case_segment","caption_relevance"],

@@ -1,0 +1,53 @@
+.ds { padding: 1.5rem; display: flex; flex-direction: column; gap: 2rem; max-width: 1400px; }
+.ds__section { display: flex; flex-direction: column; gap: 0.75rem; }
+.ds__section > h2 { margin-bottom: -0.35rem; }
+.ds__cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+.ds__card { background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.9rem; padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.ds__card b { font-size: 24px; font-weight: 600; line-height: 1.1; }
+.ds__card small { font-size: 11.5px; color: var(--Base-06); }
+.ds__timeline { display: flex; gap: 2rem; background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.9rem; padding: 0.8rem 1rem; font-size: 13px; flex-wrap: wrap; }
+.ds__grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem; }
+.ds__grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.ds__span { grid-column: 1 / -1; }
+.ds__grid-3--top { align-items: start; }
+.ds__mini { background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.9rem; padding: 0.8rem 1rem; font-size: 13px; }
+.ds__mini b { display: block; text-transform: capitalize; margin-bottom: 0.2rem; }
+.ds__details summary { cursor: pointer; list-style: none; }
+.ds__details summary::-webkit-details-marker { display: none; }
+.ds__details[open] summary { color: var(--Primary-700); }
+.ds__query { white-space: pre-wrap; word-break: break-word; font-size: 11px; background: var(--Base-02); border-radius: 0.5rem; padding: 0.6rem; margin: 0.5rem 0 0; max-width: 900px; max-height: 220px; overflow: auto; }
+.ds__dual { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; margin-top: 0.5rem; }
+.ds__cards, .ds__grid-2, .ds__grid-3 { min-width: 0; }
+.cols { display: flex; align-items: flex-end; gap: 4px; height: 150px; padding-top: 1rem; }
+.cols__item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; position: relative; }
+.cols__bar { width: 100%; max-width: 28px; background: var(--Primary-600); border-radius: 4px 4px 0 0; }
+.cols__value { font-size: 10px; color: var(--Base-06); margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+.cols__label { font-size: 10px; color: var(--Base-06); margin-top: 4px; white-space: nowrap; transform: rotate(-35deg); transform-origin: top right; height: 20px; }
+.cols__share { display: none; }
+.rows { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
+.rows__item { display: grid; grid-template-columns: 140px 1fr; gap: 0.75rem; align-items: center; font-size: 12.5px; }
+.rows__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meter { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.meter__track { flex: 1; height: 8px; background: var(--Base-03); border-radius: 4px; overflow: hidden; }
+.meter__fill { height: 100%; background: var(--Primary-600); border-radius: 4px; }
+.meter__label { font-size: 11.5px; color: var(--Base-06); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
+.ds__fields { display: flex; flex-direction: column; gap: 0.55rem; margin-top: 0.5rem; }
+.ds__field { display: flex; flex-direction: column; gap: 0.2rem; }
+.ds__field-head { display: flex; justify-content: space-between; font-size: 12px; }
+.ds__field-head code { font-size: 11.5px; background: var(--Base-02); padding: 0 0.3rem; border-radius: 4px; }
+.ds__field-head span { color: var(--Base-06); font-variant-numeric: tabular-nums; }
+.ds__field small { font-size: 11px; color: var(--Base-06); }
+.ds__analysis { display: flex; flex-direction: column; gap: 0.6rem; }
+.ds__values { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.ds__value { font-size: 11.5px; background: var(--Base-02); border-radius: 999px; padding: 0.15rem 0.6rem; color: var(--Base-07); }
+.ds__value b { color: var(--Base-06); font-weight: 500; margin-left: 0.2rem; }
+.ds__value--more { background: transparent; color: var(--Base-05); }
+.ds__example { margin: 0; padding: 0.6rem 0.8rem; background: var(--Primary-50); border-left: 3px solid var(--Primary-300); border-radius: 0.4rem; font-size: 12.5px; color: var(--Base-07); }
+.ds__example footer { font-size: 11px; color: var(--Base-06); margin-top: 0.3rem; }
+.ds__record { display: grid; grid-template-columns: 150px 1fr; gap: 0.15rem 0.75rem; font-size: 12px; margin: 0.6rem 0 0; padding: 0.6rem 0.8rem; background: var(--Base-01); border: 1px solid var(--Base-03); border-radius: 0.6rem; }
+.ds__record > div { display: contents; }
+.ds__record dt { color: var(--Base-06); }
+.ds__record dd { margin: 0; word-break: break-word; }
+.ds__list { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 13px; line-height: 1.55; }
+.ds__list li { margin: 0.3rem 0; }
+@media (max-width: 1100px) { .ds__cards, .ds__grid-3 { grid-template-columns: 1fr 1fr; } .ds__grid-2 { grid-template-columns: 1fr; } }
