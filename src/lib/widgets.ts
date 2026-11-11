@@ -227,6 +227,71 @@ FROM comments WHERE published_at < '2026-09-01' GROUP BY 1 ORDER BY 1`,
   },
 ];
 
+/** Goal-first entry points for the chat. Each intent reveals three focused prompts. */
+export interface Intent {
+  id: string;
+  title: string;
+  blurb: string;
+  prompts: string[];
+}
+
+export const INTENTS: Intent[] = [
+  {
+    id: "competitor",
+    title: "Size up a competitor",
+    blurb: "Volume, reach and momentum, brand by brand.",
+    prompts: [
+      "How does Estrid's creator activity compare with Venus by platform?",
+      "Which brand is growing fastest month by month, and where?",
+      "Which competitor gets the most comments per post?",
+    ],
+  },
+  {
+    id: "audience",
+    title: "Hear what audiences say",
+    blurb: "Sentiment, intent, objections and open questions in the comments.",
+    prompts: [
+      "What do commenters complain about most, brand by brand?",
+      "What questions are people asking that nobody answers?",
+      "Which brand gets the strongest purchase intent in comments, and why?",
+    ],
+  },
+  {
+    id: "creators",
+    title: "Evaluate creators",
+    blurb: "Who moves people, and what size of creator pays off.",
+    prompts: [
+      "Which creators drove the most engagement for Venus?",
+      "How does engagement differ between nano, micro and macro creators?",
+      "Which creators post about more than one of these brands?",
+    ],
+  },
+  {
+    id: "risk",
+    title: "Spot risks",
+    blurb: "Safety complaints, backlash and sponsorship scepticism.",
+    prompts: [
+      "Are there safety complaints or backlash signals, and for which brands?",
+      "How do audiences react to sponsored posts compared with organic ones?",
+      "Which brands get the most ad call-outs in comments?",
+    ],
+  },
+  {
+    id: "report",
+    title: "Build a report",
+    blurb: "Let the analyst propose whole sections of the dashboard.",
+    prompts: [
+      "Propose a competitive overview section for Venus: three or four elements.",
+      "Propose a section about audience sentiment and purchase intent.",
+      "Summarise what changed for Venus from April to July 2026, with a chart.",
+    ],
+  },
+];
+
+/** Hidden instruction sent when the person clicks "Where should I start?". */
+export const START_SCAN_LABEL = "Where should I start?";
+export const START_SCAN_INSTRUCTION = `Where should I start? Run a quick scan of the data for me: query share of voice by brand and platform, the monthly engagement trend, comment sentiment and purchase intent by brand, and the top objections. Then give me exactly three short observations about Venus versus its competitors (one or two sentences each, with the key numbers), and call propose_widget once for each observation so I can add a matching element. Keep the whole reply under 170 words.`;
+
 /** Starter questions surfaced in the chat panel. */
 export const STARTER_QUESTIONS: string[] = [
   "Which competitor is winning on TikTok, and why?",

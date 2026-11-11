@@ -62,7 +62,7 @@ export default async function DataPage() {
         {/* 1. Overview */}
         <section className="ds__section">
           <h2 className="im-text-header">What this dataset is</h2>
-          <p className="im-text-description">A social-listening export covering creator posts about six {`female hair removal`} brands, the audience comments on those posts, and profiles of the creators. Collected per brand by IMAI's social listening, enriched with creator data, and loaded here as four tables. Everything on this page describes the data as it is; it does not interpret it.</p>
+          <p className="im-text-description">A social-listening export covering creator posts about six {`female hair removal`} brands, the audience comments on those posts, and profiles of the creators. Collected per brand by IMAI&apos;s social listening, enriched with creator data, and loaded here as four tables. Everything on this page describes the data as it is; it does not interpret it.</p>
           <div className="ds__cards">
             <div className="ds__card"><span className="im-micro-label">Posts</span><b>{formatNumber(counts.posts)}</b><small>one row per creator post per brand</small></div>
             <div className="ds__card"><span className="im-micro-label">Comments</span><b>{formatNumber(counts.comments)}</b><small>one row per comment, each with an AI analysis</small></div>
@@ -217,7 +217,7 @@ export default async function DataPage() {
             <div className="im-card im-card--pad">
               <h3 className="im-text-sub-header">Where the data comes from</h3>
               <ol className="ds__list">
-                <li>Posts were collected per brand by IMAI's social listening, using a keyword query per brand across TikTok, Instagram and YouTube.</li>
+                <li>Posts were collected per brand by IMAI&apos;s social listening, using a keyword query per brand across TikTok, Instagram and YouTube.</li>
                 <li>IMAI enriched each post with creator data (tier, followers, country, estimated fee, earned media value) and fetched the comments.</li>
                 <li>Every comment was run through an analysis model that assigned the labels listed above and extracted verbatim phrases.</li>
                 <li>Creator profiles were pulled from IMAI reports where available, including audience demographics.</li>

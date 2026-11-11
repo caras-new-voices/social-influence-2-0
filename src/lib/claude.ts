@@ -5,7 +5,7 @@ import { getDb, type Row } from "./db";
 import { runWidgetQuery } from "./query";
 import { ensureReady } from "./schema";
 import { DATASET_DOC } from "./schema-doc";
-import { materialize, ProposedWidgetSchema, type WidgetSpec } from "./widgets";
+import { materialize, ProposedWidgetSchema, START_SCAN_LABEL, type WidgetSpec } from "./widgets";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -16,6 +16,7 @@ export type ChatEvent =
   | { type: "status"; text: string }
   | { type: "query"; sql: string; ok: boolean; rows?: number; error?: string; ms?: number }
   | { type: "widget"; widget: WidgetSpec; data: Row[]; replaces?: string; error?: string }
+  | { type: "followups"; items: string[] }
   | { type: "done"; messageId: number | null }
   | { type: "error"; message: string };
 
@@ -27,7 +28,10 @@ export interface WidgetSummary {
 
 export interface ChatTurnInput {
   dashboardId: string;
+  /** What the person sees as their message. */
   userText: string;
+  /** Optional fuller instruction sent to the model instead of userText (for guided actions). */
+  instruction?: string;
   widgets: WidgetSummary[];
 }
 
@@ -79,7 +83,12 @@ Grid: 12 columns, 1 row = 56px. Typical sizes: kpi width 12 height 2, bar/stacke
 - text: content only (notes, callouts). section: title only (a header row that organises the dashboard).
 - colorBy: 'brand' when the series or categories are brands, 'sentiment' for positive/neutral/negative, 'platform', 'tier' for nano..mega, otherwise 'auto'.
 - format: 'compact' for large counts, 'percent' for fractions 0..1, 'currency' for EMV and budgets, 'number' for small counts, 'decimal' for rates like 0.034.
-- Alias the value column AS value, the category AS the name you pass in x, and the series AS the name you pass in series. Always add rationale (one sentence: why this element matters).`;
+- Alias the value column AS value, the category AS the name you pass in x, and the series AS the name you pass in series. Always add rationale (one sentence: why this element matters).
+
+## Follow-ups
+End your final reply (the one with no further tool calls) with one last line in exactly this form:
+FOLLOWUPS: ["...", "...", "..."]
+Give 2 or 3 short next questions (under 70 characters each) written in the person's voice, each a natural next step from what you just showed: a different platform, a time split, a competitor, a verbatim example, or turning the answer into a dashboard element. The line is hidden from the person and rendered as buttons. Do not add it while you are still calling tools.`;
 
 /* ------------------------------------------------------------------ */
 /* Tools                                                                 */
@@ -140,6 +149,59 @@ interface StoredMessage {
   content: string;
   proposals: Array<{ widget: WidgetSpec; replaces?: string }> | null;
   api_content: ContentBlock[] | string;
+  followups?: string[] | null;
+}
+
+const FOLLOWUP_MARKER = "FOLLOWUPS:";
+const HOLDBACK = 12;
+
+/**
+ * Streams model text through while holding back the trailing FOLLOWUPS line.
+ * A small tail is withheld so a half-typed marker is never shown to the person.
+ */
+class TextGate {
+  private buffer = "";
+  private emitted = 0;
+  private markerAt = -1;
+  push(delta: string): string {
+    this.buffer += delta;
+    if (this.markerAt < 0) {
+      const idx = this.buffer.indexOf(FOLLOWUP_MARKER);
+      if (idx >= 0) this.markerAt = idx;
+    }
+    const limit = this.markerAt >= 0 ? this.markerAt : Math.max(0, this.buffer.length - HOLDBACK);
+    if (limit <= this.emitted) return "";
+    const out = this.buffer.slice(this.emitted, limit);
+    this.emitted = limit;
+    return out;
+  }
+  /** Returns the remaining visible text and the parsed follow-ups. */
+  flush(): { rest: string; followups: string[] } {
+    const limit = this.markerAt >= 0 ? this.markerAt : this.buffer.length;
+    const rest = this.buffer.slice(this.emitted, limit).replace(/\s+$/, "");
+    this.emitted = limit;
+    return { rest, followups: parseFollowups(this.buffer) };
+  }
+}
+
+export function stripFollowups(text: string): string {
+  const idx = text.indexOf(FOLLOWUP_MARKER);
+  return (idx >= 0 ? text.slice(0, idx) : text).replace(/\s+$/, "");
+}
+
+export function parseFollowups(text: string): string[] {
+  const idx = text.indexOf(FOLLOWUP_MARKER);
+  if (idx < 0) return [];
+  const tail = text.slice(idx + FOLLOWUP_MARKER.length);
+  const m = /\[[\s\S]*?\]/.exec(tail);
+  if (!m) return [];
+  try {
+    const arr = JSON.parse(m[0]) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim().slice(0, 120)).slice(0, 3);
+  } catch {
+    return [];
+  }
 }
 
 async function loadHistory(dashboardId: string): Promise<MsgParam[]> {
@@ -167,8 +229,8 @@ async function loadHistory(dashboardId: string): Promise<MsgParam[]> {
 async function storeMessage(dashboardId: string, m: StoredMessage): Promise<number> {
   const db = await getDb();
   const rows = await db.query<{ id: number }>(
-    `INSERT INTO chat_messages (dashboard_id, role, content, proposals, api_content) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb) RETURNING id`,
-    [dashboardId, m.role, m.content, m.proposals ? JSON.stringify(m.proposals) : null, JSON.stringify(m.api_content)],
+    `INSERT INTO chat_messages (dashboard_id, role, content, proposals, api_content, followups) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING id`,
+    [dashboardId, m.role, m.content, m.proposals ? JSON.stringify(m.proposals) : null, JSON.stringify(m.api_content), m.followups?.length ? JSON.stringify(m.followups) : null],
   );
   return Number(rows[0].id);
 }
@@ -178,23 +240,26 @@ export interface DisplayMessage {
   role: "user" | "assistant";
   content: string;
   proposals: Array<{ widget: WidgetSpec; replaces?: string }> | null;
+  followups: string[] | null;
   created_at: string;
 }
 
 export async function listMessages(dashboardId: string): Promise<DisplayMessage[]> {
   await ensureReady();
   const db = await getDb();
-  const rows = await db.query<{ id: number; role: string; content: string; proposals: unknown; created_at: string }>(
-    `SELECT id, role, content, proposals, created_at FROM chat_messages WHERE dashboard_id = $1 ORDER BY id ASC`,
+  const rows = await db.query<{ id: number; role: string; content: string; proposals: unknown; followups: unknown; created_at: string }>(
+    `SELECT id, role, content, proposals, followups, created_at FROM chat_messages WHERE dashboard_id = $1 ORDER BY id ASC`,
     [dashboardId],
   );
+  const parse = <T,>(v: unknown): T | null => (v === null || v === undefined ? null : ((typeof v === "string" ? JSON.parse(v) : v) as T));
   return rows
     .filter((r) => r.content.trim().length > 0 || (r.proposals && (r.proposals as unknown[]).length > 0))
     .map((r) => ({
       id: Number(r.id),
       role: r.role as "user" | "assistant",
       content: r.content,
-      proposals: (typeof r.proposals === "string" ? JSON.parse(r.proposals) : r.proposals) as DisplayMessage["proposals"],
+      proposals: parse<DisplayMessage["proposals"]>(r.proposals),
+      followups: parse<string[]>(r.followups),
       created_at: new Date(r.created_at).toISOString(),
     }));
 }
@@ -312,19 +377,19 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
 
   const client = new Anthropic({ maxRetries: 2, timeout: 180_000 });
   const history = await loadHistory(input.dashboardId);
-  const userApiText = `${input.userText}\n\n${contextBlock(input.widgets)}`;
+  const userApiText = `${input.instruction ?? input.userText}\n\n${contextBlock(input.widgets)}`;
   const messages: MsgParam[] = [...history, { role: "user", content: [{ type: "text", text: userApiText }] }];
   await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: userApiText }] });
 
   const pending: StoredMessage[] = [];
   const proposals: Array<{ widget: WidgetSpec; replaces?: string }> = [];
-  let finalText = "";
   let lastId: number | null = null;
   const useFallbacks = process.env.CLAUDE_FALLBACKS !== "0";
 
   try {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const queue = new EventQueue<ChatEvent>();
+      const gate = new TextGate();
       const stream = client.beta.messages.stream({
         model: MODEL,
         max_tokens: 8000,
@@ -335,7 +400,10 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
         tools: TOOLS,
         messages,
       });
-      stream.on("text", (delta) => queue.push({ type: "text", delta }));
+      stream.on("text", (delta) => {
+        const visible = gate.push(delta);
+        if (visible) queue.push({ type: "text", delta: visible });
+      });
       const finalPromise = stream.finalMessage().then(
         (m) => {
           queue.close();
@@ -352,8 +420,11 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
         yield n.value;
       }
       const message = await finalPromise;
-      const text = message.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("");
-      finalText += text;
+      const flushed = gate.flush();
+      if (flushed.rest) yield { type: "text", delta: flushed.rest };
+      const rawText = message.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("");
+      const text = stripFollowups(rawText);
+      const followups = flushed.followups.length ? flushed.followups : parseFollowups(rawText);
 
       if (message.stop_reason === "refusal") {
         yield { type: "text", delta: "\n\nI can't help with that request." };
@@ -365,7 +436,8 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
       const turnProposalsStart = proposals.length;
 
       if (message.stop_reason !== "tool_use" || toolUses.length === 0) {
-        pending.push({ role: "assistant", content: text, proposals: null, api_content: assistantContent });
+        if (followups.length) yield { type: "followups", items: followups };
+        pending.push({ role: "assistant", content: text, proposals: null, api_content: assistantContent, followups });
         if (message.stop_reason === "max_tokens") yield { type: "text", delta: "\n\n(The reply was cut short.)" };
         break;
       }
@@ -393,7 +465,6 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
   }
 
   for (const m of pending) lastId = await storeMessage(input.dashboardId, m);
-  void finalText;
   yield { type: "done", messageId: lastId };
 }
 
@@ -505,28 +576,46 @@ const MOCK_RECIPES: MockRecipe[] = [
   },
 ];
 
+const MOCK_FOLLOWUPS: Record<string, string[]> = {
+  default: ["Split this by platform", "Show it month by month", "Show me example comments"],
+};
+
 async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGenerator<ChatEvent> {
-  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.userText }] });
-  const recipe = MOCK_RECIPES.find((r) => r.match.test(input.userText)) ?? MOCK_RECIPES[0];
-  yield { type: "status", text: "Querying the data" };
-  const widget = materialize(recipe.widget, existing);
-  const res = widget.sql ? await runWidgetQuery(widget.sql, 500) : ({ ok: true, rows: [] as Row[] } as const);
-  const rows = res.ok ? res.rows : [];
-  yield { type: "query", sql: widget.sql ?? "", ok: res.ok, rows: rows.length, error: res.ok ? undefined : res.error };
-  const answer = recipe.answer(rows);
-  const words = answer.split(/(\s+)/);
-  for (const w of words) {
-    yield { type: "text", delta: w };
-    await new Promise((r) => setTimeout(r, 12));
+  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
+  const isScan = (input.instruction ?? input.userText).startsWith(START_SCAN_LABEL);
+  const recipes = isScan
+    ? [MOCK_RECIPES[0], MOCK_RECIPES[1], MOCK_RECIPES[3]]
+    : [MOCK_RECIPES.find((r) => r.match.test(input.userText)) ?? MOCK_RECIPES[0]];
+  const proposals: Array<{ widget: WidgetSpec }> = [];
+  const parts: string[] = [];
+  for (const recipe of recipes) {
+    yield { type: "status", text: "Querying the data" };
+    const widget = materialize(recipe.widget, [...existing, ...proposals.map((p) => p.widget)]);
+    const res = widget.sql ? await runWidgetQuery(widget.sql, 500) : ({ ok: true, rows: [] as Row[] } as const);
+    const rows = res.ok ? res.rows : [];
+    yield { type: "query", sql: widget.sql ?? "", ok: res.ok, rows: rows.length, error: res.ok ? undefined : res.error };
+    const answer = recipe.answer(rows);
+    const text = isScan ? `${parts.length + 1}. ${answer}` : answer;
+    for (const w of text.split(/(\s+)/)) {
+      yield { type: "text", delta: w };
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    if (isScan) yield { type: "text", delta: "\n\n" };
+    parts.push(text);
+    proposals.push({ widget });
+    yield { type: "widget", widget, data: rows };
   }
   const note = "\n\n_Demo mode: no ANTHROPIC_API_KEY is configured, so this reply came from a scripted recipe instead of Claude._";
   yield { type: "text", delta: note };
-  yield { type: "widget", widget, data: rows };
+  const followups = MOCK_FOLLOWUPS.default;
+  yield { type: "followups", items: followups };
+  const content = parts.join("\n\n") + note;
   const id = await storeMessage(input.dashboardId, {
     role: "assistant",
-    content: answer + note,
-    proposals: [{ widget }],
-    api_content: [{ type: "text", text: answer }],
+    content,
+    proposals,
+    api_content: [{ type: "text", text: parts.join("\n\n") }],
+    followups,
   });
   yield { type: "done", messageId: id };
 }

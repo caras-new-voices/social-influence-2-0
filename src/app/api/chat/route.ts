@@ -8,6 +8,7 @@ export const maxDuration = 300;
 const BodySchema = z.object({
   dashboardId: z.string().min(1),
   message: z.string().min(1).max(4000),
+  instruction: z.string().max(6000).optional(),
   widgets: z.array(z.object({ id: z.string(), type: z.string(), title: z.string() })).default([]),
 });
 
@@ -15,7 +16,7 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new Response(JSON.stringify({ error: parsed.error.message }), { status: 400 });
-  const { dashboardId, message, widgets } = parsed.data;
+  const { dashboardId, message, instruction, widgets } = parsed.data;
   const dashboard = await getDashboard(dashboardId);
   if (!dashboard) return new Response(JSON.stringify({ error: "Dashboard not found" }), { status: 404 });
 
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (e: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        for await (const ev of runChatTurn({ dashboardId, userText: message, widgets }, dashboard.widgets)) send(ev);
+        for await (const ev of runChatTurn({ dashboardId, userText: message, instruction, widgets }, dashboard.widgets)) send(ev);
       } catch (e) {
         send({ type: "error", message: (e as Error).message });
         send({ type: "done", messageId: null });

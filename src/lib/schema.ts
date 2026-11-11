@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   content text NOT NULL DEFAULT '',
   proposals jsonb,
   api_content jsonb,
+  followups jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS chat_messages_dash_idx ON chat_messages (dashboard_id, id);
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS app_meta (key text PRIMARY KEY, value text);
 /** Idempotent changes applied to databases created by earlier versions. */
 const MIGRATIONS = `
 ALTER TABLE segments DROP COLUMN IF EXISTS brandwatch_query;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS followups jsonb;
 `;
 
 const SEED_VERSION = "2026-11-11.1";

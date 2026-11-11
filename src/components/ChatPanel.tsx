@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent, DisplayMessage, WidgetSummary } from "@/lib/claude";
-import { STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
+import { INTENTS, START_SCAN_INSTRUCTION, START_SCAN_LABEL, STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
 import { ProposalCard, type Proposal } from "./ProposalCard";
 import { Markdown } from "./WidgetBody";
 
@@ -12,6 +12,7 @@ interface UiMessage {
   content: string;
   proposals: Proposal[];
   queries: QueryLog[];
+  followups: string[];
   status?: string;
   streaming?: boolean;
   error?: string;
@@ -36,6 +37,7 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [intent, setIntent] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -51,6 +53,7 @@ export function ChatPanel({
             content: m.content,
             proposals: (m.proposals ?? []).map((p) => ({ widget: p.widget, replaces: p.replaces })),
             queries: [],
+            followups: m.followups ?? [],
           })),
         ),
       )
@@ -71,7 +74,7 @@ export function ChatPanel({
   }, [messages]);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, instruction?: string) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
       setInput("");
@@ -80,8 +83,8 @@ export function ChatPanel({
       const asstId = `a_${Date.now()}`;
       setMessages((m) => [
         ...m,
-        { id: userId, role: "user", content: trimmed, proposals: [], queries: [] },
-        { id: asstId, role: "assistant", content: "", proposals: [], queries: [], status: "Thinking", streaming: true },
+        { id: userId, role: "user", content: trimmed, proposals: [], queries: [], followups: [] },
+        { id: asstId, role: "assistant", content: "", proposals: [], queries: [], followups: [], status: "Thinking", streaming: true },
       ]);
       const patch = (fn: (m: UiMessage) => UiMessage) => setMessages((ms) => ms.map((m) => (m.id === asstId ? fn(m) : m)));
       const ctrl = new AbortController();
@@ -90,7 +93,7 @@ export function ChatPanel({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dashboardId, message: trimmed, widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })) }),
+          body: JSON.stringify({ dashboardId, message: trimmed, instruction, widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })) }),
           signal: ctrl.signal,
         });
         if (!res.ok || !res.body) {
@@ -115,6 +118,7 @@ export function ChatPanel({
             else if (ev.type === "status") patch((m) => ({ ...m, status: ev.text }));
             else if (ev.type === "query") patch((m) => ({ ...m, queries: [...m.queries, { sql: ev.sql, ok: ev.ok, rows: ev.rows, error: ev.error }] }));
             else if (ev.type === "widget") patch((m) => ({ ...m, proposals: [...m.proposals, { widget: ev.widget, data: ev.data, replaces: ev.replaces }] }));
+            else if (ev.type === "followups") patch((m) => ({ ...m, followups: ev.items }));
             else if (ev.type === "error") patch((m) => ({ ...m, error: ev.message, status: undefined }));
             else if (ev.type === "done") patch((m) => ({ ...m, streaming: false, status: undefined }));
           }
@@ -162,15 +166,41 @@ export function ChatPanel({
             <div className="chat__intro">
               Ask anything about <strong>Venus</strong> and its competitors across <strong>6,168 creator posts</strong> and <strong>31,688 comments</strong>. I answer with real numbers and propose dashboard elements you can add, refine, or dismiss.
             </div>
-            <span className="im-micro-label">Try one of these</span>
-            <div className="chat__starters">
-              {STARTER_QUESTIONS.map((q) => (
-                <button key={q} className="chat__starter" onClick={() => void send(q)}>{q}</button>
+            <div className="chat__start">
+              <div className="grow">
+                <b>Not sure where to begin?</b>
+                <small>I&apos;ll scan the data and come back with three observations, each with an element you can add.</small>
+              </div>
+              <button className="im-btn im-btn-primary im-btn-sm" onClick={() => void send(START_SCAN_LABEL, START_SCAN_INSTRUCTION)}>{START_SCAN_LABEL}</button>
+            </div>
+            <span className="im-micro-label">Or pick a goal</span>
+            <div className="intents">
+              {INTENTS.map((it) => (
+                <button key={it.id} className={`intent ${intent === it.id ? "is-active" : ""}`} onClick={() => setIntent(intent === it.id ? null : it.id)} aria-expanded={intent === it.id}>
+                  <b>{it.title}</b>
+                  <small>{it.blurb}</small>
+                </button>
               ))}
             </div>
+            {intent && (
+              <div className="intent__prompts" ref={(el) => el?.scrollIntoView({ block: "nearest", behavior: "smooth" })}>
+                {INTENTS.find((it) => it.id === intent)!.prompts.map((q) => (
+                  <button key={q} className="chat__starter" onClick={() => void send(q)}>{q}</button>
+                ))}
+                <span className="chat__hint">Or type your own question below.</span>
+              </div>
+            )}
+            <details className="chat__examples">
+              <summary>More examples</summary>
+              <div className="chat__starters">
+                {STARTER_QUESTIONS.map((q) => (
+                  <button key={q} className="chat__starter" onClick={() => void send(q)}>{q}</button>
+                ))}
+              </div>
+            </details>
           </>
         )}
-        {messages.map((m) => (
+        {messages.map((m, idx) => (
           <div key={m.id} className={`msg msg--${m.role}`}>
             {(m.content || m.role === "user") && (
               <div className="msg__bubble">{m.role === "user" ? m.content : <Markdown text={m.content} />}</div>
@@ -201,6 +231,13 @@ export function ChatPanel({
               />
             ))}
             {m.error && <div className="chat__error">{m.error}</div>}
+            {m.role === "assistant" && !m.streaming && m.followups.length > 0 && idx === messages.length - 1 && (
+              <div className="followups" aria-label="Suggested next questions">
+                {m.followups.map((q) => (
+                  <button key={q} className="followup" onClick={() => void send(q)} disabled={busy}>{q}</button>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
