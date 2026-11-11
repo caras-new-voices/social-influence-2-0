@@ -200,6 +200,14 @@
 .voice__line--user .voice__who { color: var(--Primary-700); }
 .voice__foot { padding: 0.5rem 0.9rem 0.7rem; border-top: 1px solid var(--Base-03); }
 
+/* Lightbox for proposals */
+.lightbox { position: fixed; inset: 0; z-index: 70; background: var(--Scrim); display: grid; place-items: center; padding: 2rem; animation: toast-in var(--Motion-fast); }
+.lightbox__card { width: min(1200px, 100%); height: min(82vh, 820px); background: var(--Base-00); border-radius: 1rem; box-shadow: var(--Shadow-pop); padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.lightbox__body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lightbox__body .tbl-wrap { flex: 1; }
+.lightbox__body .kpis { align-items: center; }
+.lightbox__body .kpi__value { font-size: 32px; }
+
 /* Full-screen element view */
 .focus { position: fixed; inset: 0; z-index: 60; background: var(--Base-02); display: grid; grid-template-columns: 1fr 400px; }
 .focus__main { display: flex; flex-direction: column; min-width: 0; padding: 1.25rem 1.5rem; gap: 0.75rem; }
