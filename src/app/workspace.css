@@ -15,7 +15,7 @@
 /* Chat */
 .chat__head { padding: 0.9rem 1rem; border-bottom: 1px solid var(--Base-03); display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .chat__head h2 { font-size: 14px; display: flex; align-items: center; gap: 0.5rem; }
-.chat__scroll { flex: 1; overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.chat__scroll { flex: 1; overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.9rem; position: relative; }
 .chat__intro { background: var(--Primary-50); border: 1px solid var(--Primary-100); border-radius: 0.9rem; padding: 0.9rem 1rem; font-size: 13px; color: var(--Primary-950); }
 .chat__intro strong { color: var(--Primary-700); }
 .chat__start { display: flex; align-items: center; gap: 0.75rem; background: var(--Base-00); border: 1px solid var(--Primary-200); border-radius: 0.9rem; padding: 0.8rem 0.9rem; }

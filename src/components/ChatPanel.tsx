@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent, DisplayMessage, WidgetSummary } from "@/lib/claude";
 import { INTENTS, START_SCAN_INSTRUCTION, START_SCAN_LABEL, STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
+import { useConfirm } from "./Confirm";
 import { ProposalCard, type Proposal } from "./ProposalCard";
 import { Markdown } from "./WidgetBody";
 
@@ -41,6 +42,7 @@ export function ChatPanel({
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [intent, setIntent] = useState<string | null>(null);
+  const confirmDialog = useConfirm();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -71,9 +73,30 @@ export function ChatPanel({
     }
   }, [prefill, onPrefillConsumed]);
 
+  // Scroll behaviour: on history load jump to the end; when a new question is sent, anchor that
+  // question at the top of the panel and then leave the scroll alone while the answer streams,
+  // so the person can read from the start and scroll freely.
+  const seenCount = useRef(0);
+  const spacerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const spacer = spacerRef.current;
+    if (!el) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    const node = lastUser ? document.getElementById(`msg-${lastUser.id}`) : null;
+    // A trailing spacer keeps the latest question scrollable to the top while its answer is still short.
+    if (spacer && node && seenCount.current > 0) {
+      const contentBelowQuestion = el.scrollHeight - spacer.offsetHeight - node.offsetTop;
+      spacer.style.height = `${Math.max(0, el.clientHeight - contentBelowQuestion - 16)}px`;
+    }
+    if (messages.length > seenCount.current) {
+      if (seenCount.current === 0) {
+        el.scrollTop = el.scrollHeight;
+      } else if (node) {
+        el.scrollTop = Math.max(0, node.offsetTop - 12);
+      }
+    }
+    seenCount.current = messages.length;
   }, [messages]);
 
   const sendRef = useRef<(text: string, instruction?: string) => Promise<void>>(async () => {});
@@ -154,7 +177,13 @@ export function ChatPanel({
   };
 
   const clearChat = async () => {
-    if (!confirm("Clear this conversation?")) return;
+    const ok = await confirmDialog({
+      title: "Clear this conversation?",
+      message: "The messages and proposals in this chat will be removed. Elements already on the dashboard stay.",
+      confirmLabel: "Clear conversation",
+      danger: true,
+    });
+    if (!ok) return;
     await fetch(`/api/dashboards/${dashboardId}/messages`, { method: "DELETE" });
     setMessages([]);
   };
@@ -213,7 +242,7 @@ export function ChatPanel({
           </>
         )}
         {messages.map((m, idx) => (
-          <div key={m.id} className={`msg msg--${m.role}`}>
+          <div key={m.id} id={`msg-${m.id}`} className={`msg msg--${m.role}`}>
             {(m.content || m.role === "user") && (
               <div className="msg__bubble">{m.role === "user" ? m.content : <Markdown text={m.content} />}</div>
             )}
@@ -252,6 +281,7 @@ export function ChatPanel({
             )}
           </div>
         ))}
+        <div ref={spacerRef} aria-hidden="true" style={{ flex: "none" }} />
       </div>
       <div className="chat__compose">
         <div className="chat__input">

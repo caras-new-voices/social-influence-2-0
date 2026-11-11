@@ -162,6 +162,10 @@ p { margin: 0; }
 .modal__body { padding: 1.25rem; overflow: auto; display: flex; flex-direction: column; gap: 0.9rem; }
 .modal__foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.9rem 1.25rem; border-top: 1px solid var(--Base-03); }
 .modal--wide { width: min(1100px, 100%); }
+.modal.confirm { width: min(420px, 100%); }
+.confirm__body { padding: 1.25rem 1.25rem 0.5rem; }
+.im-btn-danger { background: #dc2626; color: #fff; }
+.im-btn-danger:hover:not(:disabled) { background: #b91c1c; }
 
 /* Utilities */
 .row { display: flex; align-items: center; gap: 0.5rem; }

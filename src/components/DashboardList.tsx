@@ -5,11 +5,13 @@ import { useState } from "react";
 import { BRANDS } from "@/lib/brands";
 import { relativeTime } from "@/lib/format";
 import type { DashboardRecord } from "@/lib/widgets";
+import { useConfirm } from "./Confirm";
 import { useToast } from "./Toast";
 
 export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
   const router = useRouter();
   const toast = useToast();
+  const confirmDialog = useConfirm();
   const [dashboards, setDashboards] = useState(initial);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -27,7 +29,13 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
   };
 
   const remove = async (d: DashboardRecord) => {
-    if (!confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
+    const ok = await confirmDialog({
+      title: `Delete "${d.name}"?`,
+      message: "The dashboard and its conversation will be removed for everyone. This cannot be undone.",
+      confirmLabel: "Delete dashboard",
+      danger: true,
+    });
+    if (!ok) return;
     await fetch(`/api/dashboards/${d.id}`, { method: "DELETE" });
     setDashboards((ds) => ds.filter((x) => x.id !== d.id));
     toast("Dashboard deleted");
