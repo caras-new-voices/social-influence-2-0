@@ -105,9 +105,9 @@ export function WidgetCard({
   if (spec.type === "section") {
     return (
       <div className="widget widget--section">
-        <VoiceButton title={spec.title} onClick={() => onVoice([])} />
         <div className="section-head drag-handle">
           <h3>{spec.title}</h3>
+          <VoiceButton title={spec.title} onClick={() => onVoice([])} />
           {spec.subtitle && <span className="widget__sub">{spec.subtitle}</span>}
           <span className="grow" />
           <span className="widget__actions no-drag">
