@@ -47,6 +47,7 @@ const I = {
   trash: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>,
   spark: <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>,
   copy: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>,
+  expand: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" /></svg>,
 };
 
 async function copyText(text: string): Promise<boolean> {
@@ -67,7 +68,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export function WidgetCard({ spec, onEdit, onRemove, onAsk }: { spec: WidgetSpec; onEdit: () => void; onRemove: () => void; onAsk: () => void }) {
+export function WidgetCard({ spec, onEdit, onRemove, onAsk, onExpand }: { spec: WidgetSpec; onEdit: () => void; onRemove: () => void; onAsk: () => void; onExpand: () => void }) {
   const { rows, loading, error } = useWidgetRows(spec);
   const [tableView, setTableView] = useState(false);
   const toast = useToast();
@@ -105,6 +106,7 @@ export function WidgetCard({ spec, onEdit, onRemove, onAsk }: { spec: WidgetSpec
         <div className="widget__toolbar no-drag">
           <button className="widget__ask" onClick={onAsk} aria-label={`Ask AI about ${spec.title}`} title="Chat with the analyst about this element">{I.spark} Ask AI</button>
           <div className="widget__actions">
+          <button className="im-btn im-btn-ghost im-btn-icon" onClick={onExpand} aria-label="Expand to full screen" title="Expand">{I.expand}</button>
           {showCopy && (
             <button className="im-btn im-btn-ghost im-btn-icon" onClick={() => void copyCsv()} aria-label="Copy table as CSV" title="Copy table as CSV">{I.copy}</button>
           )}

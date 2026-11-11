@@ -312,6 +312,21 @@ export function askAboutWidget(w: WidgetSpec): { text: string; instruction: stri
   return { text, instruction: lines.join("\n\n") };
 }
 
+/** Wraps a free question with the element's definition, for the focused (full-screen) chat. */
+export function questionAboutWidget(w: WidgetSpec, question: string): string {
+  const def = w.sql ? `It is defined by this SQL:\n${w.sql}` : w.content ? `Its content is:\n${w.content}` : "It is a section header.";
+  return `The person is looking at the dashboard element "${w.title}"${w.subtitle ? ` (${w.subtitle})` : ""}, id ${w.id}, type ${w.type}. ${def}\n\nAnswer their question about this element, running the element's query or variations of it as needed. If you propose a refinement, call propose_widget with replaces_widget_id set to ${w.id}.\n\nQuestion: ${question}`;
+}
+
+/** Quick questions offered in the focused chat. */
+export const FOCUS_QUESTIONS: string[] = [
+  "Explain what this shows",
+  "What stands out here?",
+  "Split this by platform",
+  "Show how this changed over time",
+  "Give me example comments behind this",
+];
+
 /** Starter questions surfaced in the chat panel. */
 export const STARTER_QUESTIONS: string[] = [
   "Which competitor is winning on TikTok, and why?",

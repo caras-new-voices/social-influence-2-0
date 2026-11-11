@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent, DisplayMessage, WidgetSummary } from "@/lib/claude";
-import { INTENTS, START_SCAN_INSTRUCTION, START_SCAN_LABEL, STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
+import { FOCUS_QUESTIONS, INTENTS, questionAboutWidget, START_SCAN_INSTRUCTION, START_SCAN_LABEL, STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
 import { useConfirm } from "./Confirm";
 import { ProposalCard, type Proposal } from "./ProposalCard";
 import { Markdown } from "./WidgetBody";
@@ -27,6 +27,7 @@ export function ChatPanel({
   prefill,
   onPrefillConsumed,
   ask,
+  scope,
 }: {
   dashboardId: string;
   widgets: WidgetSpec[];
@@ -36,6 +37,8 @@ export function ChatPanel({
   onPrefillConsumed: () => void;
   /** A programmatic question (from an element's Ask AI button); nonce changes on every click. */
   ask?: { text: string; instruction: string; nonce: number };
+  /** Focused mode: every question is about one element; history is not loaded. */
+  scope?: { widget: WidgetSpec };
 }) {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
@@ -48,6 +51,7 @@ export function ChatPanel({
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    if (scope) return;
     fetch(`/api/dashboards/${dashboardId}/messages`)
       .then((r) => r.json())
       .then((j: { messages: DisplayMessage[] }) =>
@@ -63,7 +67,7 @@ export function ChatPanel({
         ),
       )
       .catch(() => {});
-  }, [dashboardId]);
+  }, [dashboardId, scope]);
 
   useEffect(() => {
     if (prefill) {
@@ -126,7 +130,12 @@ export function ChatPanel({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dashboardId, message: trimmed, instruction, widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })) }),
+          body: JSON.stringify({
+            dashboardId,
+            message: trimmed,
+            instruction: instruction ?? (scope ? questionAboutWidget(scope.widget, trimmed) : undefined),
+            widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })),
+          }),
           signal: ctrl.signal,
         });
         if (!res.ok || !res.body) {
@@ -164,7 +173,7 @@ export function ChatPanel({
         abortRef.current = null;
       }
     },
-    [busy, dashboardId, widgets],
+    [busy, dashboardId, widgets, scope],
   );
 
   sendRef.current = send;
@@ -196,13 +205,26 @@ export function ChatPanel({
       <div className="chat__head">
         <h2>
           <span className="sidebar__mark" style={{ width: 24, height: 24, fontSize: 11, borderRadius: 7 }}>AI</span>
-          Analyst
-          {demoMode && <span className="im-badge im-badge-warning" title="Set ANTHROPIC_API_KEY to use Claude">Demo mode</span>}
+          {scope ? "Ask about this element" : "Analyst"}
+          {demoMode && <span className="im-badge im-badge-warning" title="Set an LLM key to use the analyst">Demo mode</span>}
         </h2>
-        {messages.length > 0 && <button className="im-btn im-btn-ghost im-btn-sm" onClick={clearChat}>Clear</button>}
+        {!scope && messages.length > 0 && <button className="im-btn im-btn-ghost im-btn-sm" onClick={clearChat}>Clear</button>}
       </div>
       <div className="chat__scroll" ref={scrollRef}>
-        {messages.length === 0 && (
+        {messages.length === 0 && scope && (
+          <>
+            <div className="chat__intro">
+              Questions here are answered about <strong>{scope.widget.title}</strong>. The analyst can run its query, vary it, and propose a refined version.
+            </div>
+            <span className="im-micro-label">Quick questions</span>
+            <div className="chat__starters">
+              {FOCUS_QUESTIONS.map((q) => (
+                <button key={q} className="chat__starter" onClick={() => void send(q)}>{q}</button>
+              ))}
+            </div>
+          </>
+        )}
+        {messages.length === 0 && !scope && (
           <>
             <div className="chat__intro">
               Ask anything about <strong>Venus</strong> and its competitors across <strong>6,168 creator posts</strong> and <strong>31,688 comments</strong>. I answer with real numbers and propose dashboard elements you can add, refine, or dismiss.

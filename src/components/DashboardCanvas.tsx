@@ -13,6 +13,7 @@ export function DashboardCanvas({
   onEdit,
   onRemove,
   onAsk,
+  onExpand,
   onAddClick,
 }: {
   widgets: WidgetSpec[];
@@ -20,6 +21,7 @@ export function DashboardCanvas({
   onEdit: (id: string) => void;
   onRemove: (id: string) => void;
   onAsk: (id: string) => void;
+  onExpand: (id: string) => void;
   onAddClick: () => void;
 }) {
   const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1100 });
@@ -53,7 +55,7 @@ export function DashboardCanvas({
           >
             {widgets.map((w) => (
               <div key={w.id}>
-                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} />
+                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onExpand={() => onExpand(w.id)} />
               </div>
             ))}
           </GridLayout>

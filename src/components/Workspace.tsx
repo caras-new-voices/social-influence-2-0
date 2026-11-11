@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout } from "react-grid-layout";
 import { useRouter } from "next/navigation";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
 import { AddWidgetDrawer } from "./AddWidgetDrawer";
+import { FocusView } from "./FocusView";
 import { ChatPanel } from "./ChatPanel";
 import { DashboardCanvas } from "./DashboardCanvas";
 import { Shell } from "./Shell";
@@ -21,6 +22,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [adding, setAdding] = useState(false);
   const [prefill, setPrefill] = useState<string | undefined>();
   const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number } | undefined>();
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [demo, setDemo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
 
@@ -35,10 +37,73 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
 
-  const mutate = useCallback((fn: (ws: WidgetSpec[]) => WidgetSpec[]) => {
-    setWidgets((ws) => fn(ws));
+  // Undo / redo: every discrete change (add, remove, edit, drag, resize) pushes the previous state.
+  const widgetsRef = useRef(widgets);
+  useEffect(() => {
+    widgetsRef.current = widgets;
+  }, [widgets]);
+  const pastRef = useRef<WidgetSpec[][]>([]);
+  const futureRef = useRef<WidgetSpec[][]>([]);
+  const lastCommitAt = useRef(0);
+  const [history, setHistory] = useState({ past: 0, future: 0 });
+  const syncHistory = () => setHistory({ past: pastRef.current.length, future: futureRef.current.length });
+
+  const commit = useCallback((next: WidgetSpec[]) => {
+    pastRef.current.push(widgetsRef.current);
+    if (pastRef.current.length > 60) pastRef.current.shift();
+    futureRef.current = [];
+    widgetsRef.current = next;
+    lastCommitAt.current = Date.now();
+    setWidgets(next);
     setDirty(true);
+    syncHistory();
   }, []);
+
+  const mutate = useCallback(
+    (fn: (ws: WidgetSpec[]) => WidgetSpec[]) => {
+      const cur = widgetsRef.current;
+      const next = fn(cur);
+      if (next !== cur) commit(next);
+    },
+    [commit],
+  );
+
+  const undo = useCallback(() => {
+    const prev = pastRef.current.pop();
+    if (!prev) return;
+    futureRef.current.push(widgetsRef.current);
+    widgetsRef.current = prev;
+    lastCommitAt.current = Date.now();
+    setWidgets(prev);
+    setDirty(true);
+    syncHistory();
+    toast("Undone");
+  }, [toast]);
+
+  const redo = useCallback(() => {
+    const next = futureRef.current.pop();
+    if (!next) return;
+    pastRef.current.push(widgetsRef.current);
+    widgetsRef.current = next;
+    lastCommitAt.current = Date.now();
+    setWidgets(next);
+    setDirty(true);
+    syncHistory();
+    toast("Redone");
+  }, [toast]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const addWidget = useCallback(
     (widget: WidgetSpec, replaces?: string) => {
@@ -61,8 +126,9 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     setAdding(false);
   };
 
-  const onLayoutChange = useCallback((layout: Layout) => {
-    setWidgets((ws) => {
+  const onLayoutChange = useCallback(
+    (layout: Layout) => {
+      const ws = widgetsRef.current;
       let changed = false;
       const next = ws.map((w) => {
         const l = layout.find((it) => it.i === w.id);
@@ -73,10 +139,18 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
         }
         return w;
       });
-      if (changed) setDirty(true);
-      return changed ? next : ws;
-    });
-  }, []);
+      if (!changed) return;
+      // The grid compacts positions right after we change the widget list; fold that into the same undo step.
+      if (Date.now() - lastCommitAt.current < 500) {
+        widgetsRef.current = next;
+        setWidgets(next);
+        setDirty(true);
+        return;
+      }
+      commit(next);
+    },
+    [commit],
+  );
 
   const save = async () => {
     setSaving(true);
@@ -100,6 +174,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   };
 
   const comingSoon = (feature: string) => toast(`${feature} will be available in a future version.`);
+  const focusWidget = focusId ? widgets.find((w) => w.id === focusId) ?? null : null;
 
   const widgetSummaries = useMemo(() => widgets, [widgets]);
 
@@ -128,6 +203,14 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
       }
       actions={
         <>
+          <span className="row" style={{ gap: "0.15rem", marginRight: "0.25rem" }}>
+            <button className="im-btn im-btn-ghost im-btn-icon" onClick={undo} disabled={history.past === 0} aria-label="Undo" title="Undo (Ctrl+Z)">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-4" /></svg>
+            </button>
+            <button className="im-btn im-btn-ghost im-btn-icon" onClick={redo} disabled={history.future === 0} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h4" /></svg>
+            </button>
+          </span>
           <button className="im-btn im-btn-secondary" onClick={() => setAdding(true)}>+ Add element</button>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Export")}>Export</button>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Sharing")}>Share</button>
@@ -155,6 +238,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               const w = widgets.find((x) => x.id === id);
               if (w) setAsk({ ...askAboutWidget(w), nonce: Date.now() });
             }}
+            onExpand={(id) => setFocusId(id)}
             onAddClick={() => setAdding(true)}
           />
         </div>
@@ -167,6 +251,17 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
         />
       )}
       {adding && <AddWidgetDrawer onAdd={addFromTemplate} onClose={() => setAdding(false)} />}
+      {focusWidget && (
+        <FocusView
+          widget={focusWidget}
+          widgets={widgets}
+          dashboardId={dashboard.id}
+          demoMode={demo}
+          onClose={() => setFocusId(null)}
+          onEdit={() => setEditing(focusWidget)}
+          onAddWidget={addWidget}
+        />
+      )}
     </Shell>
   );
 }

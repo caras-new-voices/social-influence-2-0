@@ -1,5 +1,6 @@
 "use client";
-import { useMemo } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -242,26 +243,77 @@ export function KpiRow({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) {
   );
 }
 
+const CREATOR_COLUMNS = new Set(["username", "creator", "influencer", "handle", "creator_handle", "influencer_username"]);
+const PLATFORM_COLUMNS = ["platform", "network"];
+
+function creatorHref(row: Row, value: string): string {
+  const platform = PLATFORM_COLUMNS.map((k) => row[k]).find((v) => typeof v === "string") as string | undefined;
+  const id = typeof row.influencer_id === "number" ? row.influencer_id : undefined;
+  const params = new URLSearchParams();
+  if (platform) params.set("platform", platform);
+  if (id) params.set("id", String(id));
+  const q = params.toString();
+  return `/creator/${encodeURIComponent(value)}${q ? `?${q}` : ""}`;
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  const an = a === null || a === undefined || a === "";
+  const bn = b === null || b === undefined || b === "";
+  if (an && bn) return 0;
+  if (an) return 1;
+  if (bn) return -1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
 export function DataTable({ rows, fmt }: { rows: Row[]; fmt?: NumberFormat }) {
+  const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const cols = rows[0] ? Object.keys(rows[0]) : [];
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const out = [...rows].sort((a, b) => compareValues(a[sort.col], b[sort.col]));
+    return sort.dir === "desc" ? out.reverse() : out;
+  }, [rows, sort]);
   if (!rows.length) return <div className="widget__state">No data</div>;
-  const cols = Object.keys(rows[0]);
   const numeric = cols.filter((c) => rows.some((r) => typeof r[c] === "number"));
+  // Click cycle: first click sorts the natural way (numbers high to low, text A to Z), second flips, third clears.
+  const toggle = (c: string) =>
+    setSort((s) => {
+      const first: "asc" | "desc" = numeric.includes(c) ? "desc" : "asc";
+      if (s?.col !== c) return { col: c, dir: first };
+      if (s.dir === first) return { col: c, dir: first === "asc" ? "desc" : "asc" };
+      return null;
+    });
   return (
     <div className="tbl-wrap">
       <table className="tbl">
         <thead>
-          <tr>{cols.map((c) => <th key={c} className={numeric.includes(c) ? "num" : ""}>{prettyKey(c)}</th>)}</tr>
+          <tr>
+            {cols.map((c) => {
+              const active = sort?.col === c;
+              return (
+                <th key={c} className={`${numeric.includes(c) ? "num" : ""} tbl__sortable ${active ? "is-sorted" : ""}`} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="tbl__sort" onClick={() => toggle(c)} title={`Sort by ${prettyKey(c)}`}>
+                    {prettyKey(c)}
+                    <span className="tbl__arrow" aria-hidden="true">{active ? (sort.dir === "asc" ? "▲" : "▼") : "⇅"}</span>
+                  </button>
+                </th>
+              );
+            })}
+          </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
+          {sorted.map((r, i) => (
             <tr key={i}>
               {cols.map((c) => {
                 const v = r[c];
                 const isLink = typeof v === "string" && /^https?:\/\//.test(v);
                 const isIsoDate = typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
+                const isCreator = typeof v === "string" && v.length > 0 && CREATOR_COLUMNS.has(c.toLowerCase());
                 return (
-                  <td key={c} className={numeric.includes(c) ? "num" : ""} title={typeof v === "string" ? v : undefined}>
+                  <td key={c} className={numeric.includes(c) ? "num" : ""} title={typeof v === "string" && v.length > 24 ? v : undefined}>
                     {isLink ? <a href={v} target="_blank" rel="noreferrer">Open ↗</a>
+                      : isCreator ? <Link href={creatorHref(r, v)} className="tbl__creator" title={`Open ${v}'s creator page`}>{v}</Link>
                       : isIsoDate ? v.slice(0, 10)
                       : typeof v === "number" ? formatNumber(v, fmt ?? (Number.isInteger(v) ? "number" : "decimal"))
                       : v === null || v === undefined ? "–"
