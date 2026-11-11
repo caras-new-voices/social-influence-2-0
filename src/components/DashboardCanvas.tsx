@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import GridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { BRANDS } from "@/lib/brands";
+import type { Row } from "@/lib/chart-data";
 import type { WidgetSpec } from "@/lib/widgets";
 import { WidgetCard } from "./WidgetCard";
 
@@ -14,6 +15,7 @@ export function DashboardCanvas({
   onRemove,
   onAsk,
   onExpand,
+  onVoice,
   onAddClick,
 }: {
   widgets: WidgetSpec[];
@@ -22,6 +24,7 @@ export function DashboardCanvas({
   onRemove: (id: string) => void;
   onAsk: (id: string) => void;
   onExpand: (id: string) => void;
+  onVoice: (id: string, rows: Row[]) => void;
   onAddClick: () => void;
 }) {
   const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1100 });
@@ -55,7 +58,7 @@ export function DashboardCanvas({
           >
             {widgets.map((w) => (
               <div key={w.id}>
-                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onExpand={() => onExpand(w.id)} />
+                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} />
               </div>
             ))}
           </GridLayout>

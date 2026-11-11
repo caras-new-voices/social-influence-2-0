@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Explain with AI voice</title>
+  <desc id="desc">Purple headphones around an audio waveform, on a transparent background.</desc>
+  <path d="M13 33v-3C13 19.5 21.5 11 32 11s19 8.5 19 19v3" stroke="#5B21D9" stroke-width="3.8" stroke-linecap="round"/>
+  <rect x="9" y="30" width="8" height="17" rx="4" fill="#5B21D9"/>
+  <rect x="47" y="30" width="8" height="17" rx="4" fill="#5B21D9"/>
+  <path d="M51 46c0 7-5 10-14 10" stroke="#5B21D9" stroke-width="3.8" stroke-linecap="round"/>
+  <rect x="31" y="53" width="9" height="5" rx="2.5" fill="#5B21D9"/>
+  <g stroke="#5B21D9" stroke-width="3.4" stroke-linecap="round">
+    <path d="M22 31v8"/>
+    <path d="M27 26v18"/>
+    <path d="M32 30v10"/>
+    <path d="M37 25v20"/>
+    <path d="M42 32v7"/>
+  </g>
+</svg>

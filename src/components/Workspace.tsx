@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
 import { AddWidgetDrawer } from "./AddWidgetDrawer";
 import { FocusView } from "./FocusView";
+import { VoiceAgent } from "./VoiceAgent";
+import type { Row } from "@/lib/chart-data";
 import { ChatPanel } from "./ChatPanel";
 import { DashboardCanvas } from "./DashboardCanvas";
 import { Shell } from "./Shell";
@@ -23,6 +25,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [prefill, setPrefill] = useState<string | undefined>();
   const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number } | undefined>();
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [voice, setVoice] = useState<{ widget: WidgetSpec; rows: Row[] } | null>(null);
   const [demo, setDemo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
 
@@ -239,6 +242,10 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               if (w) setAsk({ ...askAboutWidget(w), nonce: Date.now() });
             }}
             onExpand={(id) => setFocusId(id)}
+            onVoice={(id, rows) => {
+              const w = widgets.find((x) => x.id === id);
+              if (w) setVoice({ widget: w, rows });
+            }}
             onAddClick={() => setAdding(true)}
           />
         </div>
@@ -251,6 +258,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
         />
       )}
       {adding && <AddWidgetDrawer onAdd={addFromTemplate} onClose={() => setAdding(false)} />}
+      {voice && <VoiceAgent key={voice.widget.id} widget={voice.widget} rows={voice.rows} onClose={() => setVoice(null)} />}
       {focusWidget && (
         <FocusView
           widget={focusWidget}

@@ -50,6 +50,15 @@ const I = {
   expand: <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" /></svg>,
 };
 
+function VoiceButton({ title, onClick }: { title: string; onClick: () => void }) {
+  return (
+    <button className="widget__voice no-drag" onClick={onClick} aria-label={`Explain ${title} with AI voice`} title="Explain with AI voice">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/icons/ai-voice.svg" alt="" />
+    </button>
+  );
+}
+
 async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
@@ -68,7 +77,21 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export function WidgetCard({ spec, onEdit, onRemove, onAsk, onExpand }: { spec: WidgetSpec; onEdit: () => void; onRemove: () => void; onAsk: () => void; onExpand: () => void }) {
+export function WidgetCard({
+  spec,
+  onEdit,
+  onRemove,
+  onAsk,
+  onExpand,
+  onVoice,
+}: {
+  spec: WidgetSpec;
+  onEdit: () => void;
+  onRemove: () => void;
+  onAsk: () => void;
+  onExpand: () => void;
+  onVoice: (rows: Row[]) => void;
+}) {
   const { rows, loading, error } = useWidgetRows(spec);
   const [tableView, setTableView] = useState(false);
   const toast = useToast();
@@ -82,6 +105,7 @@ export function WidgetCard({ spec, onEdit, onRemove, onAsk, onExpand }: { spec: 
   if (spec.type === "section") {
     return (
       <div className="widget widget--section">
+        <VoiceButton title={spec.title} onClick={() => onVoice([])} />
         <div className="section-head drag-handle">
           <h3>{spec.title}</h3>
           {spec.subtitle && <span className="widget__sub">{spec.subtitle}</span>}
@@ -98,6 +122,7 @@ export function WidgetCard({ spec, onEdit, onRemove, onAsk, onExpand }: { spec: 
 
   return (
     <div className="widget">
+      <VoiceButton title={spec.title} onClick={() => onVoice(rows)} />
       <div className="widget__head drag-handle">
         <div className="grow">
           <div className="widget__title">{spec.title}</div>
