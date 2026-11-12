@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout } from "react-grid-layout";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ALL_TIME, formatWindow, periodFromParams, periodToParams, resolveCompare, resolveWindow, type PeriodState } from "@/lib/period";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
@@ -253,6 +254,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
             </button>
           </span>
           <button className="im-btn im-btn-secondary" onClick={() => setAdding(true)}>+ Add element</button>
+          <Link className="im-btn im-btn-secondary" href={`/dashboard/${dashboard.id}/reports`} title="Month-by-month reports and the month in review">Reports</Link>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Export")}>Export</button>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Sharing")}>Share</button>
           <button className="im-btn im-btn-primary" onClick={() => void save()} disabled={saving || !dirty}>{saving ? "Saving…" : "Save"}</button>
