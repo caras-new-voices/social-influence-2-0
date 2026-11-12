@@ -2,7 +2,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout } from "react-grid-layout";
 import { useRouter } from "next/navigation";
+import { ALL_TIME, periodFromParams, periodToParams, resolveWindow, type PeriodState } from "@/lib/period";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
+import { PeriodBar } from "./PeriodBar";
+import { PeriodProvider } from "./PeriodContext";
+import { fetchWidgetRows } from "./WidgetCard";
 import { AddWidgetDrawer } from "./AddWidgetDrawer";
 import { FocusView } from "./FocusView";
 import { VoiceAgent } from "./VoiceAgent";
@@ -28,6 +32,38 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [voice, setVoice] = useState<{ widget: WidgetSpec; rows: Row[] } | null>(null);
   const [demo, setDemo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
+
+  // Global period: the URL wins (shareable links), then the saved dashboard period, then all time.
+  const [period, setPeriodState] = useState<PeriodState>(() => {
+    if (typeof window !== "undefined") {
+      const fromUrl = periodFromParams(new URLSearchParams(window.location.search));
+      if (fromUrl) return fromUrl;
+    }
+    return dashboard.period ?? ALL_TIME;
+  });
+  const periodSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setPeriod = useCallback((next: PeriodState) => {
+    setPeriodState(next);
+    // Mirror in the URL without a navigation, and persist with the dashboard (debounced, no dirty flag).
+    const params = new URLSearchParams(window.location.search);
+    for (const k of ["period", "compare"]) params.delete(k);
+    for (const [k, v] of Object.entries(periodToParams(next))) if (!(k === "period" && v === "all")) params.set(k, v);
+    const qs = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    if (periodSaveTimer.current) clearTimeout(periodSaveTimer.current);
+    periodSaveTimer.current = setTimeout(() => {
+      void fetch(`/api/dashboards/${dashboard.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period: next.mode === "all" && !next.compare ? null : next }) }).catch(() => {});
+    }, 600);
+  }, [dashboard.id]);
+  const [periodCounts, setPeriodCounts] = useState<{ posts: number; comments: number } | null>(null);
+  useEffect(() => {
+    const win = resolveWindow(period);
+    let alive = true;
+    fetchWidgetRows("SELECT (SELECT count(*)::int FROM posts) AS posts, (SELECT count(*)::int FROM comments) AS comments", win)
+      .then((res) => { if (alive && res.rows[0]) setPeriodCounts({ posts: Number(res.rows[0].posts), comments: Number(res.rows[0].comments) }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [period]);
 
   useEffect(() => {
     fetch("/api/status").then((r) => r.json()).then((j: { llm?: string }) => setDemo(j.llm === "mock")).catch(() => {});
@@ -182,6 +218,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const widgetSummaries = useMemo(() => widgets, [widgets]);
 
   return (
+    <PeriodProvider state={period} onChange={setPeriod}>
     <Shell
       title={name}
       titleSlot={
@@ -230,8 +267,10 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           prefill={prefill}
           onPrefillConsumed={() => setPrefill(undefined)}
           ask={ask}
+          onSetPeriod={setPeriod}
         />
         <div className="ws__canvas">
+          <PeriodBar counts={periodCounts} />
           <DashboardCanvas
             widgets={widgets}
             onLayoutChange={onLayoutChange}
@@ -271,5 +310,6 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
         />
       )}
     </Shell>
+    </PeriodProvider>
   );
 }

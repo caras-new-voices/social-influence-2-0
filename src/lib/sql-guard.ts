@@ -3,7 +3,12 @@
  * already READ ONLY with a statement timeout; this layer rejects obvious
  * non-SELECT statements early and caps the row count.
  */
-const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|vacuum|analyze|reindex|cluster|lock|listen|notify|refresh|security|pg_sleep|pg_read_file|pg_ls_dir|lo_import|lo_export|dblink|set\s+role|set\s+session)\b/i;
+const FORBIDDEN = /\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|vacuum|analyze|reindex|cluster|lock|listen|notify|refresh|security|pg_sleep|pg_read_file|pg_ls_dir|lo_import|lo_export|dblink|set_config|reset|set\s+role|set\s+session|set\s+local|set\s+transaction)\b/i;
+
+/** Replaces string literals and quoted identifiers with placeholders so keywords inside them are not flagged. */
+export function stripLiterals(sql: string): string {
+  return sql.replace(/'(?:[^']|'')*'/g, "''").replace(/"(?:[^"]|"")*"/g, '""');
+}
 
 export const MAX_ROWS = 500;
 
@@ -16,7 +21,7 @@ export function guardSql(raw: string): { ok: true; sql: string } | { ok: false; 
   if (!cleaned) return { ok: false, reason: "Empty query." };
   if (cleaned.includes(";")) return { ok: false, reason: "Only a single statement is allowed." };
   if (!/^(select|with)\b/i.test(cleaned)) return { ok: false, reason: "Only SELECT queries are allowed." };
-  const m = cleaned.match(FORBIDDEN);
+  const m = stripLiterals(cleaned).match(FORBIDDEN);
   if (m) return { ok: false, reason: `Query contains a forbidden keyword: ${m[1]}.` };
   if (cleaned.length > 12000) return { ok: false, reason: "Query is too long." };
   return { ok: true, sql: cleaned };

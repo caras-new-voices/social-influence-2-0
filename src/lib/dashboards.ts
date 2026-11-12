@@ -1,7 +1,14 @@
 import { getDb } from "./db";
 import { ensureReady } from "./schema";
+import { PeriodStateSchema, type PeriodState } from "./period";
 import { buildTemplate, type TemplateId } from "./templates";
 import { newId, type DashboardRecord, type WidgetSpec } from "./widgets";
+
+function parsePeriod(v: unknown): PeriodState | null {
+  if (v == null) return null;
+  const parsed = PeriodStateSchema.safeParse(typeof v === "string" ? JSON.parse(v) : v);
+  return parsed.success ? parsed.data : null;
+}
 
 function rowToRecord(r: Record<string, unknown>): DashboardRecord {
   return {
@@ -9,6 +16,7 @@ function rowToRecord(r: Record<string, unknown>): DashboardRecord {
     name: String(r.name),
     description: (r.description as string | null) ?? null,
     widgets: (typeof r.widgets === "string" ? JSON.parse(r.widgets) : r.widgets) as WidgetSpec[],
+    period: parsePeriod(r.period),
     created_at: new Date(r.created_at as string).toISOString(),
     updated_at: new Date(r.updated_at as string).toISOString(),
   };
@@ -42,7 +50,7 @@ export async function createDashboard(input: { name: string; description?: strin
 
 export async function updateDashboard(
   id: string,
-  patch: { name?: string; description?: string | null; widgets?: WidgetSpec[] },
+  patch: { name?: string; description?: string | null; widgets?: WidgetSpec[]; period?: PeriodState | null },
 ): Promise<DashboardRecord | null> {
   await ensureReady();
   const db = await getDb();
@@ -59,6 +67,10 @@ export async function updateDashboard(
   if (patch.widgets !== undefined) {
     params.push(JSON.stringify(patch.widgets));
     sets.push(`widgets = $${params.length}::jsonb`);
+  }
+  if (patch.period !== undefined) {
+    params.push(patch.period ? JSON.stringify(patch.period) : null);
+    sets.push(`period = $${params.length}::jsonb`);
   }
   if (!sets.length) return getDashboard(id);
   params.push(id);
@@ -83,8 +95,8 @@ export async function duplicateDashboard(id: string): Promise<DashboardRecord | 
   const copyId = newId("d");
   const widgets = src.widgets.map((w) => ({ ...w, id: newId() }));
   const rows = await db.query(
-    `INSERT INTO dashboards (id, name, description, widgets) VALUES ($1, $2, $3, $4::jsonb) RETURNING *`,
-    [copyId, `${src.name} (copy)`, src.description, JSON.stringify(widgets)],
+    `INSERT INTO dashboards (id, name, description, widgets, period) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb) RETURNING *`,
+    [copyId, `${src.name} (copy)`, src.description, JSON.stringify(widgets), src.period ? JSON.stringify(src.period) : null],
   );
   return rowToRecord(rows[0]);
 }

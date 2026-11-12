@@ -59,55 +59,55 @@ async function computeDatasetStats(): Promise<DatasetStats> {
   const q = <T extends Row = Row>(sql: string) => db.query<T>(sql);
 
   const [c] = await q<{ posts: number; comments: number; influencers: number; segments: number; creators: number }>(`
-    SELECT (SELECT count(*)::int FROM posts) AS posts, (SELECT count(*)::int FROM comments) AS comments,
+    SELECT (SELECT count(*)::int FROM posts_all) AS posts, (SELECT count(*)::int FROM comments_all) AS comments,
            (SELECT count(*)::int FROM influencers) AS influencers, (SELECT count(*)::int FROM segments) AS segments,
            (SELECT count(DISTINCT influencer_id)::int FROM influencers) AS creators`);
   const [d] = await q<{ fp: string; lp: string; fc: string; lc: string }>(`
-    SELECT (SELECT min(published_at) FROM posts) AS fp, (SELECT max(published_at) FROM posts) AS lp,
-           (SELECT min(published_at) FROM comments) AS fc, (SELECT max(published_at) FROM comments) AS lc`);
+    SELECT (SELECT min(published_at) FROM posts_all) AS fp, (SELECT max(published_at) FROM posts_all) AS lp,
+           (SELECT min(published_at) FROM comments_all) AS fc, (SELECT max(published_at) FROM comments_all) AS lc`);
 
   const platforms = await q<DatasetStats["platforms"][number]>(`
     SELECT p.platform, count(*)::int AS posts, count(*) FILTER (WHERE post_type='video')::int AS video, count(*) FILTER (WHERE post_type='image')::int AS image,
-           (SELECT count(*)::int FROM comments c JOIN posts p2 ON p2.post_id=c.post_id AND p2.segment_id=c.segment_id WHERE p2.platform=p.platform) AS comments
-    FROM posts p GROUP BY 1 ORDER BY 2 DESC`);
+           (SELECT count(*)::int FROM comments_all c JOIN posts_all p2 ON p2.post_id=c.post_id AND p2.segment_id=c.segment_id WHERE p2.platform=p.platform) AS comments
+    FROM posts_all p GROUP BY 1 ORDER BY 2 DESC`);
 
   const brands = await q<DatasetStats["brands"][number]>(`
     SELECT s.brand, s.role, count(p.post_id)::int AS posts, count(DISTINCT p.influencer_id)::int AS creators,
-           (SELECT count(*)::int FROM comments c WHERE c.segment_id = s.id) AS comments,
+           (SELECT count(*)::int FROM comments_all c WHERE c.segment_id = s.id) AS comments,
            count(*) FILTER (WHERE p.platform='tiktok')::int AS tiktok, count(*) FILTER (WHERE p.platform='instagram')::int AS instagram, count(*) FILTER (WHERE p.platform='youtube')::int AS youtube,
            min(p.published_at) AS first, max(p.published_at) AS last
-    FROM segments s LEFT JOIN posts p ON p.segment_id = s.id GROUP BY s.id, s.brand, s.role ORDER BY posts DESC`);
+    FROM segments s LEFT JOIN posts_all p ON p.segment_id = s.id GROUP BY s.id, s.brand, s.role ORDER BY posts DESC`);
 
   const monthly = await q<DatasetStats["monthly"][number]>(`
     SELECT m.month, coalesce(p.n, 0)::int AS posts, coalesce(c.n, 0)::int AS comments FROM
-      (SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month FROM posts WHERE published_at IS NOT NULL
-       UNION SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') FROM comments WHERE published_at IS NOT NULL) m
-      LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM posts GROUP BY 1) p ON p.month = m.month
-      LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM comments GROUP BY 1) c ON c.month = m.month
+      (SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month FROM posts_all WHERE published_at IS NOT NULL
+       UNION SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') FROM comments_all WHERE published_at IS NOT NULL) m
+      LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM posts_all GROUP BY 1) p ON p.month = m.month
+      LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM comments_all GROUP BY 1) c ON c.month = m.month
     ORDER BY 1`);
 
   const tiers = await q<DatasetStats["tiers"][number]>(`
     SELECT tier, count(*)::int AS posts, count(DISTINCT influencer_id)::int AS creators, min(followers) AS "minFollowers", max(followers) AS "maxFollowers"
-    FROM posts WHERE tier IS NOT NULL AND followers > 0 GROUP BY 1
+    FROM posts_all WHERE tier IS NOT NULL AND followers > 0 GROUP BY 1
     ORDER BY array_position(ARRAY['nano','micro','mid','macro','mega'], tier)`);
 
-  const countries = await q<DatasetStats["countries"][number]>(`SELECT country, count(*)::int AS posts FROM posts WHERE country IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 15`);
-  const postLang = await q<{ language: string; n: number }>(`SELECT coalesce(language,'unknown') AS language, count(*)::int AS n FROM posts GROUP BY 1 ORDER BY 2 DESC LIMIT 10`);
-  const commentLang = await q<{ language: string; n: number }>(`SELECT coalesce(language,'unknown') AS language, count(*)::int AS n FROM comments GROUP BY 1 ORDER BY 2 DESC LIMIT 10`);
+  const countries = await q<DatasetStats["countries"][number]>(`SELECT country, count(*)::int AS posts FROM posts_all WHERE country IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 15`);
+  const postLang = await q<{ language: string; n: number }>(`SELECT coalesce(language,'unknown') AS language, count(*)::int AS n FROM posts_all GROUP BY 1 ORDER BY 2 DESC LIMIT 10`);
+  const commentLang = await q<{ language: string; n: number }>(`SELECT coalesce(language,'unknown') AS language, count(*)::int AS n FROM comments_all GROUP BY 1 ORDER BY 2 DESC LIMIT 10`);
 
   const commentsPerPost = await q<DatasetStats["commentsPerPost"][number]>(`
     SELECT bucket, count(*)::int AS posts FROM (
       SELECT CASE WHEN n = 0 THEN '0' WHEN n <= 5 THEN '1 to 5' WHEN n <= 20 THEN '6 to 20' WHEN n <= 100 THEN '21 to 100' ELSE 'over 100' END AS bucket,
              CASE WHEN n = 0 THEN 0 WHEN n <= 5 THEN 1 WHEN n <= 20 THEN 2 WHEN n <= 100 THEN 3 ELSE 4 END AS ord
-      FROM (SELECT p.post_id, p.segment_id, (SELECT count(*) FROM comments c WHERE c.post_id = p.post_id AND c.segment_id = p.segment_id) AS n FROM posts p) t
+      FROM (SELECT p.post_id, p.segment_id, (SELECT count(*) FROM comments_all c WHERE c.post_id = p.post_id AND c.segment_id = p.segment_id) AS n FROM posts_all p) t
     ) b GROUP BY bucket, ord ORDER BY ord`);
 
   const analysis: DatasetStats["analysis"] = [];
   for (const f of ANALYSIS_FIELDS) {
-    const [agg] = await q<{ filled: number; distinct: number }>(`SELECT count(${f.col})::int AS filled, count(DISTINCT ${f.col})::int AS distinct FROM comments`);
-    const values = await q<{ value: string; n: number }>(`SELECT ${f.col} AS value, count(*)::int AS n FROM comments WHERE ${f.col} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT ${f.kind === "label" ? 10 : 8}`);
+    const [agg] = await q<{ filled: number; distinct: number }>(`SELECT count(${f.col})::int AS filled, count(DISTINCT ${f.col})::int AS distinct FROM comments_all`);
+    const values = await q<{ value: string; n: number }>(`SELECT ${f.col} AS value, count(*)::int AS n FROM comments_all WHERE ${f.col} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT ${f.kind === "label" ? 10 : 8}`);
     const [ex] = await q<{ text: string; value: string; brand: string }>(`
-      SELECT left(text, 200) AS text, ${f.col} AS value, brand FROM comments
+      SELECT left(text, 200) AS text, ${f.col} AS value, brand FROM comments_all
       WHERE ${f.col} IS NOT NULL AND length(text) BETWEEN 25 AND 180 AND language = 'en'
       ORDER BY likes DESC NULLS LAST LIMIT 1`);
     analysis.push({ ...f, filled: Number(agg.filled), distinct: Number(agg.distinct), values, example: ex ?? null });
@@ -129,14 +129,14 @@ async function computeDatasetStats(): Promise<DatasetStats> {
     };
   });
 
-  const samplePosts = await q(`SELECT post_id, brand, platform, post_type, username, left(text, 140) AS text, published_at, likes, comments, shares, views, saves, engagement, is_paid, tier, country, language, sentiment, emv, followers FROM posts WHERE text IS NOT NULL AND length(text) > 40 ORDER BY post_id LIMIT 3`);
-  const sampleComments = await q(`SELECT comment_id, brand, post_id, left(text, 140) AS text, likes, published_at, sentiment, sentiment_score, emotion, language, topics, purchase_intent_type, objection_category, competitor_name, loyalty_type FROM comments WHERE language = 'en' AND length(text) > 30 AND (purchase_intent_type IS NOT NULL OR objection_category IS NOT NULL OR loyalty_type IS NOT NULL) ORDER BY comment_id LIMIT 3`);
+  const samplePosts = await q(`SELECT post_id, brand, platform, post_type, username, left(text, 140) AS text, published_at, likes, comments, shares, views, saves, engagement, is_paid, tier, country, language, sentiment, emv, followers FROM posts_all WHERE text IS NOT NULL AND length(text) > 40 ORDER BY post_id LIMIT 3`);
+  const sampleComments = await q(`SELECT comment_id, brand, post_id, left(text, 140) AS text, likes, published_at, sentiment, sentiment_score, emotion, language, topics, purchase_intent_type, objection_category, competitor_name, loyalty_type FROM comments_all WHERE language = 'en' AND length(text) > 30 AND (purchase_intent_type IS NOT NULL OR objection_category IS NOT NULL OR loyalty_type IS NOT NULL) ORDER BY comment_id LIMIT 3`);
 
   const [cav] = await q<{ views: number; lang: number; aud: number; rep: number; merc: number; cross: number }>(`
-    SELECT (SELECT count(views)::int FROM posts) AS views, (SELECT count(*)::int FROM posts WHERE language IS NOT NULL AND language <> 'unknown') AS lang,
+    SELECT (SELECT count(views)::int FROM posts_all) AS views, (SELECT count(*)::int FROM posts_all WHERE language IS NOT NULL AND language <> 'unknown') AS lang,
            (SELECT count(audience_female)::int FROM influencers) AS aud, (SELECT count(*)::int FROM influencers WHERE has_report) AS rep,
-           (SELECT count(*)::int FROM posts WHERE brand = 'Mercadona') AS merc,
-           (SELECT count(*)::int FROM (SELECT post_id FROM posts GROUP BY post_id HAVING count(*) > 1) x) AS cross`);
+           (SELECT count(*)::int FROM posts_all WHERE brand = 'Mercadona') AS merc,
+           (SELECT count(*)::int FROM (SELECT post_id FROM posts_all GROUP BY post_id HAVING count(*) > 1) x) AS cross`);
 
   const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : "");
   return {

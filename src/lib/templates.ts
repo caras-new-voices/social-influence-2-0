@@ -81,9 +81,14 @@ export function buildDefaultWidgets(): WidgetSpec[] {
 const B = FOCAL_BRAND.name;
 /** Mentions of the focal brand itself (and its parent brand name) are not partners or competitors. */
 const NOT_SELF = (col: string) => `${col} NOT ILIKE '%${B}%' AND ${col} NOT ILIKE '%gil%ette%'`;
-/** "Right now" means the last 90 days of tracked activity for the focal brand. */
-const RECENT_POSTS = `published_at >= (SELECT max(published_at) FROM posts WHERE brand = '${B}') - interval '90 days'`;
-const RECENT_COMMENTS = `published_at >= (SELECT max(published_at) FROM comments WHERE brand = '${B}') - interval '90 days'`;
+/**
+ * "Right now" means the dashboard period when one is selected, otherwise the last 90 days of
+ * tracked activity for the focal brand. Inside the posts/comments views (already filtered to the
+ * period) the 90 day cut only bites when no period is set.
+ */
+const RECENT_POSTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM posts WHERE brand = '${B}') - interval '90 days')`;
+const RECENT_COMMENTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM comments WHERE brand = '${B}') - interval '90 days')`;
+const RECENT_LABEL = "In the selected period (last 90 days when viewing all time)";
 
 const ERAN_SECTIONS: TemplateSection[] = [
   {
@@ -91,22 +96,21 @@ const ERAN_SECTIONS: TemplateSection[] = [
     widgets: [
       {
         type: "kpi", w: 12, h: 3,
-        title: `${B} conversation, last 90 days`,
-        subtitle: "Versus the previous 90 days",
-        sql: `WITH cur AS (
+        title: `${B} conversation in this period`,
+        subtitle: "Versus the previous period of the same length (last 90 days versus the 90 before, when viewing all time)",
+        sql: `WITH b AS (
+  SELECT coalesce(period_start(), (SELECT max(published_at) FROM posts_all WHERE brand = '${B}') - interval '90 days') AS s,
+         coalesce(period_end(), (SELECT max(published_at) FROM posts_all WHERE brand = '${B}') + interval '1 second') AS e
+), cur AS (
   SELECT count(*)::float AS posts, count(DISTINCT influencer_id)::float AS creators, sum(engagement) AS engagement, sum(views) AS views
-  FROM posts WHERE brand = '${B}' AND ${RECENT_POSTS}
+  FROM posts_all, b WHERE brand = '${B}' AND published_at >= b.s AND published_at < b.e
 ), prev AS (
   SELECT count(*)::float AS posts, count(DISTINCT influencer_id)::float AS creators, sum(engagement) AS engagement, sum(views) AS views
-  FROM posts WHERE brand = '${B}'
-    AND published_at < (SELECT max(published_at) FROM posts WHERE brand = '${B}') - interval '90 days'
-    AND published_at >= (SELECT max(published_at) FROM posts WHERE brand = '${B}') - interval '180 days'
+  FROM posts_all, b WHERE brand = '${B}' AND published_at >= b.s - (b.e - b.s) AND published_at < b.s
 ), cm AS (
-  SELECT count(*)::float AS n FROM comments WHERE brand = '${B}' AND ${RECENT_COMMENTS}
+  SELECT count(*)::float AS n FROM comments_all, b WHERE brand = '${B}' AND published_at >= b.s AND published_at < b.e
 ), cmp AS (
-  SELECT count(*)::float AS n FROM comments WHERE brand = '${B}'
-    AND published_at < (SELECT max(published_at) FROM comments WHERE brand = '${B}') - interval '90 days'
-    AND published_at >= (SELECT max(published_at) FROM comments WHERE brand = '${B}') - interval '180 days'
+  SELECT count(*)::float AS n FROM comments_all, b WHERE brand = '${B}' AND published_at >= b.s - (b.e - b.s) AND published_at < b.s
 )
 SELECT 'Posts' AS label, cur.posts AS value, prev.posts AS compare, 'compact' AS fmt FROM cur, prev
 UNION ALL SELECT 'Creators', cur.creators, prev.creators, 'compact' FROM cur, prev
@@ -118,7 +122,7 @@ UNION ALL SELECT 'Comments', cm.n, cmp.n, 'compact' FROM cm, cmp`,
       {
         type: "table", w: 7, h: 6,
         title: "Creators driving the conversation",
-        subtitle: "Last 90 days, ranked by engagement on their posts",
+        subtitle: `${RECENT_LABEL}, ranked by engagement on their posts`,
         sql: `SELECT p.username AS creator, p.platform, p.tier, count(*)::int AS posts, sum(p.engagement) AS engagement, sum(p.views) AS views,
   count(c.comment_id)::int AS comments, bool_or(p.is_paid) AS paid
 FROM posts p LEFT JOIN comments c ON c.post_id = p.post_id AND c.segment_id = p.segment_id
@@ -129,7 +133,7 @@ GROUP BY 1, 2, 3 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
       {
         type: "bar", w: 5, h: 6,
         title: "Channels driving the conversation",
-        subtitle: "Engagement by platform, last 90 days",
+        subtitle: `Engagement by platform. ${RECENT_LABEL}`,
         sql: `SELECT platform, sum(engagement) AS value FROM posts WHERE brand = '${B}' AND ${RECENT_POSTS} GROUP BY 1 ORDER BY 2 DESC`,
         x: "platform", y: "value", colorBy: "platform", format: "compact", horizontal: true,
         rationale: "Where the conversation is happening.",
@@ -137,7 +141,7 @@ GROUP BY 1, 2, 3 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
       {
         type: "table", w: 12, h: 6,
         title: "Creatives driving the conversation",
-        subtitle: "The individual posts with the most engagement, last 90 days",
+        subtitle: `The individual posts with the most engagement. ${RECENT_LABEL}`,
         sql: `SELECT username AS creator, platform, post_type AS format, to_char(published_at, 'YYYY-MM-DD') AS date, left(coalesce(text, title, ''), 90) AS caption,
   likes, comments, views, engagement, CASE WHEN is_paid THEN 'paid' ELSE 'organic' END AS kind, url
 FROM posts WHERE brand = '${B}' AND ${RECENT_POSTS} ORDER BY engagement DESC NULLS LAST LIMIT 15`,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WidgetPeriodSchema, type PeriodState } from "./period";
 
 /**
  * A widget is a saved query plus a rendering recipe. The chat assistant proposes
@@ -37,6 +38,8 @@ export const WidgetSpecSchema = z.object({
   content: z.string().max(8000).optional(),
   /** Why this widget was proposed; shown in the proposal card. */
   rationale: z.string().max(600).optional(),
+  /** Time window: inherit the dashboard period (default), ignore it ("all"), or a fixed window. */
+  period: WidgetPeriodSchema.optional(),
   layout: LayoutSchema,
 });
 export type WidgetSpec = z.infer<typeof WidgetSpecSchema>;
@@ -90,6 +93,8 @@ export interface DashboardRecord {
   name: string;
   description: string | null;
   widgets: WidgetSpec[];
+  /** Global time period for the dashboard; null means all time. */
+  period: PeriodState | null;
   created_at: string;
   updated_at: string;
 }

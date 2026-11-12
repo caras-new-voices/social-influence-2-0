@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { z } from "zod";
 import { BRANDS, FOCAL_BRAND } from "./brands";
+import { getCoverage } from "./coverage";
+import { formatWindow, ISO_DATE, monthPeriod, PeriodStateSchema, resolveCompare, resolveWindow, type PeriodState, type PeriodWindow } from "./period";
 import { getDb, type Row } from "./db";
 import { runWidgetQuery } from "./query";
 import { ensureReady } from "./schema";
@@ -18,6 +20,7 @@ export type ChatEvent =
   | { type: "query"; sql: string; ok: boolean; rows?: number; error?: string; ms?: number }
   | { type: "widget"; widget: WidgetSpec; data: Row[]; replaces?: string; error?: string }
   | { type: "followups"; items: string[] }
+  | { type: "period"; period: PeriodState }
   | { type: "done"; messageId: number | null }
   | { type: "error"; message: string };
 
@@ -34,6 +37,8 @@ export interface ChatTurnInput {
   /** Optional fuller instruction sent to the model instead of userText (for guided actions). */
   instruction?: string;
   widgets: WidgetSummary[];
+  /** The dashboard's current period; queries run within it. */
+  period?: PeriodState;
 }
 
 type MsgParam = Anthropic.Beta.BetaMessageParam;
@@ -92,15 +97,16 @@ const HISTORY_ROWS = 30;
 
 const SYSTEM_PROMPT = `You are the analyst inside the Social Influence workspace, an IMAI product. You help a brand team at P&G understand creator content and audience reactions about ${FOCAL_BRAND.name} and its competitors (${BRANDS.filter((b) => b.role === "competitor").map((b) => b.name).join(", ")}), and you help them build a dashboard.
 
-You have two tools:
-- run_sql: run a read-only Postgres SELECT against the dataset and read the rows.
+You have three tools:
+- run_sql: run a read-only Postgres SELECT against the dataset and read the rows. It runs within the dashboard's current period (see Time periods below).
 - propose_widget: propose a dashboard element (a saved query plus a rendering recipe). The person sees a preview card and decides whether to add it. You cannot add widgets yourself.
+- set_period: change the dashboard's global period (a month, a date range, or all time) and optionally the comparison period. Use it when the person asks to look at a month or range, or to compare periods ("show me June versus May"); every element on the dashboard follows it. Do not use it for a one-off question you can answer with posts_all.
 
 ${DATASET_DOC}
 
 ## How to work
 - Ground every claim in a query. Never guess numbers. Run the queries you need (usually 1 to 3) before answering; keep result sets small by aggregating in SQL. For examples of verbatim comments select at most 8 rows and use left(text, 220).
-- Postgres syntax only. Single SELECT or WITH statement, no semicolons. Useful idioms: count(*) FILTER (WHERE ...), to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, round(x::numeric, 3), NULLIF for divisions, ::int casts for counts.
+- Postgres syntax only. Single SELECT or WITH statement, no semicolons. For "versus the previous period" use posts_all/comments_all with period_start() and period_end() (see Time periods). Useful idioms: count(*) FILTER (WHERE ...), to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, round(x::numeric, 3), NULLIF for divisions, ::int casts for counts.
 - Brand strings must match exactly: ${BRANDS.map((b) => `'${b.name}'`).join(", ")}. "Us", "our brand" and "we" mean ${FOCAL_BRAND.name}.
 - Read the whole result; summarise the pattern, name the leaders and the laggards, quote the key numbers (rounded, with units), and say what it means for ${FOCAL_BRAND.name}. Be concrete and concise: a short lead sentence, then 2 to 5 bullets or a short paragraph. Use markdown (bold, bullets, small tables). Do not paste SQL into the answer unless asked.
 - Propose widgets when the person asks for a chart, a card, a table, a dashboard element, or asks to track or compare something over time. Also propose one when a visual clearly adds value to a question you answered. Propose at most 3 per turn. Before proposing, run the exact SQL once with run_sql to make sure it works and returns the right shape. Mention each proposal briefly in your reply by title, e.g. "I've proposed a chart: Engagement trend by brand".
@@ -132,6 +138,15 @@ Give 2 or 3 short next questions (under 70 characters each) written in the perso
 /* ------------------------------------------------------------------ */
 
 const RunSqlInput = z.object({ sql: z.string().min(1), purpose: z.string().optional() });
+const SetPeriodInput = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  start: z.string().regex(ISO_DATE).optional(),
+  end: z.string().regex(ISO_DATE).optional(),
+  all: z.boolean().optional(),
+  compare: z.enum(["none", "previous", "same_last_year"]).optional(),
+  compare_start: z.string().regex(ISO_DATE).optional(),
+  compare_end: z.string().regex(ISO_DATE).optional(),
+});
 const ProposeInput = ProposedWidgetSchema.extend({ replaces_widget_id: z.string().optional() });
 
 const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
@@ -170,10 +185,27 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
         width: { type: "integer", minimum: 3, maximum: 12 },
         height: { type: "integer", minimum: 2, maximum: 10 },
         replaces_widget_id: { type: "string", description: "Set when this proposal should replace an existing widget." },
+        period: { type: "string", enum: ["inherit", "all"], description: "inherit (default): the element follows the dashboard period. all: the element always shows all time." },
       },
       required: ["type", "title", "rationale"],
     },
     eager_input_streaming: true,
+  },
+  {
+    name: "set_period",
+    description: "Change the dashboard's global time period and comparison. Give month (YYYY-MM), or start and end (ISO dates, end exclusive), or all true. compare: 'previous' | 'same_last_year' | 'none', or compare_start and compare_end for a custom window.",
+    input_schema: {
+      type: "object",
+      properties: {
+        month: { type: "string", description: "YYYY-MM for a whole month." },
+        start: { type: "string", description: "ISO date, inclusive." },
+        end: { type: "string", description: "ISO date, exclusive." },
+        all: { type: "boolean", description: "true for all time." },
+        compare: { type: "string", enum: ["none", "previous", "same_last_year"] },
+        compare_start: { type: "string" },
+        compare_end: { type: "string" },
+      },
+    },
   },
 ];
 
@@ -318,9 +350,18 @@ export async function clearMessages(dashboardId: string) {
 /* Helpers                                                               */
 /* ------------------------------------------------------------------ */
 
-function contextBlock(widgets: WidgetSummary[]): string {
-  if (!widgets.length) return "[Dashboard context: the dashboard is empty.]";
-  return `[Dashboard context: current widgets: ${widgets.map((w) => `${w.id} (${w.type}) "${w.title}"`).join("; ")}]`;
+async function contextBlock(widgets: WidgetSummary[], period?: PeriodState): Promise<string> {
+  const parts: string[] = [];
+  const cov = await getCoverage().catch(() => null);
+  if (cov) {
+    const complete = cov.months.filter((m) => m.complete && m.posts + m.comments > 0).map((m) => m.month);
+    parts.push(`Data coverage: ${cov.firstDate} to ${cov.lastDate} (${cov.posts.toLocaleString("en-US")} posts, ${cov.comments.toLocaleString("en-US")} comments); complete months ${complete[0]} to ${complete[complete.length - 1]}.`);
+  }
+  const win = resolveWindow(period);
+  const cmp = resolveCompare(period);
+  parts.push(win.start || win.end ? `Current period: ${formatWindow(win)} (${win.start ?? "…"} to ${win.end ?? "…"}, end exclusive); posts and comments are filtered to it.${cmp ? ` Comparison period: ${formatWindow(cmp)} (${cmp.start} to ${cmp.end}).` : ""}` : "Current period: all time (no filter).");
+  parts.push(widgets.length ? `Current widgets: ${widgets.map((w) => `${w.id} (${w.type}) "${w.title}"`).join("; ")}` : "The dashboard is empty.");
+  return `[Dashboard context: ${parts.join(" ")}]`;
 }
 
 function truncateRows(rows: Row[], cap = TOOL_RESULT_CHAR_CAP): { text: string; shown: number } {
@@ -364,12 +405,32 @@ async function executeTool(
   existing: WidgetSpec[],
   emit: (e: ChatEvent) => void,
   proposals: Array<{ widget: WidgetSpec; replaces?: string }>,
+  window?: PeriodWindow | null,
 ): Promise<{ content: string; isError: boolean }> {
+  if (name === "set_period") {
+    const parsed = SetPeriodInput.safeParse(input);
+    if (!parsed.success) return { content: `INVALID_INPUT: ${parsed.error.message}`, isError: true };
+    const i = parsed.data;
+    let next: PeriodState;
+    if (i.all) next = { mode: "all" };
+    else if (i.month) next = monthPeriod(i.month);
+    else if (i.start && i.end) next = { mode: "range", start: i.start, end: i.end };
+    else return { content: "Give month, or start and end, or all: true.", isError: true };
+    if (i.compare_start && i.compare_end) next.compare = { mode: "custom", start: i.compare_start, end: i.compare_end };
+    else if (i.compare && i.compare !== "none") next.compare = { mode: i.compare };
+    else next.compare = null;
+    const parsedState = PeriodStateSchema.safeParse(next);
+    if (!parsedState.success) return { content: `Invalid period: ${parsedState.error.message}`, isError: true };
+    emit({ type: "period", period: parsedState.data });
+    const w = resolveWindow(parsedState.data);
+    const c = resolveCompare(parsedState.data);
+    return { content: `Dashboard period set to ${formatWindow(w)}${c ? `, compared with ${formatWindow(c)}` : ""}. Queries you run from now on in this turn still use the previous period; mention the change to the person.`, isError: false };
+  }
   if (name === "run_sql") {
     const parsed = RunSqlInput.safeParse(input);
     if (!parsed.success) return { content: `INVALID_INPUT: ${parsed.error.message}`, isError: true };
     emit({ type: "status", text: parsed.data.purpose ? `Querying: ${parsed.data.purpose}` : "Querying the data" });
-    const res = await runWidgetQuery(parsed.data.sql, 500);
+    const res = await runWidgetQuery(parsed.data.sql, 500, window);
     if (!res.ok) {
       emit({ type: "query", sql: parsed.data.sql, ok: false, error: res.error });
       return { content: `SQL error: ${res.error}`, isError: true };
@@ -386,7 +447,7 @@ async function executeTool(
     const widget = materialize(proposal, existing);
     let data: Row[] = [];
     if (widget.sql) {
-      const res = await runWidgetQuery(widget.sql, 500);
+      const res = await runWidgetQuery(widget.sql, 500, widget.period === "all" ? null : window);
       if (!res.ok) {
         emit({ type: "query", sql: widget.sql, ok: false, error: res.error });
         return { content: `The widget SQL failed: ${res.error}. Fix it and propose again.`, isError: true };
@@ -432,7 +493,8 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
     ...(workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {}),
   });
   const history = await loadHistory(input.dashboardId);
-  const userApiText = `${input.instruction ?? input.userText}\n\n${contextBlock(input.widgets)}`;
+  const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
+  const window = resolveWindow(input.period);
   const messages: MsgParam[] = [...history, { role: "user", content: [{ type: "text", text: userApiText }] }];
   await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: userApiText }] });
 
@@ -500,7 +562,7 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
       const results: ContentBlock[] = [];
       for (const tu of toolUses) {
         const toolEvents: ChatEvent[] = [];
-        const r = await executeTool(tu.name, tu.input, existingWidgets, (e) => toolEvents.push(e), proposals);
+        const r = await executeTool(tu.name, tu.input, existingWidgets, (e) => toolEvents.push(e), proposals, window);
         for (const e of toolEvents) yield e;
         results.push({ type: "tool_result", tool_use_id: tu.id, content: r.content, is_error: r.isError });
       }
@@ -646,7 +708,7 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
   for (const recipe of recipes) {
     yield { type: "status", text: "Querying the data" };
     const widget = materialize(recipe.widget, [...existing, ...proposals.map((p) => p.widget)]);
-    const res = widget.sql ? await runWidgetQuery(widget.sql, 500) : ({ ok: true, rows: [] as Row[] } as const);
+    const res = widget.sql ? await runWidgetQuery(widget.sql, 500, resolveWindow(input.period)) : ({ ok: true, rows: [] as Row[] } as const);
     const rows = res.ok ? res.rows : [];
     yield { type: "query", sql: widget.sql ?? "", ok: res.ok, rows: rows.length, error: res.ok ? undefined : res.error };
     const answer = recipe.answer(rows);
@@ -747,7 +809,8 @@ interface ToolCallAcc {
 async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]): AsyncGenerator<ChatEvent> {
   const client = new OpenAI({ apiKey: openAiKey(), maxRetries: 2, timeout: 180_000 });
   const history = await loadOpenAiHistory(input.dashboardId);
-  const userApiText = `${input.instruction ?? input.userText}\n\n${contextBlock(input.widgets)}`;
+  const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
+  const window = resolveWindow(input.period);
   const userMsg: OaiMessage = { role: "user", content: userApiText };
   const messages: OaiMessage[] = [{ role: "system", content: SYSTEM_PROMPT }, ...history, userMsg];
   await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: { provider: "openai", message: userMsg } });
@@ -822,7 +885,7 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]):
         const toolEvents: ChatEvent[] = [];
         const r = parsedArgs === null
           ? { content: "INVALID_JSON: tool arguments could not be parsed; call the tool again.", isError: true }
-          : await executeTool(c.name, parsedArgs, existingWidgets, (e) => toolEvents.push(e), proposals);
+          : await executeTool(c.name, parsedArgs, existingWidgets, (e) => toolEvents.push(e), proposals, window);
         for (const e of toolEvents) yield e;
         const toolMsg: OaiMessage = { role: "tool", tool_call_id: c.id, content: r.content };
         messages.push(toolMsg);

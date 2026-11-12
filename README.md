@@ -21,7 +21,7 @@ The first request creates the schema and loads the dataset into an embedded PGli
 npm run db:seed
 ```
 
-Open http://localhost:3000, create a dashboard from a template or start blank, and ask the analyst a question. Templates live in `src/lib/templates.ts`: the default template (twelve curated elements) and Eran's template (eight strategic questions, each answered by a section of elements).
+Open http://localhost:3000, create a dashboard from a template or start blank, and ask the analyst a question. Every dashboard has a global time period (the bar above the grid): a month, a custom range or all time, with an optional comparison period. The period is applied inside the database, so every saved query follows it without changes (see `docs/time-periods-plan.md`). Templates live in `src/lib/templates.ts`: the default template (twelve curated elements) and Eran's template (eight strategic questions, each answered by a section of elements).
 
 ## Deploy to Vercel
 
@@ -59,6 +59,8 @@ src/lib/sql-guard.ts  read-only SQL checks and row caps for model-written querie
 src/lib/claude.ts     chat turn: system prompt, tools, streaming loop, persistence, demo mode
 src/lib/widgets.ts    widget spec schema, default catalog, starter questions
 src/lib/templates.ts  dashboard templates (default, Eran's template, blank) and their grid layout
+src/lib/period.ts     period model: month/range/all time, comparison windows, URL serialisation
+src/lib/coverage.ts   what the dataset covers, per month, from the data and the import log
 src/lib/brands.ts     brand context and the validated categorical palette
 src/components/       workspace UI (chat panel, proposal cards, grid canvas, charts, editor)
 src/app/api/          dashboards, chat (NDJSON stream), widget data, status

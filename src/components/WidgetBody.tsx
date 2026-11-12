@@ -27,7 +27,8 @@ export function InsightBody({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) {
   );
 }
 
-export function WidgetBody({ spec, rows, tableView }: { spec: WidgetSpec; rows: Row[]; tableView?: boolean }) {
+export function WidgetBody({ spec, rows, compareRows, tableView }: { spec: WidgetSpec; rows: Row[]; compareRows?: Row[]; tableView?: boolean }) {
+  void compareRows; // comparison rendering arrives with the compare feature
   if (spec.type === "text") return <div className="textw"><Markdown text={spec.content ?? ""} /></div>;
   if (spec.type === "section") return null;
   if (spec.type === "insight") return <InsightBody rows={rows} spec={spec} />;
