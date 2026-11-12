@@ -90,6 +90,106 @@ const RECENT_POSTS = `published_at >= coalesce(period_start(), (SELECT max(publi
 const RECENT_COMMENTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM comments WHERE brand = '${B}') - interval '90 days')`;
 const RECENT_LABEL = "In the selected period (last 90 days when viewing all time)";
 
+/* ------------------------------------------------------------------ */
+/* What changed: elements that compare the period with the one before   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Current window [s, e) and the start of the previous window (ps). With a dashboard period the
+ * current window is that period and the previous one is the month before (whole months) or the
+ * same length before; with no period it is the last 90 days of the table's data and the 90 before.
+ */
+const CHANGE_BOUNDS = (table: "posts_all" | "comments_all") => `b0 AS (
+  SELECT coalesce(period_start(), (SELECT max(published_at) FROM ${table} WHERE brand = '${B}') - interval '90 days') AS s,
+         coalesce(period_end(), (SELECT max(published_at) FROM ${table} WHERE brand = '${B}') + interval '1 second') AS e
+), b AS (
+  SELECT s, e, CASE WHEN s = date_trunc('month', s) AND e = s + interval '1 month' THEN s - interval '1 month' ELSE s - (e - s) END AS ps FROM b0
+)`;
+const CHANGE_LABEL = "This period versus the one before (last 90 days versus the 90 before, when viewing all time)";
+
+/** "What changed" catalogue: each element computes its own movement, so it works without the compare toggle. */
+export const CHANGE_WIDGETS: Omit<WidgetSpec, "id" | "layout">[] = [
+  {
+    type: "table",
+    title: "Rising and falling creators",
+    subtitle: `Engagement on ${B} posts by creator. ${CHANGE_LABEL}`,
+    sql: `WITH ${CHANGE_BOUNDS("posts_all")},
+agg AS (
+  SELECT p.username AS creator, max(p.platform) AS platform,
+    coalesce(sum(p.engagement) FILTER (WHERE p.published_at >= b.s), 0)::float AS current,
+    coalesce(sum(p.engagement) FILTER (WHERE p.published_at < b.s), 0)::float AS previous,
+    count(*) FILTER (WHERE p.published_at >= b.s)::int AS posts_now
+  FROM posts_all p, b WHERE p.brand = '${B}' AND p.published_at >= b.ps AND p.published_at < b.e
+  GROUP BY 1
+), r AS (SELECT *, current - previous AS change FROM agg)
+SELECT * FROM (
+  (SELECT creator, platform, 'rising' AS movement, posts_now, current, previous, change,
+     round((100 * change / NULLIF(previous, 0))::numeric, 0)::float AS change_pct FROM r WHERE change > 0 ORDER BY change DESC LIMIT 10)
+  UNION ALL
+  (SELECT creator, platform, 'falling', posts_now, current, previous, change,
+     round((100 * change / NULLIF(previous, 0))::numeric, 0)::float FROM r WHERE change < 0 ORDER BY change ASC LIMIT 10)
+) u ORDER BY change DESC`,
+    format: "compact",
+    rationale: "Who gained and who lost the most engagement since the previous period.",
+  },
+  {
+    type: "bar",
+    title: "Topics rising and falling",
+    subtitle: `Change in each topic's share of ${B} comments, in percentage points. ${CHANGE_LABEL}`,
+    sql: `WITH ${CHANGE_BOUNDS("comments_all")},
+c AS (
+  SELECT c.topics, c.published_at >= b.s AS cur FROM comments_all c, b
+  WHERE c.brand = '${B}' AND c.published_at >= b.ps AND c.published_at < b.e AND c.topics IS NOT NULL
+), tot AS (SELECT count(*) FILTER (WHERE cur)::float AS nc, count(*) FILTER (WHERE NOT cur)::float AS np FROM c),
+t AS (SELECT topic, count(*) FILTER (WHERE cur)::int AS current, count(*) FILTER (WHERE NOT cur)::int AS previous FROM c, unnest(c.topics) AS topic GROUP BY 1),
+r AS (
+  SELECT t.topic, round((100.0 * t.current / NULLIF(tot.nc, 0) - 100.0 * t.previous / NULLIF(tot.np, 0))::numeric, 1)::float AS value, t.current, t.previous
+  FROM t, tot WHERE t.current + t.previous >= 5
+)
+SELECT * FROM (
+  (SELECT * FROM r WHERE value > 0 ORDER BY value DESC LIMIT 6)
+  UNION ALL
+  (SELECT * FROM r WHERE value < 0 ORDER BY value ASC LIMIT 6)
+) u ORDER BY value DESC`,
+    x: "topic", y: "value", format: "number", horizontal: true,
+    rationale: "What the audience talks about more, and less, than before (share, so overall volume does not hide it).",
+  },
+  {
+    type: "bar",
+    title: "Objections rising and falling",
+    subtitle: `Change in the number of ${B} comments raising each objection. ${CHANGE_LABEL}`,
+    sql: `WITH ${CHANGE_BOUNDS("comments_all")},
+t AS (
+  SELECT c.objection_category AS objection,
+    count(*) FILTER (WHERE c.published_at >= b.s)::int AS current,
+    count(*) FILTER (WHERE c.published_at < b.s)::int AS previous
+  FROM comments_all c, b
+  WHERE c.brand = '${B}' AND c.objection_category IS NOT NULL AND c.published_at >= b.ps AND c.published_at < b.e
+  GROUP BY 1
+)
+SELECT objection, current - previous AS value, current, previous FROM t WHERE current <> previous ORDER BY value DESC`,
+    x: "objection", y: "value", format: "number", horizontal: true,
+    rationale: "Criticism that is growing needs an answer before it spreads; falling objections show what worked.",
+  },
+  {
+    type: "table",
+    title: "Unanswered questions on the rise",
+    subtitle: `Question topics in ${B} comments with no reply, growing since the previous period. ${CHANGE_LABEL}`,
+    sql: `WITH ${CHANGE_BOUNDS("comments_all")},
+q AS (
+  SELECT c.faq_topic AS topic, c.published_at >= b.s AS cur, c.likes, coalesce(c.faq_phrase, c.text) AS question
+  FROM comments_all c, b
+  WHERE c.brand = '${B}' AND c.faq_topic IS NOT NULL AND coalesce(c.reply_count, 0) = 0 AND c.published_at >= b.ps AND c.published_at < b.e
+), t AS (
+  SELECT topic, count(*) FILTER (WHERE cur)::int AS current, count(*) FILTER (WHERE NOT cur)::int AS previous,
+    left((array_agg(question ORDER BY likes DESC NULLS LAST) FILTER (WHERE cur))[1], 120) AS example
+  FROM q GROUP BY 1
+)
+SELECT topic, current, previous, current - previous AS change, example FROM t WHERE current > previous ORDER BY change DESC, current DESC LIMIT 12`,
+    rationale: "Questions people ask more often than before and nobody answers: content and FAQ entries to write first.",
+  },
+];
+
 const ERAN_SECTIONS: TemplateSection[] = [
   {
     title: "1. What is driving the conversation about us right now? Creators, creatives and channels",
@@ -409,6 +509,15 @@ GROUP BY 1 HAVING count(DISTINCT brand) >= 2 ORDER BY engagement DESC NULLS LAST
       },
     ],
   },
+  {
+    title: "9. What changed since the previous period?",
+    widgets: [
+      { ...CHANGE_WIDGETS[0], w: 12, h: 6 },
+      { ...CHANGE_WIDGETS[1], w: 6, h: 6 },
+      { ...CHANGE_WIDGETS[2], w: 6, h: 6 },
+      { ...CHANGE_WIDGETS[3], w: 12, h: 5 },
+    ],
+  },
 ];
 
 export const TEMPLATES: DashboardTemplate[] = [
@@ -421,7 +530,7 @@ export const TEMPLATES: DashboardTemplate[] = [
   {
     id: "eran",
     name: "Eran's template",
-    description: "Eight strategic questions, each answered with data: what drives the conversation, where intent to buy shows, what the audience loves, ignores or pushes back on, unanswered questions, what to build, emerging needs, and who to partner with.",
+    description: "Eight strategic questions, each answered with data: what drives the conversation, where intent to buy shows, what the audience loves, ignores or pushes back on, unanswered questions, what to build, emerging needs, and who to partner with. Ends with what changed since the previous period.",
     build: () => layoutSections(ERAN_SECTIONS),
   },
   {

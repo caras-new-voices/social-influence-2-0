@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -13,7 +13,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { seriesColor, shapeRows, type Row } from "@/lib/chart-data";
+import {
+  cmpKey,
+  compareTable,
+  delta,
+  desaturate,
+  overlayCompare,
+  seriesColor,
+  shapeCompare,
+  shapeRows,
+  X_CMP,
+  X_CUR,
+  type CompareTableRow,
+  type Row,
+} from "@/lib/chart-data";
 import { formatNumber, prettyKey, type NumberFormat } from "@/lib/format";
 import type { WidgetSpec } from "@/lib/widgets";
 
@@ -216,7 +229,7 @@ export function SegmentedBar({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) 
   );
 }
 
-export function KpiRow({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) {
+export function KpiRow({ rows, spec, compareLabel }: { rows: Row[]; spec: WidgetSpec; compareLabel?: string }) {
   if (!rows.length) return <div className="widget__state">No data</div>;
   const tiles = rows.slice(0, 8);
   return (
@@ -232,8 +245,11 @@ export function KpiRow({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) {
             <div className="kpi__label" title={String(r.label ?? "")}>{String(r.label ?? prettyKey(Object.keys(r)[0]))}</div>
             <div className="kpi__value">{formatNumber(value, fmt)}</div>
             {delta !== undefined && (
-              <div className={`kpi__delta kpi__delta--${dir}`} title={`Benchmark ${formatNumber(compare, fmt)}`}>
-                {dir === "up" ? "▲" : dir === "down" ? "▼" : "•"} {Math.abs(delta * 100).toFixed(0)}% vs benchmark
+              <div
+                className={`kpi__delta kpi__delta--${dir}`}
+                title={r.__cmpFilled && compareLabel ? `Versus ${compareLabel}: ${formatNumber(compare, fmt)}` : `Benchmark ${formatNumber(compare, fmt)}`}
+              >
+                {dir === "up" ? "▲" : dir === "down" ? "▼" : "•"} {Math.abs(delta * 100).toFixed(0)}% vs {r.__cmpFilled && compareLabel ? compareLabel : "benchmark"}
               </div>
             )}
           </div>
@@ -264,6 +280,22 @@ function compareValues(a: unknown, b: unknown): number {
   if (bn) return -1;
   if (typeof a === "number" && typeof b === "number") return a - b;
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
+/** How one table cell renders (links, creator pages, dates, numbers, arrays). */
+function cellContent(r: Row, c: string, fmt?: NumberFormat): ReactNode {
+  const v = r[c];
+  const isLink = typeof v === "string" && /^https?:\/\//.test(v);
+  const isIsoDate = typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
+  const isCreator = typeof v === "string" && v.length > 0 && CREATOR_COLUMNS.has(c.toLowerCase());
+  return isLink ? <a href={v} target="_blank" rel="noreferrer">Open ↗</a>
+    : isCreator ? <Link href={creatorHref(r, v)} className="tbl__creator" title={`Open ${v}'s creator page`}>{v}</Link>
+    : isIsoDate ? v.slice(0, 10)
+    : typeof v === "number" ? formatNumber(v, fmt ?? (Number.isInteger(v) ? "number" : "decimal"))
+    : v === null || v === undefined ? "–"
+    : Array.isArray(v) ? v.join(", ")
+    : typeof v === "object" ? JSON.stringify(v)
+    : String(v);
 }
 
 export function DataTable({ rows, fmt }: { rows: Row[]; fmt?: NumberFormat }) {
@@ -307,19 +339,9 @@ export function DataTable({ rows, fmt }: { rows: Row[]; fmt?: NumberFormat }) {
             <tr key={i}>
               {cols.map((c) => {
                 const v = r[c];
-                const isLink = typeof v === "string" && /^https?:\/\//.test(v);
-                const isIsoDate = typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
-                const isCreator = typeof v === "string" && v.length > 0 && CREATOR_COLUMNS.has(c.toLowerCase());
                 return (
                   <td key={c} className={numeric.includes(c) ? "num" : ""} title={typeof v === "string" && v.length > 24 ? v : undefined}>
-                    {isLink ? <a href={v} target="_blank" rel="noreferrer">Open ↗</a>
-                      : isCreator ? <Link href={creatorHref(r, v)} className="tbl__creator" title={`Open ${v}'s creator page`}>{v}</Link>
-                      : isIsoDate ? v.slice(0, 10)
-                      : typeof v === "number" ? formatNumber(v, fmt ?? (Number.isInteger(v) ? "number" : "decimal"))
-                      : v === null || v === undefined ? "–"
-                      : Array.isArray(v) ? v.join(", ")
-                      : typeof v === "object" ? JSON.stringify(v)
-                      : String(v)}
+                    {cellContent(r, c, fmt)}
                   </td>
                 );
               })}
@@ -328,5 +350,334 @@ export function DataTable({ rows, fmt }: { rows: Row[]; fmt?: NumberFormat }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Comparison mode: two periods in one element                           */
+/* ------------------------------------------------------------------ */
+
+export interface PeriodLabels {
+  current: string;
+  compare: string;
+}
+
+/** Opacity of the comparison period's bars (same hue as the current period). */
+const CMP_OPACITY = 0.45;
+
+function signedNumber(n: number, fmt: NumberFormat): string {
+  const sign = n > 0 ? "+" : n < 0 ? "−" : "±";
+  return `${sign}${formatNumber(Math.abs(n), fmt)}`;
+}
+function signedPct(p: number): string {
+  const v = Math.abs(p * 100);
+  const sign = p > 0 ? "+" : p < 0 ? "−" : "±";
+  return `${sign}${v.toFixed(v < 10 ? 1 : 0)}%`;
+}
+function deltaClass(n: number | null): string {
+  if (n === null || Math.abs(n) < 1e-9) return "";
+  return n > 0 ? "is-up" : "is-down";
+}
+
+interface LegendItem { label: string; color: string; kind: "bar" | "bar-faded" | "line" | "line-dashed" }
+function CompareLegend({ items, note }: { items: LegendItem[]; note?: string }) {
+  return (
+    <div className="chart__legend chart__legend--compare" aria-label="Legend">
+      {items.map((it, i) => (
+        <span key={`${i}:${it.kind}:${it.label}`}>
+          {it.kind === "line-dashed" ? (
+            <i className="line line--dashed" style={{ borderTopColor: it.color }} />
+          ) : (
+            <i className={it.kind === "line" ? "line" : ""} style={{ background: it.color, opacity: it.kind === "bar-faded" ? CMP_OPACITY : 1 }} />
+          )}{" "}
+          {it.label}
+        </span>
+      ))}
+      {note && <span className="chart__legend-note">{note}</span>}
+    </div>
+  );
+}
+
+interface CompareTipProps {
+  active?: boolean;
+  label?: unknown;
+  payload?: Array<{ payload?: Row }>;
+  series: string[];
+  colors: Record<string, string>;
+  fmt: NumberFormat;
+  labels: PeriodLabels;
+  title: (row: Row, label: unknown) => string;
+}
+function CompareTip({ active, label, payload, series, colors, fmt, labels, title }: CompareTipProps) {
+  const row = payload?.[0]?.payload;
+  if (!active || !row) return null;
+  const shown = series.filter((s) => row[s] !== null || row[cmpKey(s)] !== null);
+  return (
+    <div className="tip tip--compare">
+      <div className="tip__title">{title(row, label)}</div>
+      <div className="tip__grid">
+        <span />
+        <span className="tip__colhead">{labels.current}</span>
+        <span className="tip__colhead">{labels.compare}</span>
+        <span className="tip__colhead">Change</span>
+        {shown.map((s) => {
+          const cur = row[s];
+          const prev = row[cmpKey(s)];
+          const d = delta(cur, prev);
+          return (
+            <Fragment key={s}>
+              <span className="tip__name"><i className="tip__key" style={{ background: colors[s] }} />{prettyKey(s)}</span>
+              <b>{formatNumber(cur, fmt)}</b>
+              <span>{formatNumber(prev, fmt)}</span>
+              <span className={`tip__delta ${deltaClass(d.abs)}`}>
+                {d.abs === null ? "–" : `${signedNumber(d.abs, fmt)}${d.pct !== null ? ` (${signedPct(d.pct)})` : ""}`}
+              </span>
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Bars for two periods. Single and multi-series: grouped, the comparison in the same hue at
+ * reduced opacity. Stacked: two stacks per category (current, then comparison).
+ */
+export function CompareBarChart({ rows, compareRows, spec, stacked, labels }: { rows: Row[]; compareRows: Row[]; spec: WidgetSpec; stacked?: boolean; labels: PeriodLabels }) {
+  const shaped = useMemo(() => shapeCompare(rows, compareRows, spec), [rows, compareRows, spec]);
+  const fmt = (spec.format ?? (spec.normalize ? "percent" : "compact")) as NumberFormat;
+  const horizontal = !!spec.horizontal;
+  const tickFmt = (v: unknown) => formatNumber(v, fmt);
+  const { data, xKey, series, colors } = shaped;
+  if (!data.length) return <div className="widget__state">No data</div>;
+  const catWidth = Math.min(150, Math.max(60, Math.max(...data.map((d) => String(d[xKey]).length)) * 6.5));
+  const perCategory = !stacked && series.length === 1 && !!spec.colorBy && spec.colorBy !== "auto";
+  const single = series.length === 1;
+  const swatch = perCategory ? "#5b6478" : colors[series[0]];
+  const legend = single
+    ? <CompareLegend items={[{ label: labels.current, color: swatch, kind: "bar" }, { label: labels.compare, color: swatch, kind: "bar-faded" }]} />
+    : <CompareLegend items={series.map((s) => ({ label: prettyKey(s), color: colors[s], kind: "bar" as const }))} note={`Solid: ${labels.current} · faded: ${labels.compare}`} />;
+  const endRadius: [number, number, number, number] = horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0];
+  const bars = (period: "cur" | "cmp") =>
+    series.map((s, i) => {
+      const last = i === series.length - 1;
+      const key = period === "cur" ? s : cmpKey(s);
+      const opacity = period === "cur" ? 1 : CMP_OPACITY;
+      return (
+        <Bar
+          key={key}
+          dataKey={key}
+          name={key}
+          stackId={stacked ? period : undefined}
+          fill={colors[s]}
+          fillOpacity={opacity}
+          maxBarSize={stacked ? 22 : 18}
+          radius={stacked ? (last ? endRadius : [0, 0, 0, 0]) : endRadius}
+          stroke={stacked ? "#fff" : undefined}
+          strokeWidth={stacked ? 1.5 : 0}
+          isAnimationActive={false}
+        >
+          {perCategory && data.map((d, j) => <Cell key={j} fill={seriesColor(String(d[xKey]), j, spec.colorBy)} fillOpacity={opacity} />)}
+        </Bar>
+      );
+    });
+  // Grouped: current and comparison next to each other per series; stacked: one stack per period.
+  const curBars = bars("cur");
+  const cmpBars = bars("cmp");
+  const ordered = stacked ? [...curBars, ...cmpBars] : curBars.flatMap((b, i) => [b, cmpBars[i]]);
+  return (
+    <>
+      {legend}
+      <div className="chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} layout={horizontal ? "vertical" : "horizontal"} margin={{ top: 6, right: 12, left: 0, bottom: 0 }} barCategoryGap="22%" barGap={2}>
+            <CartesianGrid stroke={GRID} vertical={horizontal} horizontal={!horizontal} />
+            {horizontal ? (
+              <>
+                <XAxis type="number" tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={tickFmt} domain={spec.normalize ? [0, 1] : undefined} />
+                <YAxis type="category" dataKey={xKey} tick={AXIS_TICK} axisLine={false} tickLine={false} width={catWidth} interval={0} />
+              </>
+            ) : (
+              <>
+                {data.length <= 12 ? (
+                  <XAxis dataKey={xKey} tick={<WrappedTick />} axisLine={false} tickLine={false} interval={0} height={34} />
+                ) : (
+                  <XAxis dataKey={xKey} tick={AXIS_TICK} axisLine={false} tickLine={false} minTickGap={16} tickFormatter={tickLabel} />
+                )}
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={tickFmt} width={48} domain={spec.normalize ? [0, 1] : undefined} />
+              </>
+            )}
+            <Tooltip
+              content={<CompareTip series={series} colors={colors} fmt={fmt} labels={labels} title={(_r, l) => tickLabel(l)} />}
+              cursor={{ fill: "rgba(113,50,245,0.06)" }}
+            />
+            {ordered}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+}
+
+/** Lines for two periods overlaid; the comparison is dashed and desaturated. */
+export function CompareLineChart({ rows, compareRows, spec, labels, starts }: { rows: Row[]; compareRows: Row[]; spec: WidgetSpec; labels: PeriodLabels; starts?: { current?: string; compare?: string } }) {
+  const shaped = useMemo(() => overlayCompare(rows, compareRows, spec, starts), [rows, compareRows, spec, starts]);
+  const fmt = (spec.format ?? "compact") as NumberFormat;
+  const { data, xKey, series, colors, grain } = shaped;
+  if (!data.length) return <div className="widget__state">No data</div>;
+  const single = series.length === 1;
+  // Up to three series: one legend entry per series and period. More: series once, periods in a note.
+  const compactLegend = series.length > 3;
+  const items: LegendItem[] = compactLegend
+    ? series.map((s) => ({ label: prettyKey(s), color: colors[s], kind: "line" as const }))
+    : series.flatMap((s) => [
+    { label: single ? labels.current : `${prettyKey(s)} (${labels.current})`, color: colors[s], kind: "line" as const },
+    { label: single ? labels.compare : `${prettyKey(s)} (${labels.compare})`, color: desaturate(colors[s]), kind: "line-dashed" as const },
+  ]);
+  const title = (row: Row, l: unknown) =>
+    grain
+      ? `${String(row.__idx)} · ${row[X_CUR] ? tickLabel(row[X_CUR]) : "–"} vs ${row[X_CMP] ? tickLabel(row[X_CMP]) : "–"}`
+      : tickLabel(l);
+  const dot = data.length <= 2 ? { r: 3 } : false;
+  return (
+    <>
+      <CompareLegend
+        items={items}
+        note={[compactLegend ? `Solid: ${labels.current} · dashed: ${labels.compare}` : "", grain ? `x axis: ${grain} of each period` : ""].filter(Boolean).join(" · ") || undefined}
+      />
+      <div className="chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={GRID} vertical={false} />
+            <XAxis dataKey={xKey} tick={AXIS_TICK} axisLine={false} tickLine={false} minTickGap={20} tickFormatter={grain ? undefined : tickLabel} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => formatNumber(v, fmt)} width={48} />
+            <Tooltip content={<CompareTip series={series} colors={colors} fmt={fmt} labels={labels} title={title} />} cursor={{ stroke: "#cfd5e0", strokeWidth: 1 }} />
+            {series.map((s) => (
+              <Line key={s} type="monotone" dataKey={s} stroke={colors[s]} strokeWidth={2} dot={dot} activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }} isAnimationActive={false} connectNulls />
+            ))}
+            {series.map((s) => (
+              <Line
+                key={cmpKey(s)}
+                type="monotone"
+                dataKey={cmpKey(s)}
+                stroke={desaturate(colors[s])}
+                strokeWidth={1.75}
+                strokeDasharray="5 4"
+                dot={dot}
+                activeDot={{ r: 3, strokeWidth: 2, stroke: "#fff" }}
+                isAnimationActive={false}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Table for two periods: rows joined on the first text column, with Δ and Δ% after every
+ * numeric column. Rows only in the current period are marked new; rows only in the comparison
+ * are appended greyed and marked gone.
+ */
+export function CompareTable({ rows, compareRows, fmt, labels }: { rows: Row[]; compareRows: Row[]; fmt?: NumberFormat; labels: PeriodLabels }) {
+  const data = useMemo(() => compareTable(rows, compareRows), [rows, compareRows]);
+  const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const sorted = useMemo(() => {
+    if (!sort) return data.rows;
+    const value = (r: CompareTableRow): unknown => {
+      const [c, part] = sort.col.split("::");
+      if (part === "abs") return r.deltas[c]?.abs;
+      if (part === "pct") return r.deltas[c]?.pct;
+      return r.row[c];
+    };
+    const present = data.rows.filter((r) => r.status !== "gone");
+    const gone = data.rows.filter((r) => r.status === "gone");
+    const by = (list: CompareTableRow[]) => {
+      const out = [...list].sort((a, b) => compareValues(value(a), value(b)));
+      return sort.dir === "desc" ? out.reverse() : out;
+    };
+    return [...by(present), ...by(gone)];
+  }, [data, sort]);
+  if (!data.rows.length) return <div className="widget__state">No data</div>;
+  const { columns, numeric, keyColumns } = data;
+  const keyCol = keyColumns[0];
+  const isNum = (id: string) => id.includes("::") || numeric.includes(id);
+  const toggle = (id: string) =>
+    setSort((s) => {
+      const first: "asc" | "desc" = isNum(id) ? "desc" : "asc";
+      if (s?.col !== id) return { col: id, dir: first };
+      if (s.dir === first) return { col: id, dir: first === "asc" ? "desc" : "asc" };
+      return null;
+    });
+  const head = (id: string, text: string, title: string, extra = "") => {
+    const active = sort?.col === id;
+    return (
+      <th key={id} className={`${isNum(id) ? "num" : ""} tbl__sortable ${active ? "is-sorted" : ""} ${extra}`} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+        <button type="button" className="tbl__sort" onClick={() => toggle(id)} title={title}>
+          {text}
+          <span className="tbl__arrow" aria-hidden="true">{active ? (sort.dir === "asc" ? "▲" : "▼") : "⇅"}</span>
+        </button>
+      </th>
+    );
+  };
+  const numFmt = (v: number) => fmt ?? (Number.isInteger(v) ? "number" : "decimal");
+  const vs = `${labels.current} vs ${labels.compare}`;
+  return (
+    <>
+      <div className="cmp-caption">
+        {vs}
+        {numeric[0] && !sort ? ` · sorted by the largest change in ${prettyKey(numeric[0]).toLowerCase()}` : ""}
+      </div>
+      <div className="tbl-wrap">
+        <table className="tbl tbl--compare">
+          <thead>
+            <tr>
+              {columns.flatMap((c) =>
+                numeric.includes(c)
+                  ? [
+                      head(c, prettyKey(c), `Sort by ${prettyKey(c)} (${labels.current})`),
+                      head(`${c}::abs`, "Δ", `Change in ${prettyKey(c)}, ${vs}`, "tbl__dhead"),
+                      head(`${c}::pct`, "Δ%", `Relative change in ${prettyKey(c)}, ${vs}`, "tbl__dhead"),
+                    ]
+                  : [head(c, prettyKey(c), `Sort by ${prettyKey(c)}`)],
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r) => (
+              <tr key={`${r.status}:${r.key}`} className={r.status === "gone" ? "tbl__row--gone" : r.status === "new" ? "tbl__row--new" : ""}>
+                {columns.flatMap((c) => {
+                  const v = r.row[c];
+                  if (!numeric.includes(c)) {
+                    return [
+                      <td key={c} title={typeof v === "string" && v.length > 24 ? v : undefined}>
+                        {cellContent(r.row, c, fmt)}
+                        {c === keyCol && r.status !== "both" && (
+                          <span className={`tbl__status tbl__status--${r.status}`} title={r.status === "new" ? `Not in ${labels.compare}` : `Only in ${labels.compare}`}>{r.status}</span>
+                        )}
+                      </td>,
+                    ];
+                  }
+                  const d = r.deltas[c];
+                  const prevTitle = d.prev !== null ? `${labels.compare}: ${formatNumber(d.prev, numFmt(d.prev))}` : `Not in ${labels.compare}`;
+                  return [
+                    <td key={c} className="num" title={r.status === "gone" ? `${labels.compare} value` : prevTitle}>{cellContent(r.row, c, fmt)}</td>,
+                    <td key={`${c}::abs`} className={`num tbl__delta ${deltaClass(d.abs)}`} title={prevTitle}>
+                      {d.abs === null ? "–" : signedNumber(d.abs, numFmt(d.abs))}
+                    </td>,
+                    <td key={`${c}::pct`} className={`num tbl__delta ${deltaClass(d.pct)}`}>
+                      {d.pct === null ? "–" : signedPct(d.pct)}
+                    </td>,
+                  ];
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { rowsToCsv } from "@/lib/format";
-import type { WidgetSpec } from "@/lib/widgets";
+import { formatWindow } from "@/lib/period";
+import { askAboutWidget, EXPLAIN_CHANGE_QUESTION, type WidgetSpec } from "@/lib/widgets";
+import { usePeriod } from "./PeriodContext";
 import { ChatPanel } from "./ChatPanel";
 import { useToast } from "./Toast";
 import { useWidgetRows } from "./WidgetCard";
@@ -25,7 +27,16 @@ export function FocusView({
   onEdit: () => void;
   onAddWidget: (w: WidgetSpec, replaces?: string) => void;
 }) {
-  const { rows, loading, error } = useWidgetRows(widget);
+  const { rows, compareRows, loading, error, window: win } = useWidgetRows(widget);
+  const period = usePeriod();
+  const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number } | undefined>();
+  // "Explain the change" is offered only while the dashboard compares two periods and this element follows it.
+  const comparing = !!period.compareWindow && !!widget.sql && Array.isArray(compareRows);
+  const explainChange = () => {
+    if (!period.compareWindow) return;
+    const ctx = { periodLabel: formatWindow(win), compareLabel: formatWindow(period.compareWindow), rows, compareRows };
+    setAsk({ ...askAboutWidget(widget, ctx), nonce: Date.now() });
+  };
   const [tableView, setTableView] = useState(widget.type === "table");
   const toast = useToast();
   const chartLike = ["bar", "stacked_bar", "line", "segmented", "kpi"].includes(widget.type);
@@ -60,6 +71,11 @@ export function FocusView({
             {widget.subtitle && <div className="im-text-description">{widget.subtitle}</div>}
           </div>
           <div className="row">
+            {comparing && !loading && !error && (
+              <button className="im-btn im-btn-secondary im-btn-sm" onClick={explainChange} title={`Ask the analyst why ${formatWindow(win)} differs from ${formatWindow(period.compareWindow!)}`}>
+                {EXPLAIN_CHANGE_QUESTION}
+              </button>
+            )}
             {chartLike && (
               <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => setTableView((v) => !v)}>{tableView ? "Show chart" : "Show as table"}</button>
             )}
@@ -76,7 +92,7 @@ export function FocusView({
           ) : error ? (
             <div className="widget__state widget__state--error">{error}</div>
           ) : (
-            <WidgetBody spec={widget} rows={rows} tableView={tableView} />
+            <WidgetBody spec={widget} rows={rows} compareRows={compareRows} tableView={tableView} />
           )}
         </div>
         <div className="focus__foot im-text-description">
@@ -91,6 +107,7 @@ export function FocusView({
           onAddWidget={onAddWidget}
           onPrefillConsumed={() => {}}
           scope={{ widget }}
+          ask={ask}
         />
       </div>
     </div>
