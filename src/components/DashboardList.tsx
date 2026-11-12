@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { BRANDS } from "@/lib/brands";
 import { relativeTime } from "@/lib/format";
+import { TEMPLATES, type TemplateId } from "@/lib/templates";
 import type { DashboardRecord } from "@/lib/widgets";
 import { useConfirm } from "./Confirm";
 import { useToast } from "./Toast";
@@ -16,7 +17,7 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [template, setTemplate] = useState<"default" | "blank">("default");
+  const [template, setTemplate] = useState<TemplateId>("default");
   const [creating, setCreating] = useState(false);
 
   const create = async () => {
@@ -66,7 +67,7 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
       {dashboards.length === 0 ? (
         <div className="empty im-card">
           <p className="im-text-sub-header">No dashboards yet</p>
-          <p className="im-text-description" style={{ margin: "0.3rem 0 1rem" }}>Create one from the default template to start with twelve curated elements, or start blank and build with the assistant.</p>
+          <p className="im-text-description" style={{ margin: "0.3rem 0 1rem" }}>Start from a template, or start blank and build with the assistant.</p>
           <button className="im-btn im-btn-primary" onClick={() => setOpen(true)}>Create your first dashboard</button>
         </div>
       ) : (
@@ -98,12 +99,11 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
               <div>
                 <span className="im-label">Start from</span>
                 <div className="grid-2">
-                  <button className={`catalog__item ${template === "default" ? "" : ""}`} style={{ borderColor: template === "default" ? "var(--Primary-600)" : undefined }} onClick={() => setTemplate("default")}>
-                    <b>Default template</b><small>Twelve curated elements: share of voice, trends, sentiment, intent, objections, competitors, creators, markets, top posts, risk, strategy insight.</small>
-                  </button>
-                  <button className="catalog__item" style={{ borderColor: template === "blank" ? "var(--Primary-600)" : undefined }} onClick={() => setTemplate("blank")}>
-                    <b>Blank</b><small>Start empty and build it with the assistant.</small>
-                  </button>
+                  {TEMPLATES.map((t) => (
+                    <button key={t.id} className="catalog__item" style={{ borderColor: template === t.id ? "var(--Primary-600)" : undefined }} onClick={() => setTemplate(t.id)} aria-pressed={template === t.id}>
+                      <b>{t.name}</b><small>{t.description}</small>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
