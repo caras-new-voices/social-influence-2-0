@@ -87,7 +87,6 @@ const NOT_SELF = (col: string) => `${col} NOT ILIKE '%${B}%' AND ${col} NOT ILIK
  * period) the 90 day cut only bites when no period is set.
  */
 const RECENT_POSTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM posts WHERE brand = '${B}') - interval '90 days')`;
-const RECENT_COMMENTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM comments WHERE brand = '${B}') - interval '90 days')`;
 const RECENT_LABEL = "In the selected period (last 90 days when viewing all time)";
 
 /* ------------------------------------------------------------------ */
@@ -452,9 +451,10 @@ FROM comments WHERE use_case_segment IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMI
         type: "line", w: 12, h: 5,
         title: "Category questions over time",
         subtitle: "Monthly unanswered-question comments across all brands, by topic (top 5 topics)",
-        sql: `WITH top AS (SELECT faq_topic FROM comments WHERE faq_topic IS NOT NULL GROUP BY 1 ORDER BY count(*) DESC LIMIT 5)
+        sql: `WITH norm AS (SELECT published_at, replace(lower(faq_topic), ' ', '_') AS faq_topic FROM comments WHERE faq_topic IS NOT NULL),
+ top AS (SELECT faq_topic FROM norm GROUP BY 1 ORDER BY count(*) DESC LIMIT 5)
 SELECT to_char(date_trunc('month', c.published_at), 'YYYY-MM') AS month, c.faq_topic AS topic, count(*)::int AS value
-FROM comments c JOIN top ON top.faq_topic = c.faq_topic
+FROM norm c JOIN top ON top.faq_topic = c.faq_topic
 WHERE c.published_at >= '2025-10-01' AND c.published_at < '2026-09-01'
 GROUP BY 1, 2 ORDER BY 1`,
         x: "month", y: "value", series: "topic", colorBy: "auto", format: "number",

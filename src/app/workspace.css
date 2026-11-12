@@ -321,3 +321,4 @@
 .tbl__status--gone { background: var(--Base-02); color: var(--Base-05); border: 1px solid var(--Base-03); }
 .tbl__row--gone td { color: var(--Base-05); background: var(--Base-01); }
 .tbl__row--gone td a, .tbl__row--gone .tbl__creator { color: var(--Base-05); }
+.cmp-caption--foot { padding: 0.35rem 0.25rem 0 1.6rem; }

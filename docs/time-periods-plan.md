@@ -1,6 +1,6 @@
 # Plan: time periods, new data, and period comparison
 
-Status: proposal, nothing built yet.
+Status: built. All four phases are implemented on this branch; the sections below are the design as proposed, and section 10 records what shipped and where.
 
 ## 1. What we are solving
 
@@ -159,3 +159,15 @@ Phases 1 and 2 are independent of new data and can ship on the current dataset. 
 - **Query performance on Postgres**: the views add a predicate to every query; `published_at` needs an index on both tables (none today). PGlite locally is fine at this size.
 - **Guard hardening**: with period state carried in session settings, the SQL guard becomes security-relevant rather than cosmetic. It needs a small test suite before phase 1 ships.
 - **Auth**: read state for notifications and "my dashboards" need users. Notifications in phase 3 can start per browser, but the plan assumes auth arrives with the hardening phase already agreed.
+
+
+## 10. As built
+
+| Phase | Where | Notes |
+|---|---|---|
+| 1. Period model | `src/lib/period.ts`, `src/lib/coverage.ts`, `src/lib/schema.ts` (views, `period_start()`/`period_end()`), `src/lib/db.ts`, `src/lib/query.ts`, `src/lib/sql-guard.ts`, `src/components/PeriodBar.tsx`, `PeriodContext.tsx`, `Workspace.tsx`, `WidgetEditor.tsx` (per-element override), `src/lib/claude.ts` (`set_period` tool, coverage and period in context) | The period is stored on the dashboard, mirrored in the URL (`?period=2026-06&compare=prev`) and auto-saved. Undated rows stay visible in all-time mode and are excluded inside a window. |
+| 2. Comparison | `src/lib/chart-data.ts`, `src/components/Charts.tsx`, `WidgetBody.tsx`, `FocusView.tsx`, `src/lib/widgets.ts` (`askAboutWidget` with both result sets), `src/lib/templates.ts` (`CHANGE_WIDGETS`, section 9 of Eran's template), `AddWidgetDrawer.tsx` | Elements whose SQL already computes its own previous period (they call `period_start()`) are not overlaid a second time. |
+| 3. Imports and notifications | `src/lib/imports.ts`, `src/lib/period-events.ts`, `src/app/api/imports`, `src/app/api/period-events`, `src/app/api/cron/coverage`, `scripts/import.ts` (`npm run import -- <dir>`), `vercel.json`, `NotificationBell.tsx`, `NewDataBanner.tsx`, `ChatPanel.tsx` (nudge), `usePeriodEvents.ts` | `IMPORT_TOKEN` protects the routes; `NOTIFY_WEBHOOK_URL` forwards events. Email digests and object-storage pointers are not built. A completed month triggers the month-in-review for every dashboard. |
+| 4. Monthly reports | `src/lib/reports.ts`, `src/app/dashboard/[id]/reports`, `src/app/api/dashboards/[id]/reports`, `ReportsView.tsx`, `src/app/reports.css` (print) | Numbers are always live; the review text is frozen when written and can be regenerated. Export is the browser's print to PDF. |
+
+Open items carried from section 9: auth and per-user read state (notifications are per browser), per-period strategy insights from IMAI, and a dedicated test suite for the SQL guard (the checks are exercised by hand today).

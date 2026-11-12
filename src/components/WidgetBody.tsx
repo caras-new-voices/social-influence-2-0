@@ -52,7 +52,7 @@ export function WidgetBody({ spec, rows, compareRows, tableView }: { spec: Widge
     return (
       <>
         <WidgetBody spec={spec} rows={rows} tableView={tableView} />
-        <div className="cmp-caption">Compares with the period before on its own; the dashboard comparison is not drawn here</div>
+        <div className="cmp-caption cmp-caption--foot">Compares with the period before on its own; the dashboard comparison is not drawn here</div>
       </>
     );
   }
@@ -74,7 +74,7 @@ export function WidgetBody({ spec, rows, compareRows, tableView }: { spec: Widge
       return (
         <>
           <SegmentedBar rows={rows} spec={spec} />
-          {hasCompare(compareRows) && <div className="cmp-caption">Comparison not shown for this chart type</div>}
+          {hasCompare(compareRows) && <div className="cmp-caption cmp-caption--foot">Comparison not shown for this chart type</div>}
         </>
       );
     default:

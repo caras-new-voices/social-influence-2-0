@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout } from "react-grid-layout";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ALL_TIME, formatWindow, periodFromParams, periodToParams, resolveCompare, resolveWindow, type PeriodState } from "@/lib/period";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
 import { NewDataBanner } from "./NewDataBanner";
@@ -36,13 +36,10 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
 
   // Global period: the URL wins (shareable links), then the saved dashboard period, then all time.
-  const [period, setPeriodState] = useState<PeriodState>(() => {
-    if (typeof window !== "undefined") {
-      const fromUrl = periodFromParams(new URLSearchParams(window.location.search));
-      if (fromUrl) return fromUrl;
-    }
-    return dashboard.period ?? ALL_TIME;
-  });
+  // The URL wins (shareable links), then the saved dashboard period, then all time. useSearchParams is
+  // known on the server too, so the first render matches on both sides.
+  const searchParams = useSearchParams();
+  const [period, setPeriodState] = useState<PeriodState>(() => periodFromParams(searchParams) ?? dashboard.period ?? ALL_TIME);
   const periodSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setPeriod = useCallback((next: PeriodState) => {
     setPeriodState(next);
