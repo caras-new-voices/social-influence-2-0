@@ -271,6 +271,12 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
         />
         <div className="ws__canvas">
           <NewDataBanner dashboardId={dashboard.id} />
+          {dashboard.onboarding && !dashboard.onboarding.completedAt && (
+            <div className="resume-banner" role="status">
+              <span>Setup in progress: question {Math.min(dashboard.onboarding.currentStep, dashboard.onboarding.order.length)} of {dashboard.onboarding.order.length} answered. The elements land here when you finish.</span>
+              <Link className="im-btn im-btn-primary im-btn-sm" href={`/dashboard/new/guided?dashboard=${dashboard.id}`}>Resume setup</Link>
+            </div>
+          )}
           <PeriodBar counts={periodCounts} />
           <DashboardCanvas
             widgets={widgets}
