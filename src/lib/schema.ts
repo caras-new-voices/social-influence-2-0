@@ -125,6 +125,11 @@ const MIGRATIONS = `
 ALTER TABLE segments DROP COLUMN IF EXISTS brandwatch_query;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS followups jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS period jsonb;
+ALTER TABLE imports ADD COLUMN IF NOT EXISTS influencers_updated integer NOT NULL DEFAULT 0;
+ALTER TABLE imports ADD COLUMN IF NOT EXISTS segments_upserted integer NOT NULL DEFAULT 0;
+ALTER TABLE imports ADD COLUMN IF NOT EXISTS finished_at timestamptz;
+CREATE INDEX IF NOT EXISTS period_events_kind_idx ON period_events (kind, period_start);
+CREATE INDEX IF NOT EXISTS imports_received_idx ON imports (received_at DESC);
 `;
 
 /** Databases created before the period views have physical tables named posts and comments: rename them. */

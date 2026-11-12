@@ -62,7 +62,7 @@ export interface MonthReportRow {
   review: StoredReport | null;
 }
 
-export interface StoredReport {
+export type StoredReport = {
   id: number;
   dashboard_id: string;
   period_start: string;
@@ -71,7 +71,7 @@ export interface StoredReport {
   model: string | null;
   data: Record<string, unknown> | null;
   created_at: string;
-}
+};
 
 const B = FOCAL_BRAND.name;
 const KPI_SQL = `

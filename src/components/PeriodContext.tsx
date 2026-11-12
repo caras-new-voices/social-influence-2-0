@@ -4,6 +4,8 @@ import { ALL_TIME, resolveCompare, resolveWindow, type Coverage, type PeriodStat
 
 export interface PeriodContextValue {
   state: PeriodState;
+  /** Bumped when new data arrives so elements refetch. */
+  dataVersion: number;
   /** Main window derived from state (empty object means all time). */
   window: PeriodWindow;
   /** Comparison window, or null when comparison is off. */
@@ -12,7 +14,7 @@ export interface PeriodContextValue {
   coverage: Coverage | null;
 }
 
-const Ctx = createContext<PeriodContextValue>({ state: ALL_TIME, window: {}, compareWindow: null, setState: () => {}, coverage: null });
+const Ctx = createContext<PeriodContextValue>({ state: ALL_TIME, dataVersion: 0, window: {}, compareWindow: null, setState: () => {}, coverage: null });
 
 export function usePeriod(): PeriodContextValue {
   return useContext(Ctx);
@@ -29,12 +31,17 @@ export function fetchCoverage(force = false): Promise<Coverage> {
 
 export function PeriodProvider({ state, onChange, children }: { state: PeriodState; onChange: (next: PeriodState) => void; children: ReactNode }) {
   const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [dataVersion, setDataVersion] = useState(0);
   useEffect(() => {
     fetchCoverage().then(setCoverage).catch(() => {});
+    // Fired by the period-events poller when an import landed: refresh coverage and every element.
+    const onData = () => { fetchCoverage(true).then(setCoverage).catch(() => {}); setDataVersion((v) => v + 1); };
+    window.addEventListener("si:data-updated", onData);
+    return () => window.removeEventListener("si:data-updated", onData);
   }, []);
   const value = useMemo<PeriodContextValue>(
-    () => ({ state, window: resolveWindow(state), compareWindow: resolveCompare(state), setState: onChange, coverage }),
-    [state, onChange, coverage],
+    () => ({ state, dataVersion, window: resolveWindow(state), compareWindow: resolveCompare(state), setState: onChange, coverage }),
+    [state, dataVersion, onChange, coverage],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

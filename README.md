@@ -46,6 +46,8 @@ Serverless functions have a 300 second limit configured for the chat route (`max
 | `CLAUDE_EFFORT` | `low`, `medium` (default), `high`, `xhigh`, `max`. |
 | `CLAUDE_FALLBACKS` | Server-side refusal fallbacks are on by default; set `0` to disable. |
 | `MOCK_LLM` | Set `1` to force demo mode. |
+| `IMPORT_TOKEN` | When set, `POST /api/imports`, `GET /api/imports` and `/api/cron/coverage` require `Authorization: Bearer <token>` (Vercel's `CRON_SECRET` is accepted for the cron). Unset means open (local). |
+| `NOTIFY_WEBHOOK_URL` | Optional: every new period event is POSTed there as JSON (`{ type: "period_event", event }`). |
 
 ## Project layout
 
@@ -63,7 +65,10 @@ src/lib/period.ts     period model: month/range/all time, comparison windows, UR
 src/lib/coverage.ts   what the dataset covers, per month, from the data and the import log
 src/lib/brands.ts     brand context and the validated categorical palette
 src/components/       workspace UI (chat panel, proposal cards, grid canvas, charts, editor)
-src/app/api/          dashboards, chat (NDJSON stream), widget data, status
+src/lib/imports.ts    incremental imports (idempotent upserts, import log)
+src/lib/period-events.ts  month_started / completed / revised / missing detection
+scripts/import.ts     CLI import (npm run import -- <dir>)
+src/app/api/          dashboards, chat (NDJSON stream), widget data, status, imports, period-events, cron
 ```
 
 ## Rebuilding the dataset
@@ -75,3 +80,25 @@ python3 -I scripts/build_seed.py /path/to/csvs
 ```
 
 Then bump `SEED_VERSION` in `src/lib/schema.ts` so existing databases reload, or drop the four data tables.
+
+## Importing new data
+
+New exports are loaded incrementally; the bundled seed counts as the first import. Files use the normalised column layout of `data/seed` (raw IMAI CSVs go through `scripts/build_seed.py` first).
+
+```bash
+# a folder with any of segments, posts, comments, influencers as .json, .json.gz or .csv
+npm run import -- /path/to/export --source imai-2026-08 --from 2026-08-01 --to 2026-08-31
+```
+
+With local PGlite stop `next dev` first (one process per database). Over HTTP, `POST /api/imports` takes `{ source, covers_from, covers_to, segments, posts, comments, influencers }` as JSON (up to 8 MB; Vercel caps bodies at 4.5 MB, so use the CLI against `DATABASE_URL` for bigger drops). `--from`/`--to` (`covers_from`/`covers_to`) are the export's own date range and default to the min and max `published_at` of the batch.
+
+Loading is idempotent: posts and comments are upserted on `(segment_id, post_id)` / `(segment_id, comment_id)` and their metrics refreshed, influencers and segments are replaced. Each import is logged in `imports` (`GET /api/imports`) and compared with the coverage before it, producing `period_events` (`GET /api/period-events?since=<id>`):
+
+| Event | When |
+|---|---|
+| `month_started` | a month had no rows and now has some |
+| `month_completed` | the coverage now reaches the end of the month |
+| `month_revised` | an already complete month changed its post or comment count |
+| `month_missing` | the daily cron (`vercel.json`, `/api/cron/coverage`) found last calendar month still incomplete |
+
+Events drive the header bell, the "July 2026 data is in" banner on dashboards and the analyst's "summarise what changed" nudge (read state per browser), plus the optional webhook.

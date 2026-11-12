@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout } from "react-grid-layout";
 import { useRouter } from "next/navigation";
-import { ALL_TIME, periodFromParams, periodToParams, resolveWindow, type PeriodState } from "@/lib/period";
+import { ALL_TIME, formatWindow, periodFromParams, periodToParams, resolveCompare, resolveWindow, type PeriodState } from "@/lib/period";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
+import { NewDataBanner } from "./NewDataBanner";
 import { PeriodBar } from "./PeriodBar";
 import { PeriodProvider } from "./PeriodContext";
 import { fetchWidgetRows } from "./WidgetCard";
@@ -270,6 +271,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           onSetPeriod={setPeriod}
         />
         <div className="ws__canvas">
+          <NewDataBanner dashboardId={dashboard.id} />
           <PeriodBar counts={periodCounts} />
           <DashboardCanvas
             widgets={widgets}
@@ -278,7 +280,19 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
             onRemove={(id) => { mutate((ws) => ws.filter((w) => w.id !== id)); toast("Element removed"); }}
             onAsk={(id) => {
               const w = widgets.find((x) => x.id === id);
-              if (w) setAsk({ ...askAboutWidget(w), nonce: Date.now() });
+              if (!w) return;
+              // In compare mode "Ask AI" becomes "Explain the change": both result sets go to the analyst.
+              const compareWin = resolveCompare(period);
+              const inherits = !w.period || w.period === "inherit";
+              if (!compareWin || !inherits || !w.sql) {
+                setAsk({ ...askAboutWidget(w), nonce: Date.now() });
+                return;
+              }
+              const win = resolveWindow(period);
+              void fetchWidgetRows(w.sql, win, compareWin).then((res) => {
+                const ctx = res.error ? undefined : { periodLabel: formatWindow(win), compareLabel: formatWindow(compareWin), rows: res.rows, compareRows: res.compareRows };
+                setAsk({ ...askAboutWidget(w, ctx), nonce: Date.now() });
+              });
             }}
             onExpand={(id) => setFocusId(id)}
             onVoice={(id, rows) => {

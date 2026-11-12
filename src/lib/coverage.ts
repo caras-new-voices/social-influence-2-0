@@ -1,5 +1,5 @@
 import { getDb } from "./db";
-import { addMonths, monthEnd, toIsoDate, type Coverage, type MonthCoverage } from "./period";
+import { addDays, addMonths, monthEnd, toIsoDate, type Coverage, type MonthCoverage } from "./period";
 import { ensureReady } from "./schema";
 
 /**
@@ -32,7 +32,7 @@ export async function getCoverage(): Promise<Coverage> {
     const lastMonth = rows[rows.length - 1].month;
     while (m <= lastMonth) {
       const r = byMonth.get(m);
-      months.push({ month: m, posts: Number(r?.posts ?? 0), comments: Number(r?.comments ?? 0), complete: !!coveredTo && coveredTo >= toIsoDate(new Date(`${monthEnd(m)}T00:00:00Z`)) });
+      months.push({ month: m, posts: Number(r?.posts ?? 0), comments: Number(r?.comments ?? 0), complete: !!coveredTo && coveredTo >= addDays(monthEnd(m), -1) });
       m = addMonths(`${m}-01`, 1).slice(0, 7);
     }
   }

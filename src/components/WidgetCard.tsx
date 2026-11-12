@@ -50,7 +50,7 @@ export function useWidgetRows(spec: WidgetSpec, preloaded?: Row[]) {
   const period = usePeriod();
   const win = effectiveWindow(period.window, spec.period);
   const compare = spec.period && spec.period !== "inherit" ? null : period.compareWindow;
-  const key = `${windowKey(win)}|${windowKey(compare)}|${spec.sql ?? ""}`;
+  const key = `${period.dataVersion}|${windowKey(win)}|${windowKey(compare)}|${spec.sql ?? ""}`;
   const needsFetch = !preloaded && !!spec.sql && isDataWidget(spec.type);
   const [result, setResult] = useState<{ key?: string; rows: Row[]; compareRows?: Row[]; error?: string }>({ rows: [] });
   useEffect(() => {
