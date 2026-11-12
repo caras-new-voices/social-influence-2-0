@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { deleteDashboard, duplicateDashboard, getDashboard, updateDashboard } from "@/lib/dashboards";
 import { PeriodStateSchema } from "@/lib/period";
+import { OnboardingStateSchema } from "@/lib/wizard";
 import { WidgetSpecSchema } from "@/lib/widgets";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ const PatchSchema = z.object({
   description: z.string().max(600).nullable().optional(),
   widgets: z.array(WidgetSpecSchema).optional(),
   period: PeriodStateSchema.nullable().optional(),
+  onboarding: OnboardingStateSchema.nullable().optional(),
 });
 
 export async function PUT(req: Request, ctx: Ctx) {

@@ -44,9 +44,10 @@ export function monthsWithData(c: Coverage): MonthCoverage[] {
   return c.months.filter((m) => m.posts + m.comments > 0).slice().reverse();
 }
 
-/** Latest complete month, or the latest month with data. */
+/** Latest complete month with a meaningful amount of posts (a trailing month with a handful of stray rows does not count), else the latest month with data. */
 export function latestMonth(c: Coverage): string | null {
-  const complete = c.months.filter((m) => m.complete && m.posts + m.comments > 0);
+  const maxPosts = Math.max(0, ...c.months.map((m) => m.posts));
+  const complete = c.months.filter((m) => m.complete && m.posts >= Math.max(1, maxPosts * 0.1));
   if (complete.length) return complete[complete.length - 1].month;
   const any = monthsWithData(c);
   return any[0]?.month ?? null;

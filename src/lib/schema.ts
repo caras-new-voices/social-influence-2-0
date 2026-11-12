@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS dashboards (
   description text,
   widgets jsonb NOT NULL DEFAULT '[]'::jsonb,
   period jsonb,
+  onboarding jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -125,6 +126,7 @@ const MIGRATIONS = `
 ALTER TABLE segments DROP COLUMN IF EXISTS brandwatch_query;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS followups jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS period jsonb;
+ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS onboarding jsonb;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS influencers_updated integer NOT NULL DEFAULT 0;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS segments_upserted integer NOT NULL DEFAULT 0;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS finished_at timestamptz;

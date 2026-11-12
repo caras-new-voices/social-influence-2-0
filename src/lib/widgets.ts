@@ -95,6 +95,8 @@ export interface DashboardRecord {
   widgets: WidgetSpec[];
   /** Global time period for the dashboard; null means all time. */
   period: PeriodState | null;
+  /** Guided setup state; null when the dashboard was not created through the wizard (or it finished and was cleared). */
+  onboarding?: import("./wizard").OnboardingState | null;
   created_at: string;
   updated_at: string;
 }

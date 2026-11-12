@@ -14,13 +14,13 @@ export interface DashboardTemplate {
   build: () => WidgetSpec[];
 }
 
-type TemplateWidget = Omit<WidgetSpec, "id" | "layout"> & { w: number; h: number };
-interface TemplateSection {
+export type TemplateWidget = Omit<WidgetSpec, "id" | "layout"> & { w: number; h: number };
+export interface TemplateSection {
   title: string;
   widgets: TemplateWidget[];
 }
 
-function layoutSections(sections: TemplateSection[]): WidgetSpec[] {
+export function layoutSections(sections: TemplateSection[]): WidgetSpec[] {
   const out: WidgetSpec[] = [];
   let y = 0;
   for (const s of sections) {
@@ -80,7 +80,7 @@ export function buildDefaultWidgets(): WidgetSpec[] {
 
 const B = FOCAL_BRAND.name;
 /** Mentions of the focal brand itself (and its parent brand name) are not partners or competitors. */
-const NOT_SELF = (col: string) => `${col} NOT ILIKE '%${B}%' AND ${col} NOT ILIKE '%gil%ette%'`;
+export const NOT_SELF = (col: string) => `${col} NOT ILIKE '%${B}%' AND ${col} NOT ILIKE '%gil%ette%'`;
 /**
  * "Right now" means the dashboard period when one is selected, otherwise the last 90 days of
  * tracked activity for the focal brand. Inside the posts/comments views (already filtered to the

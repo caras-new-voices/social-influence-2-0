@@ -1,12 +1,19 @@
 import { getDb } from "./db";
 import { ensureReady } from "./schema";
 import { PeriodStateSchema, type PeriodState } from "./period";
+import { OnboardingStateSchema, type OnboardingState } from "./wizard";
 import { buildTemplate, type TemplateId } from "./templates";
 import { newId, type DashboardRecord, type WidgetSpec } from "./widgets";
 
 function parsePeriod(v: unknown): PeriodState | null {
   if (v == null) return null;
   const parsed = PeriodStateSchema.safeParse(typeof v === "string" ? JSON.parse(v) : v);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseOnboarding(v: unknown): OnboardingState | null {
+  if (v == null) return null;
+  const parsed = OnboardingStateSchema.safeParse(typeof v === "string" ? JSON.parse(v) : v);
   return parsed.success ? parsed.data : null;
 }
 
@@ -17,6 +24,7 @@ function rowToRecord(r: Record<string, unknown>): DashboardRecord {
     description: (r.description as string | null) ?? null,
     widgets: (typeof r.widgets === "string" ? JSON.parse(r.widgets) : r.widgets) as WidgetSpec[],
     period: parsePeriod(r.period),
+    onboarding: parseOnboarding(r.onboarding),
     created_at: new Date(r.created_at as string).toISOString(),
     updated_at: new Date(r.updated_at as string).toISOString(),
   };
@@ -50,7 +58,7 @@ export async function createDashboard(input: { name: string; description?: strin
 
 export async function updateDashboard(
   id: string,
-  patch: { name?: string; description?: string | null; widgets?: WidgetSpec[]; period?: PeriodState | null },
+  patch: { name?: string; description?: string | null; widgets?: WidgetSpec[]; period?: PeriodState | null; onboarding?: OnboardingState | null },
 ): Promise<DashboardRecord | null> {
   await ensureReady();
   const db = await getDb();
@@ -71,6 +79,10 @@ export async function updateDashboard(
   if (patch.period !== undefined) {
     params.push(patch.period ? JSON.stringify(patch.period) : null);
     sets.push(`period = $${params.length}::jsonb`);
+  }
+  if (patch.onboarding !== undefined) {
+    params.push(patch.onboarding ? JSON.stringify(patch.onboarding) : null);
+    sets.push(`onboarding = $${params.length}::jsonb`);
   }
   if (!sets.length) return getDashboard(id);
   params.push(id);

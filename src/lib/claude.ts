@@ -8,7 +8,7 @@ import { getDb, type Row } from "./db";
 import { runWidgetQuery } from "./query";
 import { ensureReady } from "./schema";
 import { DATASET_DOC } from "./schema-doc";
-import { materialize, ProposedWidgetSchema, START_SCAN_LABEL, type WidgetSpec } from "./widgets";
+import { materialize, ProposedWidgetSchema, START_SCAN_LABEL, type ProposedWidget, type WidgetSpec } from "./widgets";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -39,6 +39,8 @@ export interface ChatTurnInput {
   widgets: WidgetSummary[];
   /** The dashboard's current period; queries run within it. */
   period?: PeriodState;
+  /** Guided setup: the scripted text and the element recipes for this step (used by demo mode; the LLM path gets them through `instruction`). */
+  wizard?: { text: string; proposals: ProposedWidget[] };
 }
 
 type MsgParam = Anthropic.Beta.BetaMessageParam;
@@ -697,7 +699,34 @@ const MOCK_FOLLOWUPS: Record<string, string[]> = {
   default: ["Split this by platform", "Show it month by month", "Show me example comments"],
 };
 
+/** Demo-mode guided setup: streams the scripted sentences and proposes the step's personalised recipes. */
+async function* mockWizardTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGenerator<ChatEvent> {
+  const wiz = input.wizard!;
+  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
+  const proposals: Array<{ widget: WidgetSpec }> = [];
+  for (const w of wiz.text.split(/(\s+)/)) {
+    yield { type: "text", delta: w };
+    await new Promise((r) => setTimeout(r, 6));
+  }
+  for (const p of wiz.proposals) {
+    yield { type: "status", text: `Preparing: ${p.title}` };
+    const widget = materialize(p, [...existing, ...proposals.map((x) => x.widget)]);
+    const res = widget.sql ? await runWidgetQuery(widget.sql, 500, resolveWindow(input.period)) : ({ ok: true, rows: [] as Row[] } as const);
+    const rows = res.ok ? res.rows : [];
+    yield { type: "query", sql: widget.sql ?? "", ok: res.ok, rows: rows.length, error: res.ok ? undefined : res.error };
+    if (!res.ok) continue;
+    proposals.push({ widget });
+    yield { type: "widget", widget, data: rows };
+  }
+  const id = await storeMessage(input.dashboardId, { role: "assistant", content: wiz.text, proposals, api_content: [{ type: "text", text: wiz.text }] });
+  yield { type: "done", messageId: id };
+}
+
 async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGenerator<ChatEvent> {
+  if (input.wizard) {
+    yield* mockWizardTurn(input, existing);
+    return;
+  }
   await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
   const isScan = (input.instruction ?? input.userText).startsWith(START_SCAN_LABEL);
   const recipes = isScan
