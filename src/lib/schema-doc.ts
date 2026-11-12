@@ -7,7 +7,9 @@ export const DATASET_DOC = `
 Company: ${COMPANY}. Focal brand: ${FOCAL_BRAND.name}. Tracked brands (column \`brand\`, exact strings):
 ${BRANDS.map((b) => `- '${b.name}' (${b.role}${b.name === "Mercadona" ? ", tiny sample of 24 posts: Spanish retailer's own-label razors" : ""})`).join("\n")}
 
-Period: posts from 2025-10-01 to 2026-07-31 (a couple of stray August rows), comments to 2026-09-06. Platforms: 'tiktok', 'instagram', 'youtube'.
+Coverage (exact dates and the period currently selected on the dashboard are given in the dashboard context of each message). Platforms: 'tiktok', 'instagram', 'youtube'.
+
+Time periods: the dashboard has a global period. posts and comments are views that are already filtered to that period when a query runs (by the post's or the comment's own published_at). To look outside the period (previous-period benchmarks, lifetime totals, first-seen dates) query posts_all and comments_all, which are never filtered. period_start() and period_end() return the current window bounds as timestamptz (NULL when all time); use them with posts_all to build a previous-period benchmark, e.g. WHERE published_at >= period_start() - (period_end() - period_start()) AND published_at < period_start(). A widget whose SQL uses only posts/comments follows the period bar automatically; one that must ignore it can be proposed with period 'all'.
 Row counts: posts 6,168 (Estrid 2,228, Philips OneBlade 1,715, Venus 1,597, Veet 331, Wilkinson Sword 273, Mercadona 24), comments 31,688, influencers 3,332 (one row per creator per brand), segments 6.
 
 ## Table posts (one row per creator post that mentions the brand)

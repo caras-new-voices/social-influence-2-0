@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore, type ReactNode } from "react";
+import { NotificationBell } from "./NotificationBell";
 
 const Icon = {
   grid: (
@@ -108,7 +109,7 @@ export function Shell({ title, actions, children, titleSlot }: { title: string; 
       <div className="main">
         <header className="topbar">
           <div className="topbar__title">{titleSlot ?? <h1>{title}</h1>}</div>
-          <div className="topbar__actions">{actions}</div>
+          <div className="topbar__actions"><NotificationBell />{actions}</div>
         </header>
         <main className="content" style={{ padding: 0 }}>{children}</main>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { DEFAULT_WIDGETS, type WidgetSpec } from "@/lib/widgets";
+import { CHANGE_WIDGETS } from "@/lib/templates";
 
 type Template = Omit<WidgetSpec, "id" | "layout">;
 
@@ -37,6 +38,15 @@ export function AddWidgetDrawer({ onAdd, onClose }: { onAdd: (t: Template) => vo
           <span className="im-micro-label">Default elements</span>
           <div className="catalog">
             {DEFAULT_WIDGETS.map((t) => (
+              <button key={t.title} className="catalog__item" onClick={() => onAdd(t)}>
+                <span className="im-badge" style={{ alignSelf: "flex-start" }}>{t.type.replace("_", " ")}</span>
+                <b>{t.title}</b><small>{t.rationale}</small>
+              </button>
+            ))}
+          </div>
+          <span className="im-micro-label">Change over time</span>
+          <div className="catalog">
+            {CHANGE_WIDGETS.map((t) => (
               <button key={t.title} className="catalog__item" onClick={() => onAdd(t)}>
                 <span className="im-badge" style={{ alignSelf: "flex-start" }}>{t.type.replace("_", " ")}</span>
                 <b>{t.title}</b><small>{t.rationale}</small>

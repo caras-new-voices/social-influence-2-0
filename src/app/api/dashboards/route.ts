@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createDashboard, listDashboards } from "@/lib/dashboards";
+import { isTemplateId } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +13,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => ({}))) as { name?: string; description?: string; template?: "default" | "blank" };
+  const body = (await req.json().catch(() => ({}))) as { name?: string; description?: string; template?: string };
   const name = (body.name ?? "").trim() || "Untitled dashboard";
   const dashboard = await createDashboard({
     name,
     description: body.description,
-    template: body.template === "blank" ? "blank" : "default",
+    template: isTemplateId(body.template) ? body.template : "default",
   });
   return NextResponse.json({ dashboard }, { status: 201 });
 }

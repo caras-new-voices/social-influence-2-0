@@ -2,9 +2,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent, DisplayMessage, WidgetSummary } from "@/lib/claude";
 import { FOCUS_QUESTIONS, INTENTS, questionAboutWidget, START_SCAN_INSTRUCTION, START_SCAN_LABEL, STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
+import type { PeriodState } from "@/lib/period";
 import { useConfirm } from "./Confirm";
+import { usePeriod } from "./PeriodContext";
 import { ProposalCard, type Proposal } from "./ProposalCard";
+import { eventMonth, latestDataEvent, previousMonth, useStoredNumber, usePeriodEvents, writeNumber } from "./usePeriodEvents";
 import { Markdown } from "./WidgetBody";
+import { formatMonth } from "@/lib/period";
 
 interface QueryLog { sql: string; ok: boolean; rows?: number; error?: string }
 interface UiMessage {
@@ -28,6 +32,7 @@ export function ChatPanel({
   onPrefillConsumed,
   ask,
   scope,
+  onSetPeriod,
 }: {
   dashboardId: string;
   widgets: WidgetSpec[];
@@ -39,7 +44,10 @@ export function ChatPanel({
   ask?: { text: string; instruction: string; nonce: number };
   /** Focused mode: every question is about one element; history is not loaded. */
   scope?: { widget: WidgetSpec };
+  /** Called when the analyst changes the dashboard period (set_period tool). */
+  onSetPeriod?: (p: PeriodState) => void;
 }) {
+  const period = usePeriod();
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -135,6 +143,7 @@ export function ChatPanel({
             message: trimmed,
             instruction: instruction ?? (scope ? questionAboutWidget(scope.widget, trimmed) : undefined),
             widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })),
+            period: period.state,
           }),
           signal: ctrl.signal,
         });
@@ -161,6 +170,7 @@ export function ChatPanel({
             else if (ev.type === "query") patch((m) => ({ ...m, queries: [...m.queries, { sql: ev.sql, ok: ev.ok, rows: ev.rows, error: ev.error }] }));
             else if (ev.type === "widget") patch((m) => ({ ...m, proposals: [...m.proposals, { widget: ev.widget, data: ev.data, replaces: ev.replaces }] }));
             else if (ev.type === "followups") patch((m) => ({ ...m, followups: ev.items }));
+            else if (ev.type === "period") onSetPeriod?.(ev.period);
             else if (ev.type === "error") patch((m) => ({ ...m, error: ev.message, status: undefined }));
             else if (ev.type === "done") patch((m) => ({ ...m, streaming: false, status: undefined }));
           }
@@ -173,7 +183,7 @@ export function ChatPanel({
         abortRef.current = null;
       }
     },
-    [busy, dashboardId, widgets, scope],
+    [busy, dashboardId, widgets, scope, period.state, onSetPeriod],
   );
 
   sendRef.current = send;
@@ -195,6 +205,32 @@ export function ChatPanel({
     if (!ok) return;
     await fetch(`/api/dashboards/${dashboardId}/messages`, { method: "DELETE" });
     setMessages([]);
+  };
+
+  // Nudge when a new month lands: same source as the dashboard banner, dismissed per dashboard.
+  const dataEvents = usePeriodEvents();
+  const nudgeKey = `si.nudge.dismissed.${dashboardId}`;
+  const nudgeDismissed = useStoredNumber(nudgeKey);
+  const nudgeEvent = scope ? null : latestDataEvent(dataEvents);
+  const nudge = nudgeEvent && nudgeEvent.id > nudgeDismissed
+    ? (() => {
+        const month = eventMonth(nudgeEvent);
+        const label = formatMonth(month);
+        const prevLabel = formatMonth(previousMonth(month));
+        return {
+          id: nudgeEvent.id,
+          label,
+          lead: nudgeEvent.kind === "month_revised" ? `New data was added to ${label}.` : `A new month was added (${label}).`,
+          prevLabel,
+          summary: `Summarise what changed in ${label} versus ${prevLabel} for Venus: posts, engagement, sentiment, top creators, objections. Propose one element for the biggest change.`,
+          highlights: `What are the three most important things in the ${label} data for Venus and its competitors? Use ${label} only.`,
+        };
+      })()
+    : null;
+  const takeNudge = (question: string) => {
+    if (!nudge) return;
+    writeNumber(nudgeKey, nudge.id);
+    void send(question);
   };
 
   const widgetTitle = (id?: string) => widgets.find((w) => w.id === id)?.title;
@@ -227,7 +263,7 @@ export function ChatPanel({
         {messages.length === 0 && !scope && (
           <>
             <div className="chat__intro">
-              Ask anything about <strong>Venus</strong> and its competitors across <strong>6,168 creator posts</strong> and <strong>31,688 comments</strong>. I answer with real numbers and propose dashboard elements you can add, refine, or dismiss.
+              Ask anything about <strong>Venus</strong> and its competitors across <strong>{(period.coverage?.posts ?? 6168).toLocaleString("en-US")} creator posts</strong> and <strong>{(period.coverage?.comments ?? 31688).toLocaleString("en-US")} comments</strong>. I answer with real numbers and propose dashboard elements you can add, refine, or dismiss.
             </div>
             <div className="chat__start">
               <div className="grow">
@@ -303,6 +339,21 @@ export function ChatPanel({
             )}
           </div>
         ))}
+        {nudge && (
+          <div className="nudge" role="status">
+            <div className="nudge__head">
+              <span className="im-micro-label">New data</span>
+              <button className="im-btn im-btn-ghost im-btn-icon nudge__close" onClick={() => writeNumber(nudgeKey, nudge.id)} aria-label="Dismiss" title="Dismiss">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+            <p>{nudge.lead} Want a summary of what changed versus {nudge.prevLabel.split(" ")[0]}?</p>
+            <div className="nudge__actions">
+              <button className="im-btn im-btn-primary im-btn-sm" onClick={() => takeNudge(nudge.summary)} disabled={busy}>Summarise vs {nudge.prevLabel.split(" ")[0]}</button>
+              <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => takeNudge(nudge.highlights)} disabled={busy}>{nudge.label.split(" ")[0]} highlights</button>
+            </div>
+          </div>
+        )}
         <div ref={spacerRef} aria-hidden="true" style={{ flex: "none" }} />
       </div>
       <div className="chat__compose">

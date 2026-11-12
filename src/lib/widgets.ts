@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WidgetPeriodSchema, type PeriodState } from "./period";
 
 /**
  * A widget is a saved query plus a rendering recipe. The chat assistant proposes
@@ -37,6 +38,8 @@ export const WidgetSpecSchema = z.object({
   content: z.string().max(8000).optional(),
   /** Why this widget was proposed; shown in the proposal card. */
   rationale: z.string().max(600).optional(),
+  /** Time window: inherit the dashboard period (default), ignore it ("all"), or a fixed window. */
+  period: WidgetPeriodSchema.optional(),
   layout: LayoutSchema,
 });
 export type WidgetSpec = z.infer<typeof WidgetSpecSchema>;
@@ -90,6 +93,8 @@ export interface DashboardRecord {
   name: string;
   description: string | null;
   widgets: WidgetSpec[];
+  /** Global time period for the dashboard; null means all time. */
+  period: PeriodState | null;
   created_at: string;
   updated_at: string;
 }
@@ -292,8 +297,54 @@ export const INTENTS: Intent[] = [
 export const START_SCAN_LABEL = "Where should I start?";
 export const START_SCAN_INSTRUCTION = `Where should I start? Run a quick scan of the data for me: query share of voice by brand and platform, the monthly engagement trend, comment sentiment and purchase intent by brand, and the top objections. Then give me exactly three short observations about Venus versus its competitors (one or two sentences each, with the key numbers), and call propose_widget once for each observation so I can add a matching element. Keep the whole reply under 170 words.`;
 
+/** Period context for "Ask AI" when the dashboard compares two periods. */
+export interface AskContext {
+  periodLabel: string;
+  compareLabel?: string;
+  rows?: Record<string, unknown>[];
+  compareRows?: Record<string, unknown>[];
+}
+
+const ASK_MAX_ROWS = 25;
+const ASK_MAX_STRING = 120;
+
+/** Compact JSON of at most 25 rows, long strings cut to 120 characters. */
+export function compactRowsJson(rows: Record<string, unknown>[] | undefined): string {
+  const list = (rows ?? []).slice(0, ASK_MAX_ROWS).map((r) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) out[k] = typeof v === "string" && v.length > ASK_MAX_STRING ? `${v.slice(0, ASK_MAX_STRING)}…` : v;
+    return out;
+  });
+  const more = rows && rows.length > ASK_MAX_ROWS ? ` (first ${ASK_MAX_ROWS} of ${rows.length} rows)` : "";
+  return `${JSON.stringify(list)}${more}`;
+}
+
+function isComparing(ctx: AskContext | undefined): ctx is AskContext & { compareLabel: string; compareRows: Record<string, unknown>[] } {
+  return !!ctx?.compareLabel && Array.isArray(ctx.compareRows);
+}
+
+function compareBlock(w: WidgetSpec, ctx: AskContext & { compareLabel: string; compareRows: Record<string, unknown>[] }): string {
+  return [
+    `The dashboard is comparing ${ctx.periodLabel} (current) with ${ctx.compareLabel} (comparison). The element's query was run once for each period.`,
+    `Result for ${ctx.periodLabel}: ${compactRowsJson(ctx.rows)}`,
+    `Result for ${ctx.compareLabel}: ${compactRowsJson(ctx.compareRows)}`,
+    `Explain the biggest movements between the two periods in "${w.title}": name the three to five largest changes with both numbers and the change, then find the reasons behind them with follow-up queries (use posts_all and comments_all with explicit date filters to look at either period, e.g. which creators, posts, platforms or comment themes account for the change). Separate real shifts from volume effects (more posts or comments overall). Finish with what it means for Venus and propose one or two follow-up elements with propose_widget that would track or explain the change.`,
+  ].join("\n\n");
+}
+
 /** Builds the chat request sent when the person clicks "Ask AI" on a dashboard element. */
-export function askAboutWidget(w: WidgetSpec): { text: string; instruction: string } {
+export function askAboutWidget(w: WidgetSpec, ctx?: AskContext): { text: string; instruction: string } {
+  if (w.sql && isComparing(ctx)) {
+    return {
+      text: `Explain the change in "${w.title}"`,
+      instruction: [
+        `Explain the change in the dashboard element "${w.title}"${w.subtitle ? ` (${w.subtitle})` : ""}. Its id is ${w.id} and its type is ${w.type}.`,
+        `It is defined by this SQL:\n${w.sql}`,
+        compareBlock(w, ctx),
+        `If you propose a replacement for this element, call propose_widget with replaces_widget_id set to ${w.id}.`,
+      ].join("\n\n"),
+    };
+  }
   const text = `Tell me about "${w.title}"`;
   const lines = [
     `Tell me about the dashboard element "${w.title}"${w.subtitle ? ` (${w.subtitle})` : ""}. Its id is ${w.id} and its type is ${w.type}.`,
@@ -313,10 +364,19 @@ export function askAboutWidget(w: WidgetSpec): { text: string; instruction: stri
 }
 
 /** Wraps a free question with the element's definition, for the focused (full-screen) chat. */
-export function questionAboutWidget(w: WidgetSpec, question: string): string {
+export function questionAboutWidget(w: WidgetSpec, question: string, ctx?: AskContext): string {
   const def = w.sql ? `It is defined by this SQL:\n${w.sql}` : w.content ? `Its content is:\n${w.content}` : "It is a section header.";
-  return `The person is looking at the dashboard element "${w.title}"${w.subtitle ? ` (${w.subtitle})` : ""}, id ${w.id}, type ${w.type}. ${def}\n\nAnswer their question about this element, running the element's query or variations of it as needed. If you propose a refinement, call propose_widget with replaces_widget_id set to ${w.id}.\n\nQuestion: ${question}`;
+  const base = `The person is looking at the dashboard element "${w.title}"${w.subtitle ? ` (${w.subtitle})` : ""}, id ${w.id}, type ${w.type}. ${def}`;
+  const answer = `Answer their question about this element, running the element's query or variations of it as needed. If you propose a refinement, call propose_widget with replaces_widget_id set to ${w.id}.`;
+  if (w.sql && isComparing(ctx)) {
+    const explain = question.trim() === EXPLAIN_CHANGE_QUESTION;
+    return `${base}\n\n${explain ? compareBlock(w, ctx) : `The dashboard is comparing ${ctx.periodLabel} with ${ctx.compareLabel}.\n\nResult for ${ctx.periodLabel}: ${compactRowsJson(ctx.rows)}\n\nResult for ${ctx.compareLabel}: ${compactRowsJson(ctx.compareRows)}`}\n\n${answer}\n\nQuestion: ${question}`;
+  }
+  return `${base}\n\n${answer}\n\nQuestion: ${question}`;
 }
+
+/** Quick question offered in the focused chat when the dashboard compares two periods. */
+export const EXPLAIN_CHANGE_QUESTION = "Explain the change";
 
 /** Quick questions offered in the focused chat. */
 export const FOCUS_QUESTIONS: string[] = [
@@ -326,6 +386,11 @@ export const FOCUS_QUESTIONS: string[] = [
   "Show how this changed over time",
   "Give me example comments behind this",
 ];
+
+/** The focused chat's quick questions; "Explain the change" leads when a comparison is active. */
+export function focusQuestions(comparing: boolean): string[] {
+  return comparing ? [EXPLAIN_CHANGE_QUESTION, ...FOCUS_QUESTIONS] : FOCUS_QUESTIONS;
+}
 
 /** Starter questions surfaced in the chat panel. */
 export const STARTER_QUESTIONS: string[] = [

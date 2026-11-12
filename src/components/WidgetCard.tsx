@@ -2,42 +2,76 @@
 import { useEffect, useState } from "react";
 import type { Row } from "@/lib/chart-data";
 import { rowsToCsv } from "@/lib/format";
+import { effectiveWindow, formatWindow, windowKey, type PeriodWindow } from "@/lib/period";
 import { isDataWidget, type WidgetSpec } from "@/lib/widgets";
+import { usePeriod } from "./PeriodContext";
 import { useToast } from "./Toast";
 import { WidgetBody } from "./WidgetBody";
 
-const cache = new Map<string, Promise<{ rows: Row[]; error?: string }>>();
-
-export function fetchWidgetRows(sql: string): Promise<{ rows: Row[]; error?: string }> {
-  if (!cache.has(sql)) {
-    const p = fetch("/api/widgets/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql }) })
-      .then(async (r) => {
-        const j = (await r.json()) as { rows?: Row[]; error?: string };
-        if (!r.ok) return { rows: [], error: j.error ?? "Query failed" };
-        return { rows: j.rows ?? [] };
-      })
-      .catch((e: Error) => ({ rows: [], error: e.message }));
-    cache.set(sql, p);
-    p.then((res) => { if (res.error) cache.delete(sql); });
-  }
-  return cache.get(sql)!;
+export interface WidgetData {
+  rows: Row[];
+  /** Rows for the comparison window when comparison is on. */
+  compareRows?: Row[];
+  error?: string;
 }
 
+const cache = new Map<string, Promise<WidgetData>>();
+
+/** Drops cached results; call after new data is imported. */
+export function clearWidgetCache() {
+  cache.clear();
+}
+
+export function fetchWidgetRows(sql: string, window?: PeriodWindow | null, compare?: PeriodWindow | null): Promise<WidgetData> {
+  const key = `${windowKey(window)}|${windowKey(compare)}|${sql}`;
+  if (!cache.has(key)) {
+    const p = fetch("/api/widgets/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql, window: window && (window.start || window.end) ? window : undefined, compare: compare ?? undefined }),
+    })
+      .then(async (r) => {
+        const j = (await r.json()) as { rows?: Row[]; compareRows?: Row[]; error?: string };
+        if (!r.ok) return { rows: [], error: j.error ?? "Query failed" };
+        return { rows: j.rows ?? [], compareRows: j.compareRows };
+      })
+      .catch((e: Error) => ({ rows: [], error: e.message }));
+    cache.set(key, p);
+    p.then((res) => { if (res.error) cache.delete(key); });
+  }
+  return cache.get(key)!;
+}
+
+/**
+ * Rows for a widget within the dashboard period (honouring the widget's own period override).
+ * `preloaded` rows (from a chat proposal) are used as-is.
+ */
 export function useWidgetRows(spec: WidgetSpec, preloaded?: Row[]) {
+  const period = usePeriod();
+  const win = effectiveWindow(period.window, spec.period);
+  const compare = spec.period && spec.period !== "inherit" ? null : period.compareWindow;
+  const key = `${period.dataVersion}|${windowKey(win)}|${windowKey(compare)}|${spec.sql ?? ""}`;
   const needsFetch = !preloaded && !!spec.sql && isDataWidget(spec.type);
-  const [result, setResult] = useState<{ sql?: string; rows: Row[]; error?: string }>({ rows: [] });
+  const [result, setResult] = useState<{ key?: string; rows: Row[]; compareRows?: Row[]; error?: string }>({ rows: [] });
   useEffect(() => {
     if (!needsFetch || !spec.sql) return;
     let alive = true;
-    const sql = spec.sql;
-    fetchWidgetRows(sql).then((res) => alive && setResult({ sql, rows: res.rows, error: res.error }));
+    fetchWidgetRows(spec.sql, win, compare).then((res) => alive && setResult({ key, rows: res.rows, compareRows: res.compareRows, error: res.error }));
     return () => {
       alive = false;
     };
-  }, [spec.sql, needsFetch]);
-  if (!needsFetch) return { rows: preloaded ?? [], loading: false, error: undefined };
-  const fresh = result.sql === spec.sql;
-  return { rows: fresh ? result.rows : [], loading: !fresh, error: fresh ? result.error : undefined };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, needsFetch]);
+  if (!needsFetch) return { rows: preloaded ?? [], compareRows: undefined, loading: false, error: undefined, window: win };
+  const fresh = result.key === key;
+  return { rows: fresh ? result.rows : [], compareRows: fresh ? result.compareRows : undefined, loading: !fresh, error: fresh ? result.error : undefined, window: win };
+}
+
+/** Small badge shown on elements that do not follow the dashboard period. */
+export function PeriodBadge({ spec }: { spec: WidgetSpec }) {
+  if (!spec.period || spec.period === "inherit") return null;
+  const label = spec.period === "all" ? "All time" : formatWindow(spec.period);
+  return <span className="im-badge widget__period" title={spec.period === "all" ? "This element ignores the dashboard period" : "This element is pinned to a fixed window"}>{label}</span>;
 }
 
 const I = {
@@ -92,7 +126,7 @@ export function WidgetCard({
   onExpand: () => void;
   onVoice: (rows: Row[]) => void;
 }) {
-  const { rows, loading, error } = useWidgetRows(spec);
+  const { rows, compareRows, loading, error } = useWidgetRows(spec);
   const [tableView, setTableView] = useState(false);
   const toast = useToast();
   const chartLike = ["bar", "stacked_bar", "line", "segmented", "kpi"].includes(spec.type);
@@ -125,7 +159,7 @@ export function WidgetCard({
       <VoiceButton title={spec.title} onClick={() => onVoice(rows)} />
       <div className="widget__head drag-handle">
         <div className="grow">
-          <div className="widget__title">{spec.title}</div>
+          <div className="widget__title">{spec.title} <PeriodBadge spec={spec} /></div>
           {spec.subtitle && <div className="widget__sub">{spec.subtitle}</div>}
         </div>
         <div className="widget__toolbar no-drag">
@@ -151,7 +185,7 @@ export function WidgetCard({
         ) : error ? (
           <div className="widget__state widget__state--error">{error}</div>
         ) : (
-          <WidgetBody spec={spec} rows={rows} tableView={tableView} />
+          <WidgetBody spec={spec} rows={rows} compareRows={compareRows} tableView={tableView} />
         )}
       </div>
     </div>

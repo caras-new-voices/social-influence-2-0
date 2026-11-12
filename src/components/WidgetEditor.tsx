@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { effectiveWindow, addDays, ISO_DATE, type WidgetPeriod } from "@/lib/period";
+import { usePeriod } from "./PeriodContext";
 import type { Row } from "@/lib/chart-data";
 import { WIDGET_TYPES, isDataWidget, type WidgetSpec } from "@/lib/widgets";
 import { Markdown, WidgetBody } from "./WidgetBody";
 
-async function runSql(sql: string): Promise<{ rows: Row[]; error?: string }> {
-  const r = await fetch("/api/widgets/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql }) });
+async function runSql(sql: string, win?: { start?: string; end?: string }): Promise<{ rows: Row[]; error?: string }> {
+  const r = await fetch("/api/widgets/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql, window: win }) });
   const j = (await r.json()) as { rows?: Row[]; error?: string };
   if (!r.ok) return { rows: [], error: j.error ?? "Query failed" };
   return { rows: j.rows ?? [] };
@@ -13,6 +15,10 @@ async function runSql(sql: string): Promise<{ rows: Row[]; error?: string }> {
 
 export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec; onSave: (w: WidgetSpec) => void; onClose: () => void }) {
   const [spec, setSpec] = useState<WidgetSpec>(initial);
+  const period = usePeriod();
+  const winStart = effectiveWindow(period.window, spec.period).start;
+  const winEnd = effectiveWindow(period.window, spec.period).end;
+  const win = useMemo(() => ({ start: winStart, end: winEnd }), [winStart, winEnd]);
   const [result, setResult] = useState<{ rows: Row[]; error?: string }>({ rows: [] });
   const [running, setRunning] = useState(false);
   const [assistRequest, setAssistRequest] = useState("");
@@ -39,7 +45,7 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
         set("sql", j.sql);
         setAssistRequest("");
         setAssistOut({ kind: "modify", text: `${j.summary ?? "Query updated."} ${j.rowCount ?? 0} rows, columns: ${(j.columns ?? []).join(", ")}.${j.warning ? ` ${j.warning}` : ""}` });
-        setResult(await runSql(j.sql));
+        setResult(await runSql(j.sql, win));
       }
     } catch (e) {
       setAssistOut({ kind: "error", text: (e as Error).message });
@@ -54,18 +60,18 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
   const run = async () => {
     if (!spec.sql) return;
     setRunning(true);
-    const res = await runSql(spec.sql);
+    const res = await runSql(spec.sql, win);
     setResult(res);
     setRunning(false);
   };
   useEffect(() => {
     if (!initial.sql) return;
     let alive = true;
-    runSql(initial.sql).then((res) => alive && setResult(res));
+    runSql(initial.sql, win).then((res) => alive && setResult(res));
     return () => {
       alive = false;
     };
-  }, [initial.sql]);
+  }, [initial.sql, win]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -93,6 +99,7 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
               </select>
             </label>
           </div>
+          {dataType && <PeriodField value={spec.period} onChange={(v) => setSpec((s) => ({ ...s, period: v }))} />}
           {dataType && (
             <>
               <div className="editor-grid">
@@ -160,7 +167,7 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
                   <div className={`assist__out ${assistOut.kind === "error" ? "assist__out--error" : ""}`}>
                     {assistOut.kind === "explain" ? <Markdown text={assistOut.text} /> : <p>{assistOut.text}</p>}
                     {assistOut.kind === "modify" && previousSql && (
-                      <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => { set("sql", previousSql); setPreviousSql(null); setAssistOut(null); void runSql(previousSql).then(setResult); }}>Revert to previous query</button>
+                      <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => { set("sql", previousSql); setPreviousSql(null); setAssistOut(null); void runSql(previousSql, win).then(setResult); }}>Revert to previous query</button>
                     )}
                   </div>
                 )}
@@ -186,6 +193,34 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
           <button className="im-btn im-btn-primary" onClick={() => onSave(spec)} disabled={!spec.title.trim()}>Save changes</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/** Per-element time window: follow the dashboard period, ignore it, or pin a fixed window. */
+function PeriodField({ value, onChange }: { value: WidgetPeriod | undefined; onChange: (v: WidgetPeriod | undefined) => void }) {
+  const mode = !value || value === "inherit" ? "inherit" : value === "all" ? "all" : "fixed";
+  const fixed = typeof value === "object" ? value : null;
+  const [start, setStart] = useState(fixed?.start ?? "");
+  const [end, setEnd] = useState(fixed?.end ? addDays(fixed.end, -1) : "");
+  const apply = (a: string, b: string) => { if (ISO_DATE.test(a) && ISO_DATE.test(b) && a <= b) onChange({ start: a, end: addDays(b, 1) }); };
+  return (
+    <div className="editor-grid">
+      <label><span className="im-label">Time window</span>
+        <select className="im-select" value={mode} onChange={(e) => { const v = e.target.value; if (v === "inherit") onChange(undefined); else if (v === "all") onChange("all"); else apply(start, end); }}>
+          <option value="inherit">Follow the dashboard period</option>
+          <option value="all">All time (ignore the period)</option>
+          <option value="fixed">Fixed window</option>
+        </select>
+      </label>
+      {mode === "fixed" && (
+        <>
+          <label><span className="im-label">From</span><input className="im-input" type="date" value={start} onChange={(e) => { setStart(e.target.value); apply(e.target.value, end); }} /></label>
+          <label><span className="im-label">To (inclusive)</span><input className="im-input" type="date" value={end} onChange={(e) => { setEnd(e.target.value); apply(start, e.target.value); }} /></label>
+        </>
+      )}
+      {mode !== "fixed" && <span className="im-text-description" style={{ alignSelf: "end", paddingBottom: "0.5rem" }}>{mode === "inherit" ? "The element shows the window chosen in the period bar." : "Lifetime numbers, whatever the period bar shows."}</span>}
     </div>
   );
 }

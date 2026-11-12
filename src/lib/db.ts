@@ -11,8 +11,11 @@ export interface Db {
   query<T extends Row = Row>(sql: string, params?: unknown[]): Promise<T[]>;
   /** Runs one or more statements without parameters (DDL). */
   exec(sql: string): Promise<void>;
-  /** Runs a single statement inside a READ ONLY transaction with a statement timeout. */
-  queryReadOnly<T extends Row = Row>(sql: string, timeoutMs?: number): Promise<T[]>;
+  /**
+   * Runs a single statement inside a READ ONLY transaction with a statement timeout.
+   * `settings` are applied with set_config(..., true) so they live only for that transaction.
+   */
+  queryReadOnly<T extends Row = Row>(sql: string, timeoutMs?: number, settings?: Record<string, string>): Promise<T[]>;
 }
 
 const g = globalThis as unknown as { __siDb?: Promise<Db> };
@@ -51,11 +54,12 @@ async function createPg(url: string): Promise<Db> {
     async exec(sql: string) {
       await pool.query(sql);
     },
-    async queryReadOnly<T extends Row>(sql: string, timeoutMs = 8000) {
+    async queryReadOnly<T extends Row>(sql: string, timeoutMs = 8000, settings: Record<string, string> = {}) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN READ ONLY");
         await client.query(`SET LOCAL statement_timeout = ${Math.max(1000, Math.floor(timeoutMs))}`);
+        for (const [k, v] of Object.entries(settings)) await client.query("SELECT set_config($1, $2, true)", [k, v]);
         const res = await client.query(sql);
         return res.rows as T[];
       } finally {
@@ -91,10 +95,11 @@ async function createPglite(): Promise<Db> {
     async exec(sql: string) {
       await db.exec(sql);
     },
-    async queryReadOnly<T extends Row>(sql: string, timeoutMs = 8000) {
+    async queryReadOnly<T extends Row>(sql: string, timeoutMs = 8000, settings: Record<string, string> = {}) {
       return db.transaction(async (tx) => {
         await tx.query("SET TRANSACTION READ ONLY");
         await tx.query(`SET LOCAL statement_timeout = ${Math.max(1000, Math.floor(timeoutMs))}`);
+        for (const [k, v] of Object.entries(settings)) await tx.query("SELECT set_config($1, $2, true)", [k, v]);
         const res = await tx.query<T>(sql);
         return res.rows;
       });

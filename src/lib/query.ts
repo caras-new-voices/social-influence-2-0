@@ -1,5 +1,6 @@
 import { getDb, type Row } from "./db";
 import { ensureReady } from "./schema";
+import { ISO_DATE, type PeriodWindow } from "./period";
 import { capRows, guardSql, MAX_ROWS } from "./sql-guard";
 
 export interface QueryResult {
@@ -20,15 +21,26 @@ function normalizeCell(v: unknown): unknown {
   return v;
 }
 
-/** Runs read-only SQL with a row cap. Used both for saved widgets and the assistant's queries. */
-export async function runWidgetQuery(sql: string, limit = MAX_ROWS): Promise<QueryResult | QueryFailure> {
+/** Transaction-local settings that make the posts and comments views filter to a window. */
+export function periodSettings(window?: PeriodWindow | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (window?.start && ISO_DATE.test(window.start)) out["app.period_start"] = window.start;
+  if (window?.end && ISO_DATE.test(window.end)) out["app.period_end"] = window.end;
+  return out;
+}
+
+/**
+ * Runs read-only SQL with a row cap. Used both for saved widgets and the assistant's queries.
+ * `window` restricts the posts and comments views to [start, end); omit it for all time.
+ */
+export async function runWidgetQuery(sql: string, limit = MAX_ROWS, window?: PeriodWindow | null): Promise<QueryResult | QueryFailure> {
   const guarded = guardSql(sql);
   if (!guarded.ok) return { ok: false, error: guarded.reason };
   await ensureReady();
   const db = await getDb();
   const started = Date.now();
   try {
-    const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1));
+    const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1), 8000, periodSettings(window));
     const truncated = rows.length > limit;
     const sliced = rows
       .slice(0, limit)
