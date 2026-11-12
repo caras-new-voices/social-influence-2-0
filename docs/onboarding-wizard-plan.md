@@ -1,6 +1,6 @@
 # Plan: guided onboarding ("Eight questions to build your dashboard")
 
-Status: proposal, nothing built yet.
+Status: built. Section 8 records what shipped and the decisions taken.
 
 ## 1. What we are solving
 
@@ -140,3 +140,19 @@ Phases A and B can run in parallel; C depends on B. Total about six to eight wor
 - **Default view for new dashboards.** Recommended: latest complete month with comparison to the previous month, because the wizard's "what the data says" sentences read better about a month than about all time. Can be switched in step 0.
 - **Question order by goal.** The mapping from goals to question order is editorial; the table in 3.1 is a first draft to review with Eran.
 - **Who else sees the onboarding conversation.** It becomes part of the dashboard's chat, visible to everyone with the dashboard. Fine for the proof of concept; with auth, it should be attributed to the person who ran it.
+
+
+## 8. As built
+
+Decisions taken: the wizard is its own page (`/dashboard/new/guided`, resumable with `?dashboard=<id>`); personalisation is chips mapped to known columns plus free-text adjust through the normal propose-and-preview loop; new dashboards open on the latest complete month compared with the previous month; questions are reordered by goal.
+
+| Piece | Where |
+|---|---|
+| Step definitions, chips, personalised recipes, goal ordering, instructions for the analyst, demo text | `src/lib/wizard.ts` |
+| Demo-mode wizard turn (streams the scripted sentences and proposes the recipes) | `src/lib/claude.ts` (`mockWizardTurn`) |
+| APIs: start (creates the blank dashboard with onboarding state, serves the definition), step (streams a step or a free message), finish (lays out sections, sets the period, marks complete) | `src/app/api/wizard/{start,step,finish}/route.ts` |
+| Onboarding state on the dashboard | `dashboards.onboarding` (`OnboardingStateSchema`), `src/lib/dashboards.ts` |
+| The wizard page: rail, progress, step 0, question steps with chips, streamed analyst text, proposals (Add / Adjust / Dismiss / Add all), discuss box, Skip, Build the rest for me, summary, resume | `src/components/OnboardingWizard.tsx`, `WizardProposalCard.tsx`, `src/app/wizard.css`, `src/app/dashboard/new/guided/page.tsx` |
+| Three-card New dashboard dialog, "Setup in progress" badge, resume banner | `src/components/DashboardList.tsx`, `src/components/Workspace.tsx` |
+
+Not built: prefetching the next step, funnel and usage events (each wizard step is already a stored analyst turn, which is what metering will count), and attribution of the onboarding conversation to a person (needs auth). Accepted elements are kept in the browser until finish; resuming in another browser keeps the choices and fills those questions with defaults.
