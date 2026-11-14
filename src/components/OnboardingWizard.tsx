@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BRANDS, FOCAL_BRAND } from "@/lib/brands";
+import { competitorNames, focalName } from "@/lib/brands";
 import type { ChatEvent } from "@/lib/claude";
 import { addDays, ALL_TIME, formatMonth, monthPeriod, type Coverage, type PeriodState } from "@/lib/period";
 import type { DashboardRecord, WidgetSpec } from "@/lib/widgets";
@@ -50,7 +50,6 @@ interface StepView {
 
 type Accepted = Partial<Record<StepId, WidgetSpec[]>>;
 
-const COMPETITORS = BRANDS.filter((b) => b.role === "competitor").map((b) => b.name);
 const VIEWS: Array<{ id: WizardAnswers["view"]; label: string }> = [
   { id: "month", label: "Latest complete month vs previous" },
   { id: "all", label: "All time" },
@@ -389,7 +388,7 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
   };
 
   const goalLabel = def?.goals.find((g) => g.id === answers.goal)?.label ?? "";
-  const defaultName = goalChosen && answers.goal !== "unsure" ? `${FOCAL_BRAND.name} · ${goalLabel}` : `${FOCAL_BRAND.name} dashboard`;
+  const defaultName = goalChosen && answers.goal !== "unsure" ? `${focalName()} · ${goalLabel}` : `${focalName()} dashboard`;
   const finalName = (name ?? defaultName).trim() || defaultName;
 
   const finish = async () => {
@@ -541,7 +540,7 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
           <AiMark />
           <div className="wiz__say">
             <p>
-              I have <b>{fmt(cov.posts)} creator posts</b> and <b>{fmt(cov.comments)} comments</b> about {FOCAL_BRAND.name} and {COMPETITORS.length} competitors{span}.
+              I have <b>{fmt(cov.posts)} creator posts</b> and <b>{fmt(cov.comments)} comments</b> about {focalName()} and {competitorNames().length} competitors{span}.
             </p>
             <p>{def.intro.replace(/^I have the creator posts and audience comments about [^.]+\.\s*/, "")}</p>
           </div>
@@ -550,10 +549,10 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
         <fieldset className="wiz__group">
           <legend>Competitors to track</legend>
           <div className="wiz__chips">
-            {COMPETITORS.map((c) => {
+            {competitorNames().map((c) => {
               const on = answers.competitors.includes(c);
               return (
-                <Chip key={c} pressed={on} onClick={() => setAnswers((a) => ({ ...a, competitors: on ? a.competitors.filter((x) => x !== c) : COMPETITORS.filter((x) => x === c || a.competitors.includes(x)) }))}>
+                <Chip key={c} pressed={on} onClick={() => setAnswers((a) => ({ ...a, competitors: on ? a.competitors.filter((x) => x !== c) : competitorNames().filter((x) => x === c || a.competitors.includes(x)) }))}>
                   {c}
                 </Chip>
               );

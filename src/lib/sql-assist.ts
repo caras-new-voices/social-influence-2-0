@@ -1,7 +1,7 @@
 import { llmMode } from "./claude";
 import { complete } from "./llm";
 import { runWidgetQuery } from "./query";
-import { DATASET_DOC } from "./schema-doc";
+import { datasetDoc } from "./schema-doc";
 
 export interface AssistWidget {
   title?: string;
@@ -15,9 +15,9 @@ export type AssistResult =
   | { mode: "explain"; explanation: string }
   | { mode: "modify"; sql: string; summary: string; columns: string[]; rowCount: number; warning?: string };
 
-const SYSTEM = `You help an analyst edit the SQL behind a dashboard element in the Social Influence workspace. Postgres only; a single SELECT or WITH statement; no semicolons; never name third-party data providers.
+const system = () => `You help an analyst edit the SQL behind a dashboard element in the Social Influence workspace. Postgres only; a single SELECT or WITH statement; no semicolons; never name third-party data providers.
 
-${DATASET_DOC}`;
+${datasetDoc()}`;
 
 function widgetContext(w: AssistWidget): string {
   return `Element: "${w.title ?? "untitled"}" (type ${w.type ?? "unknown"}${w.x ? `, x column ${w.x}` : ""}${w.y ? `, value column ${w.y}` : ""}${w.series ? `, series column ${w.series}` : ""}).`;
@@ -45,7 +45,7 @@ export async function assistSql(input: { mode: "explain" | "modify"; sql: string
 
   if (input.mode === "explain") {
     const text = await complete(
-      SYSTEM,
+      system(),
       `${ctx}\n\nExplain this SQL to a marketing analyst who does not write SQL. Use plain language, at most 120 words: what data it reads, how it filters and groups, and what each output column means. Use markdown bullets. Do not repeat the SQL.\n\n\`\`\`sql\n${input.sql}\n\`\`\``,
       700,
     );
@@ -60,7 +60,7 @@ export async function assistSql(input: { mode: "explain" | "modify"; sql: string
   while (attempt < 2) {
     attempt++;
     const text = await complete(
-      SYSTEM,
+      system(),
       `${ctx}\n\nCurrent SQL:\n\`\`\`sql\n${input.sql}\n\`\`\`\n\nRequested change: ${request}\n${lastError ? `\nYour previous attempt failed with: ${lastError}. Fix it.\n` : ""}
 Rewrite the SQL to apply the change. Keep the output columns compatible with the element where possible (same column names for x, value and series), unless the change requires otherwise. Reply with exactly two parts: first a one-sentence summary of what changed, then the full new SQL in a \`\`\`sql fenced block. Nothing else.`,
       1500,

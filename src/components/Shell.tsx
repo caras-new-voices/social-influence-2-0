@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useWorkspace } from "./WorkspaceProvider";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { NotificationBell } from "./NotificationBell";
 
@@ -65,6 +66,7 @@ function useSidebarCollapsed(defaultCollapsed: boolean): [boolean, () => void] {
 
 export function Shell({ title, actions, children, titleSlot }: { title: string; actions?: ReactNode; titleSlot?: ReactNode; children: ReactNode }) {
   const path = usePathname();
+  const ws = useWorkspace();
   const active = (href: string) => (href === "/" ? path === "/" || path.startsWith("/dashboard") : path.startsWith(href));
   const [collapsed, toggle] = useSidebarCollapsed(path.startsWith("/dashboard"));
 
@@ -104,7 +106,7 @@ export function Shell({ title, actions, children, titleSlot }: { title: string; 
         {item("UGC", Icon.video)}
         {item("PR Workspace", Icon.news)}
         {item("LLM Workspace", Icon.bot)}
-        <div className="sidebar__foot">Proof of concept · P&amp;G Venus</div>
+        <div className="sidebar__foot">Proof of concept · {[ws.company, ws.focal].filter(Boolean).join(" ")}</div>
       </aside>
       <div className="main">
         <header className="topbar">

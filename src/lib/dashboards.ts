@@ -2,7 +2,8 @@ import { getDb } from "./db";
 import { ensureReady } from "./schema";
 import { PeriodStateSchema, type PeriodState } from "./period";
 import { OnboardingStateSchema, type OnboardingState } from "./wizard";
-import { buildTemplate, type TemplateId } from "./templates";
+import { buildTemplateForWorkspace, skippedNote } from "./template-build";
+import type { TemplateId } from "./templates";
 import { newId, type DashboardRecord, type WidgetSpec } from "./widgets";
 
 function parsePeriod(v: unknown): PeriodState | null {
@@ -48,11 +49,17 @@ export async function createDashboard(input: { name: string; description?: strin
   await ensureReady();
   const db = await getDb();
   const id = newId("d");
-  const widgets = buildTemplate(input.template);
+  const built = await buildTemplateForWorkspace(input.template);
+  const widgets = built.widgets;
   const rows = await db.query(
     `INSERT INTO dashboards (id, name, description, widgets) VALUES ($1, $2, $3, $4::jsonb) RETURNING *`,
     [id, input.name, input.description ?? null, JSON.stringify(widgets)],
   );
+  const note = skippedNote(built.skipped);
+  if (note) {
+    // Tell the person, in the dashboard's own chat, what the starter left out and why.
+    await db.query(`INSERT INTO chat_messages (dashboard_id, role, content, api_content) VALUES ($1, 'assistant', $2, $3::jsonb)`, [id, note, JSON.stringify([{ type: "text", text: note }])]);
+  }
   return rowToRecord(rows[0]);
 }
 

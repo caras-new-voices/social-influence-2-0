@@ -1,5 +1,5 @@
 import { Shell } from "@/components/Shell";
-import { BRANDS } from "@/lib/brands";
+import { getBrands, getWorkspace } from "@/lib/brands";
 import { getDatasetStats } from "@/lib/dataset-stats";
 import { formatNumber, languageName, prettyKey } from "@/lib/format";
 import "./data.css";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const fmtDate = (iso: string) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
 const fmtMonth = (iso: string) => (iso ? new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "–");
 const pct = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "–");
-const color = (b: string) => BRANDS.find((x) => x.name === b)?.color ?? "#9ca8be";
+const color = (b: string) => getBrands().find((x) => x.name === b)?.color ?? "#9ca8be";
 
 function Meter({ value, total, label }: { value: number; total: number; label?: string }) {
   const share = total ? value / total : 0;
@@ -62,7 +62,7 @@ export default async function DataPage() {
         {/* 1. Overview */}
         <section className="ds__section">
           <h2 className="im-text-header">What this dataset is</h2>
-          <p className="im-text-description">A social-listening export covering creator posts about six {`female hair removal`} brands, the audience comments on those posts, and profiles of the creators. Collected per brand by IMAI&apos;s social listening, enriched with creator data, and loaded here as four tables. Everything on this page describes the data as it is; it does not interpret it.</p>
+          <p className="im-text-description">A social-listening export covering creator posts about {getBrands().length} {getWorkspace().category ? `${getWorkspace().category} ` : ""}brands, the audience comments on those posts, and profiles of the creators. Collected per brand by IMAI&apos;s social listening, enriched with creator data, and loaded here as four tables. Everything on this page describes the data as it is; it does not interpret it.</p>
           <div className="ds__cards">
             <div className="ds__card"><span className="im-micro-label">Posts</span><b>{formatNumber(counts.posts)}</b><small>one row per creator post per brand</small></div>
             <div className="ds__card"><span className="im-micro-label">Comments</span><b>{formatNumber(counts.comments)}</b><small>one row per comment, each with an AI analysis</small></div>
@@ -231,10 +231,10 @@ export default async function DataPage() {
                 <li>Caption language is known for {pct(s.caveats.languageKnown, counts.posts)} of posts; comment language is more complete.</li>
                 <li>Audience demographics exist for {formatNumber(s.caveats.audienceCoverage)} of {formatNumber(counts.influencers)} creator rows ({pct(s.caveats.audienceCoverage, counts.influencers)}); a profile report exists for {pct(s.caveats.reportCoverage, counts.influencers)}.</li>
                 <li>Posts are keyed by brand and post, so a post that mentions two brands appears once under each; {s.caveats.crossSegmentPosts} posts do.</li>
-                <li>Mercadona has {s.caveats.mercadonaPosts} posts. Treat its figures as anecdotal.</li>
+                {s.caveats.smallBrands.map((b) => <li key={b.brand}>{b.brand} has {b.posts} posts. Treat its figures as anecdotal.</li>)}
                 <li>Free-text analysis fields (safety complaint type, FAQ topic, backlash type, brand affinity) are not normalised: the same idea appears with different spellings.</li>
                 <li>Counts for likes, views and comments are as of collection time, not live.</li>
-                <li>The focal brand and competitor set are fixed in this version.</li>
+                <li>The focal brand and competitor set come from the tracked segments in the data.</li>
               </ul>
             </div>
           </div>

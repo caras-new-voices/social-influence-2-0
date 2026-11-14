@@ -1,4 +1,4 @@
-import { BRANDS, colorForSeries } from "./brands";
+import { colorForSeries, getBrands } from "./brands";
 import { isNumericColumn } from "./format";
 import type { WidgetSpec } from "./widgets";
 
@@ -18,7 +18,7 @@ const TIER_COLORS: Record<string, string> = { nano: "#cbbcff", micro: "#a98cff",
 
 function orderSeries(names: string[], colorBy?: string): string[] {
   if (colorBy === "brand") {
-    const order = BRANDS.map((b) => b.name);
+    const order = getBrands().map((b) => b.name);
     const rank = (n: string) => (order.indexOf(n) === -1 ? 99 : order.indexOf(n));
     return [...names].sort((a, b) => rank(a) - rank(b));
   }

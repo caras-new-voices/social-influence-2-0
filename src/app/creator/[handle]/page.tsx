@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { CreatorPosts } from "@/components/CreatorPosts";
-import { BRANDS, SENTIMENT_COLORS } from "@/lib/brands";
+import { getBrands, SENTIMENT_COLORS } from "@/lib/brands";
 import { getCreatorPage, platformProfileUrl } from "@/lib/creators";
 import { formatNumber } from "@/lib/format";
 import "./creator.css";
@@ -22,7 +22,7 @@ export default async function CreatorPage({
   if (!page) notFound();
   const { profile: p, posts, totals, commentSentiment, topTopics } = page;
   const profileUrl = p.url ?? platformProfileUrl(p.network, p.username);
-  const brandColor = (b: string) => BRANDS.find((x) => x.name === b)?.color ?? "#9ca8be";
+  const brandColor = (b: string) => getBrands().find((x) => x.name === b)?.color ?? "#9ca8be";
   const sentimentTotal = commentSentiment.reduce((s, r) => s + r.n, 0);
   const ages = p.audience_ages ? Object.entries(p.audience_ages).filter(([, v]) => typeof v === "number").sort(([a], [b]) => a.localeCompare(b)) : [];
 

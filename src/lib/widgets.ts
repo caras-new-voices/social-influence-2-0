@@ -40,6 +40,11 @@ export const WidgetSpecSchema = z.object({
   rationale: z.string().max(600).optional(),
   /** Time window: inherit the dashboard period (default), ignore it ("all"), or a fixed window. */
   period: WidgetPeriodSchema.optional(),
+  /**
+   * Minimum sample behind the element: `sql` returns one row with column n (run in the element's
+   * window). Below `min` the card says so and offers all time instead of drawing a thin chart.
+   */
+  sample: z.object({ sql: z.string().max(2000), min: z.number().int().min(1), unit: z.string().max(60) }).optional(),
   layout: LayoutSchema,
 });
 export type WidgetSpec = z.infer<typeof WidgetSpecSchema>;
@@ -101,139 +106,6 @@ export interface DashboardRecord {
   updated_at: string;
 }
 
-/* ------------------------------------------------------------------ */
-/* Default widget catalog (grounded in the preloaded dataset)          */
-/* ------------------------------------------------------------------ */
-
-const VENUS_KPI_SQL = `WITH focal AS (
-  SELECT count(*)::float AS posts, count(DISTINCT influencer_id)::float AS creators,
-         sum(views) AS views, sum(engagement) AS engagement, sum(emv) AS emv,
-         sum(engagement) / NULLIF(sum(views), 0) AS eng_rate
-  FROM posts WHERE brand = 'Venus'
-), comp AS (
-  SELECT avg(posts) AS posts, avg(creators) AS creators, avg(views) AS views, avg(engagement) AS engagement, avg(emv) AS emv,
-         avg(eng_rate) AS eng_rate
-  FROM (
-    SELECT brand, count(*)::float AS posts, count(DISTINCT influencer_id)::float AS creators, sum(views) AS views,
-           sum(engagement) AS engagement, sum(emv) AS emv, sum(engagement) / NULLIF(sum(views), 0) AS eng_rate
-    FROM posts WHERE brand <> 'Venus' AND brand <> 'Mercadona' GROUP BY brand
-  ) b
-)
-SELECT 'Posts' AS label, focal.posts AS value, comp.posts AS compare, 'compact' AS fmt FROM focal, comp
-UNION ALL SELECT 'Creators', focal.creators, comp.creators, 'compact' FROM focal, comp
-UNION ALL SELECT 'Views', focal.views, comp.views, 'compact' FROM focal, comp
-UNION ALL SELECT 'Engagement', focal.engagement, comp.engagement, 'compact' FROM focal, comp
-UNION ALL SELECT 'Eng. rate', focal.eng_rate, comp.eng_rate, 'percent' FROM focal, comp
-UNION ALL SELECT 'EMV', focal.emv, comp.emv, 'currency' FROM focal, comp`;
-
-export const DEFAULT_WIDGETS: Omit<WidgetSpec, "id" | "layout">[] = [
-  {
-    type: "kpi",
-    title: "Venus at a glance",
-    subtitle: "Oct 2025 to Jul 2026. Delta is versus the average competitor (Mercadona excluded).",
-    sql: VENUS_KPI_SQL,
-    rationale: "Headline numbers for the focal brand with a competitor benchmark.",
-  },
-  {
-    type: "bar",
-    title: "Share of voice by brand",
-    subtitle: "Creator posts tracked per brand",
-    sql: `SELECT brand, count(*)::int AS value FROM posts GROUP BY brand ORDER BY value DESC`,
-    x: "brand", y: "value", colorBy: "brand", format: "compact", horizontal: true,
-    rationale: "Who is generating the most creator content in the category.",
-  },
-  {
-    type: "line",
-    title: "Engagement trend by brand",
-    subtitle: "Monthly sum of likes, comments, shares and saves",
-    sql: `SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, brand, sum(engagement) AS value
-FROM posts WHERE published_at < '2026-08-01' GROUP BY 1, 2 ORDER BY 1`,
-    x: "month", y: "value", series: "brand", colorBy: "brand", format: "compact",
-    rationale: "Shows momentum shifts; Venus and Estrid both surged in May to July 2026.",
-  },
-  {
-    type: "stacked_bar",
-    title: "Comment sentiment by brand",
-    subtitle: "Share of analysed comments",
-    sql: `SELECT brand, sentiment, count(*)::int AS value FROM comments WHERE sentiment IS NOT NULL GROUP BY 1, 2 ORDER BY 1`,
-    x: "brand", y: "value", series: "sentiment", colorBy: "sentiment", normalize: true, format: "percent",
-    rationale: "How audiences feel about each brand's creator content.",
-  },
-  {
-    type: "stacked_bar",
-    title: "Purchase intent in comments",
-    subtitle: "Comments flagged with buying intent, by stage",
-    sql: `SELECT brand, purchase_intent_type AS stage, count(*)::int AS value FROM comments
-WHERE purchase_intent_type IS NOT NULL GROUP BY 1, 2 ORDER BY 1`,
-    x: "brand", y: "value", series: "stage", colorBy: "auto", format: "compact",
-    rationale: "Explicit intent is the strongest conversion signal in the comments.",
-  },
-  {
-    type: "stacked_bar",
-    title: "Top objections by brand",
-    subtitle: "Comments raising an objection, grouped by category",
-    sql: `SELECT objection_category AS objection, brand, count(*)::int AS value FROM comments
-WHERE objection_category IS NOT NULL GROUP BY 1, 2 ORDER BY 1`,
-    x: "objection", y: "value", series: "brand", colorBy: "brand", horizontal: true, format: "compact",
-    rationale: "Quality and price dominate the objections across the category.",
-  },
-  {
-    type: "table",
-    title: "Competitors named in Venus comments",
-    subtitle: "Who commenters mention under Venus content, and which side they favour",
-    sql: `SELECT competitor_name AS competitor, count(*)::int AS mentions,
-  count(*) FILTER (WHERE competitor_favored = 'competitor')::int AS prefers_competitor,
-  count(*) FILTER (WHERE competitor_favored = 'focal_brand')::int AS prefers_venus,
-  count(*) FILTER (WHERE competitor_favored IN ('neither','unclear'))::int AS neutral
-FROM comments WHERE brand = 'Venus' AND competitor_name IS NOT NULL
-GROUP BY 1 ORDER BY mentions DESC LIMIT 12`,
-    rationale: "Direct read on competitive preference inside the focal brand's own audience.",
-  },
-  {
-    type: "stacked_bar",
-    title: "Creator tier mix",
-    subtitle: "Share of posts by creator follower tier",
-    sql: `SELECT brand, tier, count(*)::int AS value FROM posts WHERE tier IS NOT NULL GROUP BY 1, 2 ORDER BY 1`,
-    x: "brand", y: "value", series: "tier", colorBy: "tier", normalize: true, format: "percent",
-    rationale: "Whether a brand leans on nano and micro creators or on macro and mega reach.",
-  },
-  {
-    type: "stacked_bar",
-    title: "Posts by country",
-    subtitle: "Top markets, stacked by brand",
-    sql: `SELECT country, brand, count(*)::int AS value FROM posts
-WHERE country IN (SELECT country FROM posts WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY country ORDER BY count(*) DESC LIMIT 8)
-GROUP BY 1, 2 ORDER BY 1`,
-    x: "country", y: "value", series: "brand", colorBy: "brand", horizontal: true, format: "compact",
-    rationale: "Where the conversation is happening; the UK and Germany lead.",
-  },
-  {
-    type: "table",
-    title: "Top posts by engagement",
-    sql: `SELECT brand, username AS creator, platform, published_at::date AS date, likes, comments, views, engagement, url
-FROM posts ORDER BY engagement DESC NULLS LAST LIMIT 15`,
-    rationale: "The individual pieces of content that moved the most people.",
-  },
-  {
-    type: "line",
-    title: "Safety complaints and backlash signals",
-    subtitle: "Monthly count of flagged comments, all brands",
-    sql: `SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month,
-  count(*) FILTER (WHERE safety_complaint_type IS NOT NULL)::int AS safety_complaints,
-  count(*) FILTER (WHERE crisis_risk_type IS NOT NULL)::int AS backlash_flags
-FROM comments WHERE published_at < '2026-09-01' GROUP BY 1 ORDER BY 1`,
-    x: "month", colorBy: "auto", format: "number",
-    rationale: "Early warning for skin irritation complaints and creator credibility call-outs.",
-  },
-  {
-    type: "insight",
-    title: "Strategy insight for Venus",
-    subtitle: "Generated from the full post and comment analysis",
-    sql: `SELECT insight_headline AS headline, insight_act AS body FROM segments WHERE brand = 'Venus'`,
-    rationale: "The recommended actions from the precomputed AI analysis.",
-  },
-];
-
 /** Goal-first entry points for the chat. Each intent reveals three focused prompts. */
 export interface Intent {
   id: string;
@@ -248,7 +120,7 @@ export const INTENTS: Intent[] = [
     title: "Size up a competitor",
     blurb: "Volume, reach and momentum, brand by brand.",
     prompts: [
-      "How does Estrid's creator activity compare with Venus by platform?",
+      "How does our closest competitor's creator activity compare with ours, by platform?",
       "Which brand is growing fastest month by month, and where?",
       "Which competitor gets the most comments per post?",
     ],
@@ -268,7 +140,7 @@ export const INTENTS: Intent[] = [
     title: "Evaluate creators",
     blurb: "Who moves people, and what size of creator pays off.",
     prompts: [
-      "Which creators drove the most engagement for Venus?",
+      "Which creators drove the most engagement for us?",
       "How does engagement differ between nano, micro and macro creators?",
       "Which creators post about more than one of these brands?",
     ],
@@ -288,16 +160,16 @@ export const INTENTS: Intent[] = [
     title: "Build a report",
     blurb: "Let the analyst propose whole sections of the dashboard.",
     prompts: [
-      "Propose a competitive overview section for Venus: three or four elements.",
+      "Propose a competitive overview section for us: three or four elements.",
       "Propose a section about audience sentiment and purchase intent.",
-      "Summarise what changed for Venus from April to July 2026, with a chart.",
+      "Summarise what changed for us over the last three months, with a chart.",
     ],
   },
 ];
 
 /** Hidden instruction sent when the person clicks "Where should I start?". */
 export const START_SCAN_LABEL = "Where should I start?";
-export const START_SCAN_INSTRUCTION = `Where should I start? Run a quick scan of the data for me: query share of voice by brand and platform, the monthly engagement trend, comment sentiment and purchase intent by brand, and the top objections. Then give me exactly three short observations about Venus versus its competitors (one or two sentences each, with the key numbers), and call propose_widget once for each observation so I can add a matching element. Keep the whole reply under 170 words.`;
+export const START_SCAN_INSTRUCTION = `Where should I start? Run a quick scan of the data for me: query share of voice by brand and platform, the monthly engagement trend, comment sentiment and purchase intent by brand, and the top objections. Then give me exactly three short observations about us versus our competitors (one or two sentences each, with the key numbers), and call propose_widget once for each observation so I can add a matching element. Keep the whole reply under 170 words.`;
 
 /** Period context for "Ask AI" when the dashboard compares two periods. */
 export interface AskContext {
@@ -330,7 +202,7 @@ function compareBlock(w: WidgetSpec, ctx: AskContext & { compareLabel: string; c
     `The dashboard is comparing ${ctx.periodLabel} (current) with ${ctx.compareLabel} (comparison). The element's query was run once for each period.`,
     `Result for ${ctx.periodLabel}: ${compactRowsJson(ctx.rows)}`,
     `Result for ${ctx.compareLabel}: ${compactRowsJson(ctx.compareRows)}`,
-    `Explain the biggest movements between the two periods in "${w.title}": name the three to five largest changes with both numbers and the change, then find the reasons behind them with follow-up queries (use posts_all and comments_all with explicit date filters to look at either period, e.g. which creators, posts, platforms or comment themes account for the change). Separate real shifts from volume effects (more posts or comments overall). Finish with what it means for Venus and propose one or two follow-up elements with propose_widget that would track or explain the change.`,
+    `Explain the biggest movements between the two periods in "${w.title}": name the three to five largest changes with both numbers and the change, then find the reasons behind them with follow-up queries (use posts_all and comments_all with explicit date filters to look at either period, e.g. which creators, posts, platforms or comment themes account for the change). Separate real shifts from volume effects (more posts or comments overall). Finish with what it means for us and propose one or two follow-up elements with propose_widget that would track or explain the change.`,
   ].join("\n\n");
 }
 
@@ -354,7 +226,7 @@ export function askAboutWidget(w: WidgetSpec, ctx?: AskContext): { text: string;
   if (w.sql) {
     lines.push(`It is defined by this SQL:\n${w.sql}`);
     lines.push(
-      "Run that query (and any follow-up queries you need), explain in plain language what it shows with the key numbers, point out the single most notable pattern, and say what it means for Venus. Then suggest one way to refine or extend this element; if you propose a replacement, call propose_widget with replaces_widget_id set to the id above.",
+      "Run that query (and any follow-up queries you need), explain in plain language what it shows with the key numbers, point out the single most notable pattern, and say what it means for us. Then suggest one way to refine or extend this element; if you propose a replacement, call propose_widget with replaces_widget_id set to the id above.",
     );
   } else if (w.content) {
     lines.push(`Its content is:\n${w.content}`);
@@ -397,13 +269,13 @@ export function focusQuestions(comparing: boolean): string[] {
 /** Starter questions surfaced in the chat panel. */
 export const STARTER_QUESTIONS: string[] = [
   "Which competitor is winning on TikTok, and why?",
-  "What are people complaining about with Venus versus Estrid?",
-  "Where are Venus buyers getting stuck before purchase?",
-  "Which creators drove the most engagement for Venus?",
+  "What are people complaining about with us versus our closest competitor?",
+  "Where are our buyers getting stuck before purchase?",
+  "Which creators drove the most engagement for us?",
   "How does comment sentiment compare across brands on Instagram?",
-  "Which brands do commenters prefer over Venus, and what do they cite?",
+  "Which brands do commenters prefer over us, and what do they cite?",
   "What questions are commenters asking that nobody answers?",
-  "Which countries over-index for Philips OneBlade?",
+  "Which countries over-index for our biggest competitor?",
   "How much of each brand's content is paid versus organic?",
-  "What do loyal Venus customers say about the product?",
+  "What do our loyal customers say about the product?",
 ];

@@ -3,6 +3,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import type { Db, Row } from "./db";
 import { getDb } from "./db";
+import { loadWorkspace, seedWorkspaceMeta } from "./workspace";
 
 /** Tables holding the preloaded social-listening dataset plus app state. */
 export const DDL = `
@@ -107,6 +108,9 @@ CREATE TABLE IF NOT EXISTS period_events (
  * the current period use posts_all and comments_all.
  */
 export const PERIOD_VIEWS = `
+CREATE OR REPLACE FUNCTION focal_brand() RETURNS text LANGUAGE sql STABLE AS $f$ SELECT coalesce(nullif(current_setting('app.focal_brand', true), ''), (SELECT brand FROM segments WHERE role = 'focal' ORDER BY id LIMIT 1), (SELECT brand FROM segments ORDER BY id LIMIT 1)) $f$;
+CREATE OR REPLACE FUNCTION is_competitor(b text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT b IS DISTINCT FROM focal_brand() AND EXISTS (SELECT 1 FROM segments s WHERE s.brand = b) $f$;
+CREATE OR REPLACE FUNCTION is_self_mention(t text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT t ILIKE '%' || focal_brand() || '%' OR EXISTS (SELECT 1 FROM app_meta m, jsonb_array_elements_text(m.value::jsonb) a WHERE m.key = 'workspace_aliases' AND t ILIKE '%' || a || '%') $f$;
 CREATE OR REPLACE FUNCTION period_start() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_start', true), '')::timestamptz $f$;
 CREATE OR REPLACE FUNCTION period_end() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_end', true), '')::timestamptz $f$;
 CREATE OR REPLACE VIEW posts AS
@@ -255,6 +259,8 @@ export function ensureReady(): Promise<void> {
         await seedDatabase(db, (m) => console.log("[seed]", m));
       }
       await recordSeedImport(db);
+      await seedWorkspaceMeta(db);
+      await loadWorkspace(db);
     })().catch((err) => {
       g.__siReady = undefined;
       throw err;

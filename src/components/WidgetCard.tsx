@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import type { Row } from "@/lib/chart-data";
 import { rowsToCsv } from "@/lib/format";
-import { effectiveWindow, formatWindow, windowKey, type PeriodWindow } from "@/lib/period";
+import { effectiveWindow, formatWindow, windowKey, type PeriodWindow, type WidgetPeriod } from "@/lib/period";
 import { isDataWidget, type WidgetSpec } from "@/lib/widgets";
 import { usePeriod } from "./PeriodContext";
 import { useToast } from "./Toast";
@@ -12,6 +12,8 @@ export interface WidgetData {
   rows: Row[];
   /** Rows for the comparison window when comparison is on. */
   compareRows?: Row[];
+  /** Size of the sample behind the element in its window, when the element declares one. */
+  sample?: number;
   error?: string;
 }
 
@@ -22,18 +24,18 @@ export function clearWidgetCache() {
   cache.clear();
 }
 
-export function fetchWidgetRows(sql: string, window?: PeriodWindow | null, compare?: PeriodWindow | null): Promise<WidgetData> {
-  const key = `${windowKey(window)}|${windowKey(compare)}|${sql}`;
+export function fetchWidgetRows(sql: string, window?: PeriodWindow | null, compare?: PeriodWindow | null, sampleSql?: string): Promise<WidgetData> {
+  const key = `${windowKey(window)}|${windowKey(compare)}|${sql}|${sampleSql ?? ""}`;
   if (!cache.has(key)) {
     const p = fetch("/api/widgets/data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sql, window: window && (window.start || window.end) ? window : undefined, compare: compare ?? undefined }),
+      body: JSON.stringify({ sql, window: window && (window.start || window.end) ? window : undefined, compare: compare ?? undefined, sampleSql }),
     })
       .then(async (r) => {
-        const j = (await r.json()) as { rows?: Row[]; compareRows?: Row[]; error?: string };
+        const j = (await r.json()) as { rows?: Row[]; compareRows?: Row[]; sample?: number; error?: string };
         if (!r.ok) return { rows: [], error: j.error ?? "Query failed" };
-        return { rows: j.rows ?? [], compareRows: j.compareRows };
+        return { rows: j.rows ?? [], compareRows: j.compareRows, sample: j.sample };
       })
       .catch((e: Error) => ({ rows: [], error: e.message }));
     cache.set(key, p);
@@ -52,19 +54,19 @@ export function useWidgetRows(spec: WidgetSpec, preloaded?: Row[]) {
   const compare = spec.period && spec.period !== "inherit" ? null : period.compareWindow;
   const key = `${period.dataVersion}|${windowKey(win)}|${windowKey(compare)}|${spec.sql ?? ""}`;
   const needsFetch = !preloaded && !!spec.sql && isDataWidget(spec.type);
-  const [result, setResult] = useState<{ key?: string; rows: Row[]; compareRows?: Row[]; error?: string }>({ rows: [] });
+  const [result, setResult] = useState<{ key?: string; rows: Row[]; compareRows?: Row[]; sample?: number; error?: string }>({ rows: [] });
   useEffect(() => {
     if (!needsFetch || !spec.sql) return;
     let alive = true;
-    fetchWidgetRows(spec.sql, win, compare).then((res) => alive && setResult({ key, rows: res.rows, compareRows: res.compareRows, error: res.error }));
+    fetchWidgetRows(spec.sql, win, compare, spec.sample?.sql).then((res) => alive && setResult({ key, rows: res.rows, compareRows: res.compareRows, sample: res.sample, error: res.error }));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, needsFetch]);
-  if (!needsFetch) return { rows: preloaded ?? [], compareRows: undefined, loading: false, error: undefined, window: win };
+  if (!needsFetch) return { rows: preloaded ?? [], compareRows: undefined, sample: undefined, loading: false, error: undefined, window: win };
   const fresh = result.key === key;
-  return { rows: fresh ? result.rows : [], compareRows: fresh ? result.compareRows : undefined, loading: !fresh, error: fresh ? result.error : undefined, window: win };
+  return { rows: fresh ? result.rows : [], compareRows: fresh ? result.compareRows : undefined, sample: fresh ? result.sample : undefined, loading: !fresh, error: fresh ? result.error : undefined, window: win };
 }
 
 /** Small badge shown on elements that do not follow the dashboard period. */
@@ -118,16 +120,26 @@ export function WidgetCard({
   onAsk,
   onExpand,
   onVoice,
+  onSetPeriod,
 }: {
   spec: WidgetSpec;
+  /** Changes the element's own time window (used by the thin-data state to switch to all time). */
+  onSetPeriod?: (p: WidgetPeriod) => void;
   onEdit: () => void;
   onRemove: () => void;
   onAsk: () => void;
   onExpand: () => void;
   onVoice: (rows: Row[]) => void;
 }) {
-  const { rows, compareRows, loading, error } = useWidgetRows(spec);
+  const { rows, compareRows, sample, loading, error, window: win } = useWidgetRows(spec);
   const [tableView, setTableView] = useState(false);
+  const [showAnyway, setShowAnyway] = useState(false);
+  // Thin data: the element declares a minimum sample and the current window does not reach it,
+  // or a period is selected and nothing falls inside it.
+  const inPeriod = !!(win.start || win.end);
+  const thin = !!spec.sample && sample !== undefined && sample < spec.sample.min;
+  const empty = !loading && !error && rows.length === 0 && spec.type !== "insight";
+  const blocked = !showAnyway && inPeriod && (thin || empty);
   const toast = useToast();
   const chartLike = ["bar", "stacked_bar", "line", "segmented", "kpi"].includes(spec.type);
   const showCopy = (tableView || spec.type === "table") && rows.length > 0;
@@ -184,8 +196,20 @@ export function WidgetCard({
           <div className="widget__state"><span className="spinner" /></div>
         ) : error ? (
           <div className="widget__state widget__state--error">{error}</div>
+        ) : blocked ? (
+          <div className="widget__thin" role="status">
+            <b>{empty ? `Nothing in ${formatWindow(win)} for this element` : `Not enough ${spec.sample!.unit} in ${formatWindow(win)}`}</b>
+            {!empty && <span>{sample} of the {spec.sample!.min} needed for a reliable read.</span>}
+            <div className="row" style={{ gap: "0.4rem", justifyContent: "center" }}>
+              {onSetPeriod && <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => onSetPeriod("all")}>Show all time instead</button>}
+              {!empty && <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => setShowAnyway(true)}>Show anyway</button>}
+            </div>
+          </div>
         ) : (
-          <WidgetBody spec={spec} rows={rows} compareRows={compareRows} tableView={tableView} />
+          <>
+            {thin && <div className="widget__thinnote">Small sample: {sample} {spec.sample!.unit}{inPeriod ? ` in ${formatWindow(win)}` : ""}.</div>}
+            <WidgetBody spec={spec} rows={rows} compareRows={compareRows} tableView={tableView} />
+          </>
         )}
       </div>
     </div>

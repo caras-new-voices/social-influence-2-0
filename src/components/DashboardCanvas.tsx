@@ -1,8 +1,9 @@
 "use client";
 import { useMemo } from "react";
 import GridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
-import { BRANDS } from "@/lib/brands";
+import { useWorkspace } from "./WorkspaceProvider";
 import type { Row } from "@/lib/chart-data";
+import type { WidgetPeriod } from "@/lib/period";
 import type { WidgetSpec } from "@/lib/widgets";
 import { WidgetCard } from "./WidgetCard";
 
@@ -17,7 +18,9 @@ export function DashboardCanvas({
   onExpand,
   onVoice,
   onAddClick,
+  onSetPeriod,
 }: {
+  onSetPeriod: (id: string, p: WidgetPeriod) => void;
   widgets: WidgetSpec[];
   onLayoutChange: (layout: Layout) => void;
   onEdit: (id: string) => void;
@@ -28,6 +31,7 @@ export function DashboardCanvas({
   onAddClick: () => void;
 }) {
   const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1100 });
+  const { brands } = useWorkspace();
   const layout = useMemo<Layout>(
     () => widgets.map((w) => ({ i: w.id, x: w.layout.x, y: w.layout.y, w: w.layout.w, h: w.layout.h, minW: 2, minH: 1 })),
     [widgets],
@@ -36,7 +40,7 @@ export function DashboardCanvas({
   return (
     <div ref={containerRef}>
       <div className="canvas__legend" style={{ marginBottom: "0.75rem" }}>
-        {BRANDS.map((b) => (
+        {brands.map((b) => (
           <span key={b.name}><i className="dot" style={{ background: b.color }} />{b.name}{b.role === "focal" ? " (you)" : ""}</span>
         ))}
       </div>
@@ -58,7 +62,7 @@ export function DashboardCanvas({
           >
             {widgets.map((w) => (
               <div key={w.id}>
-                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} />
+                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={(p) => onSetPeriod(w.id, p)} />
               </div>
             ))}
           </GridLayout>

@@ -32,15 +32,19 @@ export function periodSettings(window?: PeriodWindow | null): Record<string, str
 /**
  * Runs read-only SQL with a row cap. Used both for saved widgets and the assistant's queries.
  * `window` restricts the posts and comments views to [start, end); omit it for all time.
+ * "Us" in a query is focal_brand(); competitors are is_competitor(brand).
  */
-export async function runWidgetQuery(sql: string, limit = MAX_ROWS, window?: PeriodWindow | null): Promise<QueryResult | QueryFailure> {
+export async function runWidgetQuery(sql: string, limit = MAX_ROWS, window?: PeriodWindow | null, opts?: { focal?: string }): Promise<QueryResult | QueryFailure> {
   const guarded = guardSql(sql);
   if (!guarded.ok) return { ok: false, error: guarded.reason };
   await ensureReady();
   const db = await getDb();
   const started = Date.now();
   try {
-    const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1), 8000, periodSettings(window));
+    // opts.focal makes focal_brand() return another tracked brand for this query (template checks, per-dashboard focus).
+    const settings = periodSettings(window);
+    if (opts?.focal) settings["app.focal_brand"] = opts.focal;
+    const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1), 8000, settings);
     const truncated = rows.length > limit;
     const sliced = rows
       .slice(0, limit)

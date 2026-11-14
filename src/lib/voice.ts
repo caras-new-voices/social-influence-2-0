@@ -1,7 +1,7 @@
 import OpenAI from "openai";
-import { BRANDS, FOCAL_BRAND } from "./brands";
+import { competitorNames, focalName, getWorkspace } from "./brands";
 import type { Row } from "./db";
-import { DATASET_DOC } from "./schema-doc";
+import { datasetDoc } from "./schema-doc";
 import type { WidgetSpec } from "./widgets";
 
 export const VOICE_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime";
@@ -31,9 +31,10 @@ function rowsForPrompt(rows: Row[], cap = 6000): string {
 }
 
 export function voiceInstructions(widget: WidgetSpec, rows: Row[]): string {
-  const competitors = BRANDS.filter((b) => b.role === "competitor").map((b) => b.name).join(", ");
+  const competitors = competitorNames().join(", ");
+  const ws = getWorkspace();
   const definition = widget.sql ? `SQL behind it:\n${widget.sql}\n\nCurrent data${rows.length ? "" : " (none)"}:\n${rowsForPrompt(rows)}` : widget.content ? `Content:\n${widget.content}` : "It is a section header.";
-  return `You are a friendly, concise voice analyst inside the Social Influence workspace, an IMAI product. You are talking to a brand manager at P&G about ${FOCAL_BRAND.name} and its competitors (${competitors}), using a dataset of creator posts and audience comments.
+  return `You are a friendly, concise voice analyst inside the Social Influence workspace, an IMAI product. You are talking to a brand manager${ws.company ? ` at ${ws.company}` : ""} about ${focalName()} and its competitors (${competitors}), using a dataset of creator posts and audience comments.
 
 The person just opened a voice session on one dashboard element:
 Title: "${widget.title}"${widget.subtitle ? `\nSubtitle: ${widget.subtitle}` : ""}
@@ -41,14 +42,14 @@ Type: ${widget.type}
 ${definition}
 
 How to behave:
-- Start immediately, without waiting for the person: in two or three short sentences, say what this element shows, then give the single most interesting insight with the key numbers, then say what it suggests for ${FOCAL_BRAND.name}. Then invite a question.
+- Start immediately, without waiting for the person: in two or three short sentences, say what this element shows, then give the single most interesting insight with the key numbers, then say what it suggests for ${focalName()}. Then invite a question.
 - Speak naturally and briefly: this is a conversation, not a report. Round numbers. No lists, no markdown, no reading out column names or SQL.
 - When a question needs data you do not have in front of you, call run_sql with a single Postgres SELECT, then answer from the result. Say "let me check" while you do. Keep result sets small by aggregating.
-- Brand names must match exactly: ${BRANDS.map((b) => `'${b.name}'`).join(", ")}. "Us", "we" and "our brand" mean ${FOCAL_BRAND.name}.
+- Brand names must match exactly: ${ws.brands.map((b) => `'${b.name}'`).join(", ")}. "Us", "we" and "our brand" mean ${focalName()}.
 - Never name third-party data providers or collection tooling. If asked where the data comes from, say it was collected by IMAI's social listening.
 - If you are unsure, say so rather than guessing.
 
-${DATASET_DOC}`;
+${datasetDoc()}`;
 }
 
 export interface VoiceSession {

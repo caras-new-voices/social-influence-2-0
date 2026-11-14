@@ -1,6 +1,6 @@
 # Plan: a starter template that works for any brand
 
-Status: proposal, nothing built yet.
+Status: built. Section 9 records what shipped.
 
 ## 1. What we are solving
 
@@ -138,3 +138,23 @@ About six working days. Phase A is also the prerequisite for onboarding any seco
 - **What "competitors" means for benchmarks.** The competitor average is unweighted across tracked competitors with at least 30 posts in the period, so a tiny brand does not swing it. The threshold is editable in one place.
 - **Vertical packs.** After the starter, optional add-on sections per category (personal care: safety and ingredients; electronics: features and durability; food: taste and availability; retail: delivery and service). They need category-specific attribute vocabularies from IMAI's enrichment, so they are a follow-up, not part of this work.
 - **Topic normalisation.** A charted "what are they talking about" needs IMAI to map free-text topics to a controlled list per category. Until then the starter uses verbatims, which is the honest version.
+
+
+## 9. As built
+
+| Piece | Where |
+|---|---|
+| Workspace from the data: tracked brands, focal brand, colours, company, category, aliases | `src/lib/brands.ts` (registry), `src/lib/workspace.ts` (loads `segments` and `app_meta`), `data/seed/workspace.json` (company, category, aliases for the bundled dataset), `src/components/WorkspaceProvider.tsx` |
+| SQL functions `focal_brand()`, `is_competitor(brand)`, `is_self_mention(text)` | `src/lib/schema.ts` |
+| The starter template: 14 core elements in five questions, plus conditional elements and sections | `src/lib/starter.ts` |
+| Data-aware builder and the chat note listing what was left out | `src/lib/template-build.ts`, `src/lib/dashboards.ts` |
+| Thin-data state on elements (minimum sample, "Show all time instead") | `sample` on the widget spec, `src/app/api/widgets/data/route.ts`, `src/components/WidgetCard.tsx` |
+| Rotation test | `src/lib/template-check.ts`, `GET /api/templates/check`, `npm run check:templates [-- eran]` |
+
+Decisions taken: the starter replaces the Default template (`"default"` is still accepted by the API and maps to it); the focal brand is per workspace, read from the `segments` table; cross-brand rate charts include competitors with 100+ comments in the period.
+
+Differences from the plan: the core is 14 elements, not 12 (the two "what should we do next" tables and the "what changed" table are all always on); performance by platform and format uses engagement per 1,000 followers reached, because views are missing for image posts; the verbatim table labels loyalty comments instead of generic praise, because the most-liked positive comments are usually about the creator, not the brand.
+
+Result of the rotation test on the bundled dataset: all six brands as focal, 1,596 queries over all time and eleven months, no failing element and no brand or category word in the template. The three large brands get 19 elements, the mid-sized one 16, the two small ones 13. Eran's template passes the same test.
+
+Not done: the second-category dataset (needs an export from IMAI), per-dashboard focal brand, vertical packs, and topic normalisation.

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createDashboard, listDashboards } from "@/lib/dashboards";
-import { isTemplateId } from "@/lib/templates";
+import { toTemplateId } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const dashboard = await createDashboard({
     name,
     description: body.description,
-    template: isTemplateId(body.template) ? body.template : "default",
+    template: toTemplateId(body.template),
   });
   return NextResponse.json({ dashboard }, { status: 201 });
 }
