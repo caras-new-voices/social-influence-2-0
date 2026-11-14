@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCoverage } from "@/lib/coverage";
 import { createDashboard, updateDashboard } from "@/lib/dashboards";
-import { GOALS, STEP_IDS, WizardAnswersSchema, WIZARD_INTRO, WIZARD_STEPS, stepOrder, type OnboardingState } from "@/lib/wizard";
+import { GOALS, STEP_IDS, WizardAnswersSchema, wizardIntro, WIZARD_STEPS, stepOrder, type OnboardingState } from "@/lib/wizard";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 export async function GET() {
   const coverage = await getCoverage();
   return NextResponse.json({
-    intro: WIZARD_INTRO,
+    intro: wizardIntro(),
     goals: GOALS,
     stepIds: STEP_IDS,
     steps: WIZARD_STEPS.map((s) => ({ id: s.id, question: s.question, short: s.short, choices: s.choices })),

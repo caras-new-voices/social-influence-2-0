@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
+import { selfCompares,
   cmpKey,
   compareTable,
   delta,
@@ -230,6 +230,8 @@ export function SegmentedBar({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) 
 }
 
 export function KpiRow({ rows, spec, compareLabel }: { rows: Row[]; spec: WidgetSpec; compareLabel?: string }) {
+  // A query that reads period_start() compares with the period before, not with a benchmark.
+  const ownPeriod = selfCompares(spec.sql);
   if (!rows.length) return <div className="widget__state">No data</div>;
   const tiles = rows.slice(0, 8);
   return (
@@ -247,9 +249,9 @@ export function KpiRow({ rows, spec, compareLabel }: { rows: Row[]; spec: Widget
             {delta !== undefined && (
               <div
                 className={`kpi__delta kpi__delta--${dir}`}
-                title={r.__cmpFilled && compareLabel ? `Versus ${compareLabel}: ${formatNumber(compare, fmt)}` : `Benchmark ${formatNumber(compare, fmt)}`}
+                title={r.__cmpFilled && compareLabel ? `Versus ${compareLabel}: ${formatNumber(compare, fmt)}` : `${ownPeriod ? "Previous period" : "Benchmark"} ${formatNumber(compare, fmt)}`}
               >
-                {dir === "up" ? "▲" : dir === "down" ? "▼" : "•"} {Math.abs(delta * 100).toFixed(0)}% vs {r.__cmpFilled && compareLabel ? compareLabel : "benchmark"}
+                {dir === "up" ? "▲" : dir === "down" ? "▼" : "•"} {Math.abs(delta * 100).toFixed(0)}% vs {r.__cmpFilled && compareLabel ? compareLabel : ownPeriod ? "previous period" : "benchmark"}
               </div>
             )}
           </div>

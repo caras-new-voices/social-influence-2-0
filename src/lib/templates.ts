@@ -1,16 +1,17 @@
-import { FOCAL_BRAND } from "./brands";
-import { DEFAULT_WIDGETS, newId, type WidgetSpec } from "./widgets";
+import { STARTER_SECTIONS } from "./starter";
+import { newId, type WidgetSpec } from "./widgets";
 
 /**
  * Dashboard templates. A template is a list of sections; each section is a header followed by
  * widgets placed left to right on the 12 column grid (wrapping to a new row when full).
  */
-export type TemplateId = "default" | "eran" | "blank";
+export type TemplateId = "starter" | "eran" | "blank";
 
 export interface DashboardTemplate {
   id: TemplateId;
   name: string;
   description: string;
+  /** Lays the template out without checking the data (the server builder in template-build.ts drops conditional parts). */
   build: () => WidgetSpec[];
 }
 
@@ -45,48 +46,17 @@ export function layoutSections(sections: TemplateSection[]): WidgetSpec[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Default template (the curated catalog in widgets.ts)                 */
-/* ------------------------------------------------------------------ */
-
-/** Lays the default catalog out as a sensible starting grid. */
-export function buildDefaultWidgets(): WidgetSpec[] {
-  const out: WidgetSpec[] = [];
-  let y = 0;
-  const place = (idx: number, x: number, w: number, h: number, yy: number) => {
-    const d = DEFAULT_WIDGETS[idx];
-    out.push({ ...d, id: newId(), layout: { x, y: yy, w, h } });
-  };
-  const section = (title: string) => {
-    out.push({ id: newId(), type: "section", title, layout: { x: 0, y, w: 12, h: 1 } });
-    y += 1;
-  };
-  section("Overview");
-  place(0, 0, 12, 3, y); y += 3;
-  place(1, 0, 5, 5, y); place(2, 5, 7, 5, y); y += 5;
-  section("What audiences say");
-  place(3, 0, 6, 5, y); place(4, 6, 6, 5, y); y += 5;
-  place(5, 0, 6, 5, y); place(6, 6, 6, 5, y); y += 5;
-  section("Creators and markets");
-  place(7, 0, 6, 5, y); place(8, 6, 6, 5, y); y += 5;
-  place(9, 0, 12, 6, y); y += 6;
-  section("Risk and strategy");
-  place(10, 0, 6, 5, y); place(11, 6, 6, 5, y); y += 5;
-  return out;
-}
-
-/* ------------------------------------------------------------------ */
 /* Eran's template: eight strategic questions, each answered from data  */
 /* ------------------------------------------------------------------ */
 
-const B = FOCAL_BRAND.name;
-/** Mentions of the focal brand itself (and its parent brand name) are not partners or competitors. */
-export const NOT_SELF = (col: string) => `${col} NOT ILIKE '%${B}%' AND ${col} NOT ILIKE '%gil%ette%'`;
+/** Mentions of the focal brand itself (and its aliases, see workspace_aliases) are not partners or competitors. */
+export const NOT_SELF = (col: string) => `NOT is_self_mention(${col})`;
 /**
  * "Right now" means the dashboard period when one is selected, otherwise the last 90 days of
  * tracked activity for the focal brand. Inside the posts/comments views (already filtered to the
  * period) the 90 day cut only bites when no period is set.
  */
-const RECENT_POSTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM posts WHERE brand = '${B}') - interval '90 days')`;
+const RECENT_POSTS = `published_at >= coalesce(period_start(), (SELECT max(published_at) FROM posts WHERE brand = focal_brand()) - interval '90 days')`;
 const RECENT_LABEL = "In the selected period (last 90 days when viewing all time)";
 
 /* ------------------------------------------------------------------ */
@@ -99,8 +69,8 @@ const RECENT_LABEL = "In the selected period (last 90 days when viewing all time
  * same length before; with no period it is the last 90 days of the table's data and the 90 before.
  */
 const CHANGE_BOUNDS = (table: "posts_all" | "comments_all") => `b0 AS (
-  SELECT coalesce(period_start(), (SELECT max(published_at) FROM ${table} WHERE brand = '${B}') - interval '90 days') AS s,
-         coalesce(period_end(), (SELECT max(published_at) FROM ${table} WHERE brand = '${B}') + interval '1 second') AS e
+  SELECT coalesce(period_start(), (SELECT max(published_at) FROM ${table} WHERE brand = focal_brand()) - interval '90 days') AS s,
+         coalesce(period_end(), (SELECT max(published_at) FROM ${table} WHERE brand = focal_brand()) + interval '1 second') AS e
 ), b AS (
   SELECT s, e, CASE WHEN s = date_trunc('month', s) AND e = s + interval '1 month' THEN s - interval '1 month' ELSE s - (e - s) END AS ps FROM b0
 )`;
@@ -111,14 +81,14 @@ export const CHANGE_WIDGETS: Omit<WidgetSpec, "id" | "layout">[] = [
   {
     type: "table",
     title: "Rising and falling creators",
-    subtitle: `Engagement on ${B} posts by creator. ${CHANGE_LABEL}`,
+    subtitle: `Engagement on our posts by creator. ${CHANGE_LABEL}`,
     sql: `WITH ${CHANGE_BOUNDS("posts_all")},
 agg AS (
   SELECT p.username AS creator, max(p.platform) AS platform,
     coalesce(sum(p.engagement) FILTER (WHERE p.published_at >= b.s), 0)::float AS current,
     coalesce(sum(p.engagement) FILTER (WHERE p.published_at < b.s), 0)::float AS previous,
     count(*) FILTER (WHERE p.published_at >= b.s)::int AS posts_now
-  FROM posts_all p, b WHERE p.brand = '${B}' AND p.published_at >= b.ps AND p.published_at < b.e
+  FROM posts_all p, b WHERE p.brand = focal_brand() AND p.published_at >= b.ps AND p.published_at < b.e
   GROUP BY 1
 ), r AS (SELECT *, current - previous AS change FROM agg)
 SELECT * FROM (
@@ -134,11 +104,11 @@ SELECT * FROM (
   {
     type: "bar",
     title: "Topics rising and falling",
-    subtitle: `Change in each topic's share of ${B} comments, in percentage points. ${CHANGE_LABEL}`,
+    subtitle: `Change in each topic's share of comments on our content, in percentage points. ${CHANGE_LABEL}`,
     sql: `WITH ${CHANGE_BOUNDS("comments_all")},
 c AS (
   SELECT c.topics, c.published_at >= b.s AS cur FROM comments_all c, b
-  WHERE c.brand = '${B}' AND c.published_at >= b.ps AND c.published_at < b.e AND c.topics IS NOT NULL
+  WHERE c.brand = focal_brand() AND c.published_at >= b.ps AND c.published_at < b.e AND c.topics IS NOT NULL
 ), tot AS (SELECT count(*) FILTER (WHERE cur)::float AS nc, count(*) FILTER (WHERE NOT cur)::float AS np FROM c),
 t AS (SELECT topic, count(*) FILTER (WHERE cur)::int AS current, count(*) FILTER (WHERE NOT cur)::int AS previous FROM c, unnest(c.topics) AS topic GROUP BY 1),
 r AS (
@@ -156,14 +126,14 @@ SELECT * FROM (
   {
     type: "bar",
     title: "Objections rising and falling",
-    subtitle: `Change in the number of ${B} comments raising each objection. ${CHANGE_LABEL}`,
+    subtitle: `Change in the number of comments on our content raising each objection. ${CHANGE_LABEL}`,
     sql: `WITH ${CHANGE_BOUNDS("comments_all")},
 t AS (
   SELECT c.objection_category AS objection,
     count(*) FILTER (WHERE c.published_at >= b.s)::int AS current,
     count(*) FILTER (WHERE c.published_at < b.s)::int AS previous
   FROM comments_all c, b
-  WHERE c.brand = '${B}' AND c.objection_category IS NOT NULL AND c.published_at >= b.ps AND c.published_at < b.e
+  WHERE c.brand = focal_brand() AND c.objection_category IS NOT NULL AND c.published_at >= b.ps AND c.published_at < b.e
   GROUP BY 1
 )
 SELECT objection, current - previous AS value, current, previous FROM t WHERE current <> previous ORDER BY value DESC`,
@@ -173,12 +143,12 @@ SELECT objection, current - previous AS value, current, previous FROM t WHERE cu
   {
     type: "table",
     title: "Unanswered questions on the rise",
-    subtitle: `Question topics in ${B} comments with no reply, growing since the previous period. ${CHANGE_LABEL}`,
+    subtitle: `Question topics in comments on our content with no reply, growing since the previous period. ${CHANGE_LABEL}`,
     sql: `WITH ${CHANGE_BOUNDS("comments_all")},
 q AS (
   SELECT c.faq_topic AS topic, c.published_at >= b.s AS cur, c.likes, coalesce(c.faq_phrase, c.text) AS question
   FROM comments_all c, b
-  WHERE c.brand = '${B}' AND c.faq_topic IS NOT NULL AND coalesce(c.reply_count, 0) = 0 AND c.published_at >= b.ps AND c.published_at < b.e
+  WHERE c.brand = focal_brand() AND c.faq_topic IS NOT NULL AND coalesce(c.reply_count, 0) = 0 AND c.published_at >= b.ps AND c.published_at < b.e
 ), t AS (
   SELECT topic, count(*) FILTER (WHERE cur)::int AS current, count(*) FILTER (WHERE NOT cur)::int AS previous,
     left((array_agg(question ORDER BY likes DESC NULLS LAST) FILTER (WHERE cur))[1], 120) AS example
@@ -195,21 +165,21 @@ const ERAN_SECTIONS: TemplateSection[] = [
     widgets: [
       {
         type: "kpi", w: 12, h: 3,
-        title: `${B} conversation in this period`,
+        title: `Our conversation in this period`,
         subtitle: "Versus the previous period of the same length (last 90 days versus the 90 before, when viewing all time)",
         sql: `WITH b AS (
-  SELECT coalesce(period_start(), (SELECT max(published_at) FROM posts_all WHERE brand = '${B}') - interval '90 days') AS s,
-         coalesce(period_end(), (SELECT max(published_at) FROM posts_all WHERE brand = '${B}') + interval '1 second') AS e
+  SELECT coalesce(period_start(), (SELECT max(published_at) FROM posts_all WHERE brand = focal_brand()) - interval '90 days') AS s,
+         coalesce(period_end(), (SELECT max(published_at) FROM posts_all WHERE brand = focal_brand()) + interval '1 second') AS e
 ), cur AS (
   SELECT count(*)::float AS posts, count(DISTINCT influencer_id)::float AS creators, sum(engagement) AS engagement, sum(views) AS views
-  FROM posts_all, b WHERE brand = '${B}' AND published_at >= b.s AND published_at < b.e
+  FROM posts_all, b WHERE brand = focal_brand() AND published_at >= b.s AND published_at < b.e
 ), prev AS (
   SELECT count(*)::float AS posts, count(DISTINCT influencer_id)::float AS creators, sum(engagement) AS engagement, sum(views) AS views
-  FROM posts_all, b WHERE brand = '${B}' AND published_at >= b.s - (b.e - b.s) AND published_at < b.s
+  FROM posts_all, b WHERE brand = focal_brand() AND published_at >= b.s - (b.e - b.s) AND published_at < b.s
 ), cm AS (
-  SELECT count(*)::float AS n FROM comments_all, b WHERE brand = '${B}' AND published_at >= b.s AND published_at < b.e
+  SELECT count(*)::float AS n FROM comments_all, b WHERE brand = focal_brand() AND published_at >= b.s AND published_at < b.e
 ), cmp AS (
-  SELECT count(*)::float AS n FROM comments_all, b WHERE brand = '${B}' AND published_at >= b.s - (b.e - b.s) AND published_at < b.s
+  SELECT count(*)::float AS n FROM comments_all, b WHERE brand = focal_brand() AND published_at >= b.s - (b.e - b.s) AND published_at < b.s
 )
 SELECT 'Posts' AS label, cur.posts AS value, prev.posts AS compare, 'compact' AS fmt FROM cur, prev
 UNION ALL SELECT 'Creators', cur.creators, prev.creators, 'compact' FROM cur, prev
@@ -225,7 +195,7 @@ UNION ALL SELECT 'Comments', cm.n, cmp.n, 'compact' FROM cm, cmp`,
         sql: `SELECT p.username AS creator, p.platform, p.tier, count(*)::int AS posts, sum(p.engagement) AS engagement, sum(p.views) AS views,
   count(c.comment_id)::int AS comments, bool_or(p.is_paid) AS paid
 FROM posts p LEFT JOIN comments c ON c.post_id = p.post_id AND c.segment_id = p.segment_id
-WHERE p.brand = '${B}' AND p.${RECENT_POSTS}
+WHERE p.brand = focal_brand() AND p.${RECENT_POSTS}
 GROUP BY 1, 2, 3 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
         rationale: "Who is actually moving people right now, and whether we paid them.",
       },
@@ -233,7 +203,7 @@ GROUP BY 1, 2, 3 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
         type: "bar", w: 5, h: 6,
         title: "Channels driving the conversation",
         subtitle: `Engagement by platform. ${RECENT_LABEL}`,
-        sql: `SELECT platform, sum(engagement) AS value FROM posts WHERE brand = '${B}' AND ${RECENT_POSTS} GROUP BY 1 ORDER BY 2 DESC`,
+        sql: `SELECT platform, sum(engagement) AS value FROM posts WHERE brand = focal_brand() AND ${RECENT_POSTS} GROUP BY 1 ORDER BY 2 DESC`,
         x: "platform", y: "value", colorBy: "platform", format: "compact", horizontal: true,
         rationale: "Where the conversation is happening.",
       },
@@ -243,7 +213,7 @@ GROUP BY 1, 2, 3 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
         subtitle: `The individual posts with the most engagement. ${RECENT_LABEL}`,
         sql: `SELECT username AS creator, platform, post_type AS format, to_char(published_at, 'YYYY-MM-DD') AS date, left(coalesce(text, title, ''), 90) AS caption,
   likes, comments, views, engagement, CASE WHEN is_paid THEN 'paid' ELSE 'organic' END AS kind, url
-FROM posts WHERE brand = '${B}' AND ${RECENT_POSTS} ORDER BY engagement DESC NULLS LAST LIMIT 15`,
+FROM posts WHERE brand = focal_brand() AND ${RECENT_POSTS} ORDER BY engagement DESC NULLS LAST LIMIT 15`,
         rationale: "The content itself: what format and what message is winning.",
       },
     ],
@@ -254,10 +224,10 @@ FROM posts WHERE brand = '${B}' AND ${RECENT_POSTS} ORDER BY engagement DESC NUL
       {
         type: "stacked_bar", w: 5, h: 6,
         title: "Purchase intent by platform",
-        subtitle: `${B} comments flagged with buying intent, by stage`,
+        subtitle: `comments on our content flagged with buying intent, by stage`,
         sql: `SELECT p.platform, c.purchase_intent_type AS stage, count(*)::int AS value
 FROM comments c JOIN posts p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
-WHERE c.brand = '${B}' AND c.purchase_intent_type IS NOT NULL GROUP BY 1, 2 ORDER BY 1`,
+WHERE c.brand = focal_brand() AND c.purchase_intent_type IS NOT NULL GROUP BY 1, 2 ORDER BY 1`,
         x: "platform", y: "value", series: "stage", colorBy: "auto", format: "compact",
         rationale: "Explicit intent is the strongest conversion signal; this shows which channel produces it.",
       },
@@ -272,7 +242,7 @@ WHERE c.brand = '${B}' AND c.purchase_intent_type IS NOT NULL GROUP BY 1, 2 ORDE
   count(*)::int AS intent_comments,
   round((count(*)::numeric / NULLIF(count(DISTINCT p.post_id), 0)), 1) AS per_post
 FROM comments c JOIN posts p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
-WHERE c.brand = '${B}' AND c.purchase_intent_type IS NOT NULL
+WHERE c.brand = focal_brand() AND c.purchase_intent_type IS NOT NULL
 GROUP BY 1, 2, 3 ORDER BY intent_comments DESC LIMIT 15`,
         rationale: "The creators whose followers are closest to purchase.",
       },
@@ -282,7 +252,7 @@ GROUP BY 1, 2, 3 ORDER BY intent_comments DESC LIMIT 15`,
         subtitle: "Most-liked buying-intent comments, with the blocker when one is mentioned",
         sql: `SELECT c.purchase_intent_type AS stage, left(c.text, 140) AS comment, c.purchase_blocker AS blocker, c.likes, p.username AS on_post_by, p.platform
 FROM comments c JOIN posts p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
-WHERE c.brand = '${B}' AND c.purchase_intent_type IS NOT NULL
+WHERE c.brand = focal_brand() AND c.purchase_intent_type IS NOT NULL
 ORDER BY c.likes DESC NULLS LAST LIMIT 15`,
         rationale: "Verbatim intent, and what stands between intent and purchase.",
       },
@@ -294,10 +264,10 @@ ORDER BY c.likes DESC NULLS LAST LIMIT 15`,
       {
         type: "bar", w: 5, h: 6,
         title: "What positive comments are about",
-        subtitle: `Top topics in positive ${B} comments`,
+        subtitle: `Top topics in positive comments on our content`,
         sql: `SELECT topic, count(*)::int AS value
 FROM comments, unnest(topics) AS topic
-WHERE brand = '${B}' AND sentiment = 'positive' AND topics IS NOT NULL
+WHERE brand = focal_brand() AND sentiment = 'positive' AND topics IS NOT NULL
 GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
         x: "topic", y: "value", format: "compact", horizontal: true,
         rationale: "The themes the audience responds to best.",
@@ -309,7 +279,7 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
         sql: `SELECT p.platform || ' · ' || p.post_type AS content,
   round(100.0 * count(*) FILTER (WHERE c.sentiment = 'positive') / NULLIF(count(*), 0), 1) AS value
 FROM comments c JOIN posts p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
-WHERE c.brand = '${B}' AND c.sentiment IS NOT NULL
+WHERE c.brand = focal_brand() AND c.sentiment IS NOT NULL
 GROUP BY 1 HAVING count(*) >= 20 ORDER BY 2 DESC`,
         x: "content", y: "value", colorBy: "auto", format: "number", horizontal: true,
         rationale: "Which formats make people happy, not just loud.",
@@ -317,8 +287,8 @@ GROUP BY 1 HAVING count(*) >= 20 ORDER BY 2 DESC`,
       {
         type: "bar", w: 5, h: 5,
         title: "Loyalty signals",
-        subtitle: `How ${B} loyalists describe themselves`,
-        sql: `SELECT loyalty_type AS signal, count(*)::int AS value FROM comments WHERE brand = '${B}' AND loyalty_type IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
+        subtitle: `How our loyal customers describe themselves`,
+        sql: `SELECT loyalty_type AS signal, count(*)::int AS value FROM comments WHERE brand = focal_brand() AND loyalty_type IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
         x: "signal", y: "value", format: "compact", horizontal: true,
         rationale: "Advocacy and repeat buying are the behaviours to protect.",
       },
@@ -328,7 +298,7 @@ GROUP BY 1 HAVING count(*) >= 20 ORDER BY 2 DESC`,
         subtitle: "Most-liked loyalty and praise comments",
         sql: `SELECT coalesce(c.loyalty_type, 'praise') AS signal, left(coalesce(c.loyalty_phrase, c.text), 140) AS comment, c.likes, p.username AS on_post_by
 FROM comments c JOIN posts p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
-WHERE c.brand = '${B}' AND (c.loyalty_type IS NOT NULL OR ('praise' = ANY(c.topics) AND c.sentiment = 'positive'))
+WHERE c.brand = focal_brand() AND (c.loyalty_type IS NOT NULL OR ('praise' = ANY(c.topics) AND c.sentiment = 'positive'))
 ORDER BY c.likes DESC NULLS LAST LIMIT 12`,
         rationale: "Verbatims to reuse in messaging and briefs.",
       },
@@ -340,16 +310,16 @@ ORDER BY c.likes DESC NULLS LAST LIMIT 12`,
       {
         type: "bar", w: 6, h: 6,
         title: "What they push back on",
-        subtitle: `Objections in ${B} comments, by category`,
-        sql: `SELECT objection_category AS objection, count(*)::int AS value FROM comments WHERE brand = '${B}' AND objection_category IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
+        subtitle: `Objections in comments on our content, by category`,
+        sql: `SELECT objection_category AS objection, count(*)::int AS value FROM comments WHERE brand = focal_brand() AND objection_category IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
         x: "objection", y: "value", format: "compact", horizontal: true,
         rationale: "Where the criticism concentrates.",
       },
       {
         type: "bar", w: 6, h: 6,
         title: "How sponsorships land",
-        subtitle: `Partnership perception in ${B} comments`,
-        sql: `SELECT partnership_perception AS perception, count(*)::int AS value FROM comments WHERE brand = '${B}' AND partnership_perception IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
+        subtitle: `Partnership perception in comments on our content`,
+        sql: `SELECT partnership_perception AS perception, count(*)::int AS value FROM comments WHERE brand = focal_brand() AND partnership_perception IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
         x: "perception", y: "value", format: "compact", horizontal: true,
         rationale: "Ad call-outs and scepticism are the audience pushing back on the format itself.",
       },
@@ -360,7 +330,7 @@ ORDER BY c.likes DESC NULLS LAST LIMIT 12`,
         sql: `SELECT platform, post_type AS format, CASE WHEN is_paid THEN 'paid' ELSE 'organic' END AS kind, count(*)::int AS posts,
   round((1000.0 * sum(engagement) / NULLIF(sum(views), 0))::numeric, 1) AS engagement_per_1k_views,
   round((1000.0 * sum(comments) / NULLIF(sum(views), 0))::numeric, 2) AS comments_per_1k_views
-FROM posts WHERE brand = '${B}' AND views >= 5000
+FROM posts WHERE brand = focal_brand() AND views >= 5000
 GROUP BY 1, 2, 3 HAVING count(*) >= 5 ORDER BY engagement_per_1k_views ASC`,
         rationale: "Content people scroll past: seen a lot, reacted to little.",
       },
@@ -369,7 +339,7 @@ GROUP BY 1, 2, 3 HAVING count(*) >= 5 ORDER BY engagement_per_1k_views ASC`,
         title: "Push-back in their own words",
         subtitle: "Most-liked objection comments",
         sql: `SELECT objection_category AS objection, left(coalesce(objection_phrase, text), 120) AS comment, likes
-FROM comments WHERE brand = '${B}' AND objection_category IS NOT NULL ORDER BY likes DESC NULLS LAST LIMIT 12`,
+FROM comments WHERE brand = focal_brand() AND objection_category IS NOT NULL ORDER BY likes DESC NULLS LAST LIMIT 12`,
         rationale: "The exact wording of the criticism.",
       },
     ],
@@ -380,9 +350,9 @@ FROM comments WHERE brand = '${B}' AND objection_category IS NOT NULL ORDER BY l
       {
         type: "bar", w: 5, h: 6,
         title: "Unanswered question topics",
-        subtitle: `Questions in ${B} comments that received no reply`,
+        subtitle: `Questions in comments on our content that received no reply`,
         sql: `SELECT faq_topic AS topic, count(*)::int AS value FROM comments
-WHERE brand = '${B}' AND faq_topic IS NOT NULL AND coalesce(reply_count, 0) = 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
+WHERE brand = focal_brand() AND faq_topic IS NOT NULL AND coalesce(reply_count, 0) = 0 GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
         x: "topic", y: "value", format: "compact", horizontal: true,
         rationale: "Questions the brand could answer in captions, pinned comments or on the product page.",
       },
@@ -392,7 +362,7 @@ WHERE brand = '${B}' AND faq_topic IS NOT NULL AND coalesce(reply_count, 0) = 0 
         subtitle: "Most-liked unanswered questions and where they were asked",
         sql: `SELECT c.faq_topic AS topic, left(coalesce(c.faq_phrase, c.text), 140) AS question, c.likes, p.username AS asked_under, p.platform
 FROM comments c JOIN posts p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
-WHERE c.brand = '${B}' AND c.faq_topic IS NOT NULL AND coalesce(c.reply_count, 0) = 0
+WHERE c.brand = focal_brand() AND c.faq_topic IS NOT NULL AND coalesce(c.reply_count, 0) = 0
 ORDER BY c.likes DESC NULLS LAST LIMIT 15`,
         rationale: "Each of these is a piece of content or a FAQ entry waiting to be written.",
       },
@@ -404,8 +374,8 @@ ORDER BY c.likes DESC NULLS LAST LIMIT 15`,
       {
         type: "bar", w: 5, h: 6,
         title: "Feature requests by type",
-        subtitle: `What ${B} commenters ask the product to do`,
-        sql: `SELECT feature_request_type AS request, count(*)::int AS value FROM comments WHERE brand = '${B}' AND feature_request_type IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
+        subtitle: `What our commenters ask the product to do`,
+        sql: `SELECT feature_request_type AS request, count(*)::int AS value FROM comments WHERE brand = focal_brand() AND feature_request_type IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
         x: "request", y: "value", format: "compact", horizontal: true,
         rationale: "Variants, formats and sizes the audience is asking for.",
       },
@@ -414,7 +384,7 @@ ORDER BY c.likes DESC NULLS LAST LIMIT 15`,
         title: "Requests, verbatim",
         subtitle: "Most-liked feature requests",
         sql: `SELECT feature_request_type AS type, left(coalesce(feature_request, text), 140) AS request, likes
-FROM comments WHERE brand = '${B}' AND feature_request_type IS NOT NULL ORDER BY likes DESC NULLS LAST LIMIT 15`,
+FROM comments WHERE brand = focal_brand() AND feature_request_type IS NOT NULL ORDER BY likes DESC NULLS LAST LIMIT 15`,
         rationale: "The product brief, written by customers.",
       },
       {
@@ -422,7 +392,7 @@ FROM comments WHERE brand = '${B}' AND feature_request_type IS NOT NULL ORDER BY
         title: "Blockers we could remove",
         subtitle: "What stops people who already want to buy",
         sql: `SELECT purchase_blocker AS blocker, count(*)::int AS comments, sum(likes) AS likes_on_them, left(min(text), 120) AS example
-FROM comments WHERE brand = '${B}' AND purchase_blocker IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
+FROM comments WHERE brand = focal_brand() AND purchase_blocker IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
         rationale: "Service and availability gaps that cost sales today.",
       },
     ],
@@ -468,20 +438,20 @@ GROUP BY 1, 2 ORDER BY 1`,
       {
         type: "table", w: 7, h: 6,
         title: "Creators to partner with",
-        subtitle: `Organic ${B} creators (never paid) with the strongest engagement`,
+        subtitle: `Creators who post about us without being paid, with the strongest engagement`,
         sql: `SELECT p.username AS creator, p.platform, p.tier, max(p.followers) AS followers, count(*)::int AS organic_posts,
   sum(p.engagement) AS engagement, round((avg(p.engagement) / NULLIF(max(p.followers), 0) * 100)::numeric, 2) AS eng_rate_per_post_pct, max(p.country) AS country
 FROM posts p
-WHERE p.brand = '${B}' AND p.influencer_id NOT IN (SELECT influencer_id FROM posts WHERE brand = '${B}' AND is_paid)
+WHERE p.brand = focal_brand() AND p.influencer_id NOT IN (SELECT influencer_id FROM posts WHERE brand = focal_brand() AND is_paid)
 GROUP BY 1, 2, 3 HAVING count(*) >= 2 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
         rationale: "People already talking about us for free, with an audience that responds.",
       },
       {
         type: "table", w: 5, h: 6,
         title: "Brands our audience already loves",
-        subtitle: `Other brands named with affinity in ${B} comments`,
+        subtitle: `Other brands named with affinity in comments on our content`,
         sql: `SELECT brand_affinity_name AS brand, brand_affinity_category AS category, count(*)::int AS mentions
-FROM comments WHERE brand = '${B}' AND brand_affinity_name IS NOT NULL AND ${NOT_SELF("brand_affinity_name")}
+FROM comments WHERE brand = focal_brand() AND brand_affinity_name IS NOT NULL AND ${NOT_SELF("brand_affinity_name")}
   AND brand_affinity_name NOT ILIKE ALL (ARRAY['%unspecified%', '%unnamed%', '%unknown%', 'this brand', 'none', 'n/a'])
 GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 15`,
         rationale: "Co-marketing and bundle candidates that the audience has pre-approved.",
@@ -489,21 +459,21 @@ GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 15`,
       {
         type: "table", w: 6, h: 6,
         title: "Competitors already in our conversation",
-        subtitle: `Brands commenters compare us with under ${B} content`,
+        subtitle: `Brands commenters compare us with under our content`,
         sql: `SELECT competitor_name AS brand, count(*)::int AS mentions,
   count(*) FILTER (WHERE competitor_favored = 'competitor')::int AS prefers_them,
   count(*) FILTER (WHERE competitor_favored = 'focal_brand')::int AS prefers_us
-FROM comments WHERE brand = '${B}' AND competitor_name IS NOT NULL AND competitor_mention_type IN ('preference', 'comparison') AND ${NOT_SELF("competitor_name")}
+FROM comments WHERE brand = focal_brand() AND competitor_name IS NOT NULL AND competitor_mention_type IN ('preference', 'comparison') AND ${NOT_SELF("competitor_name")}
 GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
         rationale: "Who we are measured against, and whether we win the comparison.",
       },
       {
         type: "table", w: 6, h: 6,
         title: "Creators who already cover the category",
-        subtitle: `Creators posting about ${B} and at least one competitor`,
+        subtitle: `Creators posting about us and at least one competitor`,
         sql: `SELECT username AS creator, max(platform) AS platform, count(DISTINCT brand)::int AS brands, string_agg(DISTINCT brand, ', ') AS covers,
   sum(engagement) AS engagement, max(followers) AS followers
-FROM posts WHERE username IN (SELECT username FROM posts WHERE brand = '${B}')
+FROM posts WHERE username IN (SELECT username FROM posts WHERE brand = focal_brand())
 GROUP BY 1 HAVING count(DISTINCT brand) >= 2 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
         rationale: "Category voices worth owning before a competitor does.",
       },
@@ -522,10 +492,10 @@ GROUP BY 1 HAVING count(DISTINCT brand) >= 2 ORDER BY engagement DESC NULLS LAST
 
 export const TEMPLATES: DashboardTemplate[] = [
   {
-    id: "default",
-    name: "Default template",
-    description: "Twelve curated elements: share of voice, trends, sentiment, intent, objections, competitors, creators, markets, top posts, risk, strategy insight.",
-    build: buildDefaultWidgets,
+    id: "starter",
+    name: "Starter template",
+    description: "Five questions any brand asks first: how are we doing, what is working, what does our audience say, what should we do next, and what changed. Sections that need data you do not have yet are left out.",
+    build: () => layoutSections(STARTER_SECTIONS.map((sec) => ({ title: sec.title, widgets: sec.widgets.map(({ when, ...el }) => { void when; return el; }) }))),
   },
   {
     id: "eran",
@@ -544,6 +514,11 @@ export const TEMPLATES: DashboardTemplate[] = [
 export const TEMPLATE_IDS = TEMPLATES.map((t) => t.id);
 export function isTemplateId(v: unknown): v is TemplateId {
   return typeof v === "string" && (TEMPLATE_IDS as string[]).includes(v);
+}
+/** Accepts ids from older clients: "default" was the first template before the starter replaced it. */
+export function toTemplateId(v: unknown): TemplateId {
+  if (v === "default") return "starter";
+  return isTemplateId(v) ? v : "starter";
 }
 export function buildTemplate(id: TemplateId): WidgetSpec[] {
   return (TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0]).build();

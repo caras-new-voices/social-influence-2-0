@@ -1,4 +1,4 @@
-import { FOCAL_BRAND } from "./brands";
+import { focalName } from "./brands";
 import { getCoverage } from "./coverage";
 import { getDashboard } from "./dashboards";
 import { getDb, type Row } from "./db";
@@ -6,7 +6,7 @@ import { llmMode } from "./claude";
 import { complete } from "./llm";
 import { addMonths, formatMonth, monthEnd, monthKey, monthStart, type MonthCoverage, type PeriodWindow } from "./period";
 import { runWidgetQuery } from "./query";
-import { DATASET_DOC } from "./schema-doc";
+import { datasetDoc } from "./schema-doc";
 import { ensureReady } from "./schema";
 import { isDataWidget, type WidgetSpec } from "./widgets";
 
@@ -73,17 +73,16 @@ export type StoredReport = {
   created_at: string;
 };
 
-const B = FOCAL_BRAND.name;
 const KPI_SQL = `
 SELECT
-  (SELECT count(*)::int FROM posts WHERE brand = '${B}') AS posts,
-  (SELECT count(DISTINCT influencer_id)::int FROM posts WHERE brand = '${B}') AS creators,
-  (SELECT coalesce(sum(engagement), 0) FROM posts WHERE brand = '${B}') AS engagement,
-  (SELECT coalesce(sum(views), 0) FROM posts WHERE brand = '${B}') AS views,
-  (SELECT count(*)::int FROM comments WHERE brand = '${B}') AS comments,
-  (SELECT round(100.0 * count(*) FILTER (WHERE sentiment = 'positive') / NULLIF(count(*) FILTER (WHERE sentiment IS NOT NULL), 0), 1) FROM comments WHERE brand = '${B}') AS positive_share,
-  (SELECT count(*)::int FROM comments WHERE brand = '${B}' AND purchase_intent_type IS NOT NULL) AS intent_comments,
-  (SELECT count(*)::int FROM comments WHERE brand = '${B}' AND objection_category IS NOT NULL) AS objections`;
+  (SELECT count(*)::int FROM posts WHERE brand = focal_brand()) AS posts,
+  (SELECT count(DISTINCT influencer_id)::int FROM posts WHERE brand = focal_brand()) AS creators,
+  (SELECT coalesce(sum(engagement), 0) FROM posts WHERE brand = focal_brand()) AS engagement,
+  (SELECT coalesce(sum(views), 0) FROM posts WHERE brand = focal_brand()) AS views,
+  (SELECT count(*)::int FROM comments WHERE brand = focal_brand()) AS comments,
+  (SELECT round(100.0 * count(*) FILTER (WHERE sentiment = 'positive') / NULLIF(count(*) FILTER (WHERE sentiment IS NOT NULL), 0), 1) FROM comments WHERE brand = focal_brand()) AS positive_share,
+  (SELECT count(*)::int FROM comments WHERE brand = focal_brand() AND purchase_intent_type IS NOT NULL) AS intent_comments,
+  (SELECT count(*)::int FROM comments WHERE brand = focal_brand() AND objection_category IS NOT NULL) AS objections`;
 
 async function kpisFor(window: PeriodWindow): Promise<MonthKpis> {
   const res = await runWidgetQuery(KPI_SQL, 5, window);
@@ -138,9 +137,9 @@ export async function getStoredReport(dashboardId: string, month: string): Promi
   return rows[0] ?? null;
 }
 
-const REVIEW_SYSTEM = `You write the "month in review" for a brand team's social intelligence dashboard (the Social Influence workspace, an IMAI product). You are given the dashboard's elements with their results for the month and for the previous month. Write a concise, concrete review in markdown. Never name third-party data providers.
+const reviewSystem = () => `You write the "month in review" for a brand team's social intelligence dashboard (the Social Influence workspace, an IMAI product). You are given the dashboard's elements with their results for the month and for the previous month. Write a concise, concrete review in markdown. Never name third-party data providers.
 
-${DATASET_DOC}`;
+${datasetDoc()}`;
 
 function compactRows(rows: Row[], max = 12): Row[] {
   return rows.slice(0, max).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "string" && v.length > 120 ? v.slice(0, 120) + "…" : typeof v === "number" ? Math.round(v * 100) / 100 : v])));
@@ -157,9 +156,9 @@ function mockReview(month: string, prev: string | null, k: MonthKpis, p: MonthKp
   lines.push(`## ${formatMonth(month)} in review`);
   lines.push("");
   if (p && prev) {
-    lines.push(`**Volume.** ${B} had ${k.posts.toLocaleString("en-US")} creator posts (${pct(k.posts, p.posts)} vs ${formatMonth(prev)}) from ${k.creators.toLocaleString("en-US")} creators, generating ${Math.round(k.engagement).toLocaleString("en-US")} engagements (${pct(k.engagement, p.engagement)}) and ${k.comments.toLocaleString("en-US")} comments (${pct(k.comments, p.comments)}).`);
+    lines.push(`**Volume.** ${focalName()} had ${k.posts.toLocaleString("en-US")} creator posts (${pct(k.posts, p.posts)} vs ${formatMonth(prev)}) from ${k.creators.toLocaleString("en-US")} creators, generating ${Math.round(k.engagement).toLocaleString("en-US")} engagements (${pct(k.engagement, p.engagement)}) and ${k.comments.toLocaleString("en-US")} comments (${pct(k.comments, p.comments)}).`);
   } else {
-    lines.push(`**Volume.** ${B} had ${k.posts.toLocaleString("en-US")} creator posts from ${k.creators.toLocaleString("en-US")} creators, generating ${Math.round(k.engagement).toLocaleString("en-US")} engagements and ${k.comments.toLocaleString("en-US")} comments.`);
+    lines.push(`**Volume.** ${focalName()} had ${k.posts.toLocaleString("en-US")} creator posts from ${k.creators.toLocaleString("en-US")} creators, generating ${Math.round(k.engagement).toLocaleString("en-US")} engagements and ${k.comments.toLocaleString("en-US")} comments.`);
   }
   lines.push("");
   lines.push(`**Sentiment and intent.** ${k.positiveShare == null ? "No analysed comments." : `${k.positiveShare}% of analysed comments were positive${p?.positiveShare != null ? ` (${(k.positiveShare - p.positiveShare) >= 0 ? "+" : ""}${(k.positiveShare - p.positiveShare).toFixed(1)} pts)` : ""}.`} ${k.intentComments.toLocaleString("en-US")} comments showed buying intent${p ? ` (${pct(k.intentComments, p.intentComments)})` : ""}; ${k.objections.toLocaleString("en-US")} raised an objection${p ? ` (${pct(k.objections, p.objections)})` : ""}.`);
@@ -209,14 +208,14 @@ export async function generateMonthReview(dashboardId: string, month: string, { 
     model = "demo";
   } else {
     const user = [
-      `Dashboard: "${dashboard.name}". Focal brand: ${B}. Month under review: ${formatMonth(month)} (${start} to ${end}, end exclusive).${prev ? ` Previous month: ${formatMonth(prevMonth)}.` : " No previous month available."}`,
-      `Headline numbers for ${B}: ${JSON.stringify(k)}${p ? `; previous month: ${JSON.stringify(p)}` : ""}.`,
+      `Dashboard: "${dashboard.name}". Focal brand: ${focalName()}. Month under review: ${formatMonth(month)} (${start} to ${end}, end exclusive).${prev ? ` Previous month: ${formatMonth(prevMonth)}.` : " No previous month available."}`,
+      `Headline numbers for ${focalName()}: ${JSON.stringify(k)}${p ? `; previous month: ${JSON.stringify(p)}` : ""}.`,
       "Dashboard elements (this month, then previous month; rows trimmed):",
       ...widgets.map((w) => `### ${w.title} (${w.type})\nthis month: ${JSON.stringify(compactRows(w.rows))}\nprevious month: ${JSON.stringify(compactRows(w.prevRows))}`),
       "",
       "Write the month in review in markdown, under 320 words: a heading '## <Month> in review'; a one-paragraph lead with the headline numbers and the direction versus the previous month; then 3 to 5 bullets on what grew, what fell and why (name creators, channels, topics, objections with the numbers); then 2 or 3 notable verbatim comments if present in the data (quoted, short); then one bullet 'Suggested action'. Only use numbers present in the data. Do not mention SQL or tools.",
     ].join("\n\n");
-    summary = (await complete(REVIEW_SYSTEM, user, 1800)).trim();
+    summary = (await complete(reviewSystem(), user, 1800)).trim();
     model = process.env.OPEN_AI_KEY || process.env.OPENAI_API_KEY ? process.env.OPENAI_MODEL ?? "gpt-5.2" : process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
   }
 

@@ -1,13 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { z } from "zod";
-import { BRANDS, FOCAL_BRAND } from "./brands";
+import { competitorNames, focalName, getWorkspace } from "./brands";
 import { getCoverage } from "./coverage";
 import { formatWindow, ISO_DATE, monthPeriod, PeriodStateSchema, resolveCompare, resolveWindow, type PeriodState, type PeriodWindow } from "./period";
 import { getDb, type Row } from "./db";
 import { runWidgetQuery } from "./query";
 import { ensureReady } from "./schema";
-import { DATASET_DOC } from "./schema-doc";
+import { datasetDoc } from "./schema-doc";
 import { materialize, ProposedWidgetSchema, START_SCAN_LABEL, type ProposedWidget, type WidgetSpec } from "./widgets";
 
 /* ------------------------------------------------------------------ */
@@ -97,20 +97,23 @@ const HISTORY_ROWS = 30;
 /* Prompt                                                                */
 /* ------------------------------------------------------------------ */
 
-const SYSTEM_PROMPT = `You are the analyst inside the Social Influence workspace, an IMAI product. You help a brand team at P&G understand creator content and audience reactions about ${FOCAL_BRAND.name} and its competitors (${BRANDS.filter((b) => b.role === "competitor").map((b) => b.name).join(", ")}), and you help them build a dashboard.
+/** The analyst's system prompt, built from the workspace so it names no brand itself. */
+function systemPrompt(): string {
+  const ws = getWorkspace();
+  return `You are the analyst inside the Social Influence workspace, an IMAI product. You help a brand team${ws.company ? ` at ${ws.company}` : ""} understand creator content and audience reactions about ${focalName()} and its competitors (${competitorNames().join(", ")}), and you help them build a dashboard.
 
 You have three tools:
 - run_sql: run a read-only Postgres SELECT against the dataset and read the rows. It runs within the dashboard's current period (see Time periods below).
 - propose_widget: propose a dashboard element (a saved query plus a rendering recipe). The person sees a preview card and decides whether to add it. You cannot add widgets yourself.
 - set_period: change the dashboard's global period (a month, a date range, or all time) and optionally the comparison period. Use it when the person asks to look at a month or range, or to compare periods ("show me June versus May"); every element on the dashboard follows it. Do not use it for a one-off question you can answer with posts_all.
 
-${DATASET_DOC}
+${datasetDoc()}
 
 ## How to work
 - Ground every claim in a query. Never guess numbers. Run the queries you need (usually 1 to 3) before answering; keep result sets small by aggregating in SQL. For examples of verbatim comments select at most 8 rows and use left(text, 220).
 - Postgres syntax only. Single SELECT or WITH statement, no semicolons. For "versus the previous period" use posts_all/comments_all with period_start() and period_end() (see Time periods). Useful idioms: count(*) FILTER (WHERE ...), to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, round(x::numeric, 3), NULLIF for divisions, ::int casts for counts.
-- Brand strings must match exactly: ${BRANDS.map((b) => `'${b.name}'`).join(", ")}. "Us", "our brand" and "we" mean ${FOCAL_BRAND.name}.
-- Read the whole result; summarise the pattern, name the leaders and the laggards, quote the key numbers (rounded, with units), and say what it means for ${FOCAL_BRAND.name}. Be concrete and concise: a short lead sentence, then 2 to 5 bullets or a short paragraph. Use markdown (bold, bullets, small tables). Do not paste SQL into the answer unless asked.
+- Brand strings must match exactly: ${ws.brands.map((b) => `'${b.name}'`).join(", ")}. "Us", "our brand" and "we" mean ${focalName()}. In elements you propose, use focal_brand() and is_competitor(brand) instead of brand names, and first-person titles.
+- Read the whole result; summarise the pattern, name the leaders and the laggards, quote the key numbers (rounded, with units), and say what it means for ${focalName()}. Be concrete and concise: a short lead sentence, then 2 to 5 bullets or a short paragraph. Use markdown (bold, bullets, small tables). Do not paste SQL into the answer unless asked.
 - Propose widgets when the person asks for a chart, a card, a table, a dashboard element, or asks to track or compare something over time. Also propose one when a visual clearly adds value to a question you answered. Propose at most 3 per turn. Before proposing, run the exact SQL once with run_sql to make sure it works and returns the right shape. Mention each proposal briefly in your reply by title, e.g. "I've proposed a chart: Engagement trend by brand".
 - When the person wants to change an existing widget (different brands, platform, metric, chart type, time grain, title), call propose_widget with the full new spec and set replaces_widget_id to the id of the widget it replaces. The dashboard context in each message lists the current widgets with their ids.
 - If a query fails, read the error, fix the SQL and retry. Do not report an error to the person unless you cannot fix it.
@@ -134,6 +137,7 @@ Grid: 12 columns, 1 row = 56px. Typical sizes: kpi width 12 height 2, bar/stacke
 End your final reply (the one with no further tool calls) with one last line in exactly this form:
 FOLLOWUPS: ["...", "...", "..."]
 Give 2 or 3 short next questions (under 70 characters each) written in the person's voice, each a natural next step from what you just showed: a different platform, a time split, a competitor, a verbatim example, or turning the answer into a dashboard element. The line is hidden from the person and rendered as buttons. Do not add it while you are still calling tools.`;
+}
 
 /* ------------------------------------------------------------------ */
 /* Tools                                                                 */
@@ -515,7 +519,7 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
         ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
         thinking: { type: "adaptive" },
         output_config: { effort: EFFORT },
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: systemPrompt(), cache_control: { type: "ephemeral" } }],
         tools: TOOLS,
         messages,
       });
@@ -607,46 +611,46 @@ const MOCK_RECIPES: MockRecipe[] = [
       sql: `SELECT brand, count(*)::int AS value FROM posts WHERE platform = 'tiktok' GROUP BY brand ORDER BY value DESC`,
       rationale: "TikTok is where the category volume is; this shows who owns it.", width: 6, height: 5,
     },
-    answer: (rows) => `On TikTok the volume leader is **${rows[0]?.brand}** with ${fmt(rows[0]?.value)} posts, ahead of ${rows[1]?.brand} (${fmt(rows[1]?.value)}). Venus sits at ${fmt(rows.find((r) => r.brand === "Venus")?.value)} posts.\n\nI've proposed a chart: **TikTok share of voice**.`,
+    answer: (rows) => `On TikTok the volume leader is **${rows[0]?.brand}** with ${fmt(rows[0]?.value)} posts, ahead of ${rows[1]?.brand} (${fmt(rows[1]?.value)}). ${focalName()} sits at ${fmt(rows.find((r) => r.brand === focalName())?.value)} posts.\n\nI've proposed a chart: **TikTok share of voice**.`,
   },
   {
     match: /complain|objection|negative/i,
     widget: {
-      type: "stacked_bar", title: "Objections: Venus vs Estrid", subtitle: "Comments raising an objection, by category", x: "objection", y: "value", series: "brand", colorBy: "brand", horizontal: true, format: "compact",
-      sql: `SELECT objection_category AS objection, brand, count(*)::int AS value FROM comments WHERE objection_category IS NOT NULL AND brand IN ('Venus','Estrid') GROUP BY 1,2 ORDER BY 1`,
+      type: "stacked_bar", title: "Objections: us versus our closest competitor", subtitle: "Comments raising an objection, by category", x: "objection", y: "value", series: "brand", colorBy: "brand", horizontal: true, format: "compact",
+      sql: `SELECT objection_category AS objection, brand, count(*)::int AS value FROM comments WHERE objection_category IS NOT NULL AND (brand = focal_brand() OR brand = (SELECT brand FROM posts_all WHERE is_competitor(brand) GROUP BY brand ORDER BY count(*) DESC LIMIT 1)) GROUP BY 1,2 ORDER BY 1`,
       rationale: "Shows where each brand's criticism concentrates.", width: 6, height: 5,
     },
     answer: (rows) => {
       const top = rows.slice().sort((a, b) => Number(b.value) - Number(a.value)).slice(0, 4).map((r) => `**${r.brand}** ${r.objection}: ${fmt(r.value)}`).join(", ");
-      return `Quality and price are the dominant complaints for both brands. Largest buckets: ${top}.\n\nI've proposed a chart: **Objections: Venus vs Estrid**.`;
+      return `Here is where the complaints concentrate for both brands. Largest buckets: ${top}.\n\nI've proposed a chart: **Objections: us versus our closest competitor**.`;
     },
   },
   {
     match: /stuck|blocker|purchase|buy/i,
     widget: {
-      type: "table", title: "Venus purchase blockers", subtitle: "What stops commenters who want to buy", width: 6, height: 5,
-      sql: `SELECT purchase_blocker AS blocker, count(*)::int AS comments FROM comments WHERE brand = 'Venus' AND purchase_blocker IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
+      type: "table", title: "Our purchase blockers", subtitle: "What stops commenters who want to buy", width: 6, height: 5,
+      sql: `SELECT purchase_blocker AS blocker, count(*)::int AS comments FROM comments WHERE brand = focal_brand() AND purchase_blocker IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
       rationale: "Lists the friction points between intent and purchase.",
     },
-    answer: (rows) => `The most common blockers for Venus buyers are ${rows.slice(0, 3).map((r) => `**${r.blocker}** (${fmt(r.comments)})`).join(", ")}.\n\nI've proposed a table: **Venus purchase blockers**.`,
+    answer: (rows) => `The most common blockers for our buyers are ${rows.slice(0, 3).map((r) => `**${r.blocker}** (${fmt(r.comments)})`).join(", ")}.\n\nI've proposed a table: **Our purchase blockers**.`,
   },
   {
     match: /creator|influencer/i,
     widget: {
-      type: "table", title: "Top Venus creators by engagement", width: 12, height: 6,
-      sql: `SELECT username AS creator, platform, count(*)::int AS posts, sum(engagement) AS engagement, sum(views) AS views FROM posts WHERE brand = 'Venus' GROUP BY 1,2 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
+      type: "table", title: "Our top creators by engagement", width: 12, height: 6,
+      sql: `SELECT username AS creator, platform, count(*)::int AS posts, sum(engagement) AS engagement, sum(views) AS views FROM posts WHERE brand = focal_brand() GROUP BY 1,2 ORDER BY engagement DESC NULLS LAST LIMIT 15`,
       rationale: "The creators that moved the most people for the focal brand.",
     },
-    answer: (rows) => `The top Venus creator is **${rows[0]?.creator}** on ${rows[0]?.platform} with ${fmt(rows[0]?.engagement)} engagements, followed by ${rows[1]?.creator} (${fmt(rows[1]?.engagement)}).\n\nI've proposed a table: **Top Venus creators by engagement**.`,
+    answer: (rows) => `Our top creator is **${rows[0]?.creator}** on ${rows[0]?.platform} with ${fmt(rows[0]?.engagement)} engagements, followed by ${rows[1]?.creator} (${fmt(rows[1]?.engagement)}).\n\nI've proposed a table: **Our top creators by engagement**.`,
   },
   {
     match: /prefer|competitor/i,
     widget: {
-      type: "table", title: "Competitors named in Venus comments", width: 6, height: 5,
-      sql: `SELECT competitor_name AS competitor, count(*)::int AS mentions, count(*) FILTER (WHERE competitor_favored='competitor')::int AS prefers_competitor FROM comments WHERE brand='Venus' AND competitor_name IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 10`,
+      type: "table", title: "Competitors named in our comments", width: 6, height: 5,
+      sql: `SELECT competitor_name AS competitor, count(*)::int AS mentions, count(*) FILTER (WHERE competitor_favored='competitor')::int AS prefers_competitor FROM comments WHERE brand = focal_brand() AND competitor_name IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 10`,
       rationale: "Direct competitive preference inside the focal brand's audience.",
     },
-    answer: (rows) => `Commenters on Venus content most often mention ${rows.slice(0, 3).map((r) => `**${r.competitor}** (${fmt(r.mentions)})`).join(", ")}.\n\nI've proposed a table: **Competitors named in Venus comments**.`,
+    answer: (rows) => `Commenters on our content most often mention ${rows.slice(0, 3).map((r) => `**${r.competitor}** (${fmt(r.mentions)})`).join(", ")}.\n\nI've proposed a table: **Competitors named in our comments**.`,
   },
   {
     match: /question|faq|unanswered/i,
@@ -660,11 +664,11 @@ const MOCK_RECIPES: MockRecipe[] = [
   {
     match: /country|countries|market/i,
     widget: {
-      type: "bar", title: "Philips OneBlade posts by country", x: "country", y: "value", horizontal: true, format: "compact", width: 6, height: 5,
-      sql: `SELECT country, count(*)::int AS value FROM posts WHERE brand = 'Philips OneBlade' AND country <> 'Unknown' GROUP BY 1 ORDER BY 2 DESC LIMIT 10`,
-      rationale: "Where Philips OneBlade's creator activity concentrates.",
+      type: "bar", title: "Our biggest competitor's posts by country", x: "country", y: "value", horizontal: true, format: "compact", width: 6, height: 5,
+      sql: `SELECT country, count(*)::int AS value FROM posts WHERE brand = (SELECT brand FROM posts_all WHERE is_competitor(brand) GROUP BY brand ORDER BY count(*) DESC LIMIT 1) AND country <> 'Unknown' GROUP BY 1 ORDER BY 2 DESC LIMIT 10`,
+      rationale: "Where our biggest competitor's creator activity concentrates.",
     },
-    answer: (rows) => `Philips OneBlade over-indexes in **${rows[0]?.country}** (${fmt(rows[0]?.value)} posts) and ${rows[1]?.country} (${fmt(rows[1]?.value)}).\n\nI've proposed a chart: **Philips OneBlade posts by country**.`,
+    answer: (rows) => `Our biggest competitor over-indexes in **${rows[0]?.country}** (${fmt(rows[0]?.value)} posts) and ${rows[1]?.country} (${fmt(rows[1]?.value)}).\n\nI've proposed a chart: **Our biggest competitor's posts by country**.`,
   },
   {
     match: /paid|organic|sponsored/i,
@@ -678,11 +682,11 @@ const MOCK_RECIPES: MockRecipe[] = [
   {
     match: /loyal/i,
     widget: {
-      type: "table", title: "What loyal Venus customers say", width: 12, height: 6,
-      sql: `SELECT loyalty_type, left(loyalty_phrase, 160) AS phrase, likes FROM comments WHERE brand = 'Venus' AND loyalty_phrase IS NOT NULL ORDER BY likes DESC NULLS LAST LIMIT 12`,
+      type: "table", title: "What our loyal customers say", width: 12, height: 6,
+      sql: `SELECT loyalty_type, left(loyalty_phrase, 160) AS phrase, likes FROM comments WHERE brand = focal_brand() AND loyalty_phrase IS NOT NULL ORDER BY likes DESC NULLS LAST LIMIT 12`,
       rationale: "Verbatim loyalty signals to reuse in messaging.",
     },
-    answer: (rows) => `Loyal Venus users mostly describe long-term use and repeat buying. Example: "${rows[0]?.phrase}".\n\nI've proposed a table: **What loyal Venus customers say**.`,
+    answer: (rows) => `Our loyal customers mostly describe long-term use and repeat buying. Example: "${rows[0]?.phrase}".\n\nI've proposed a table: **What our loyal customers say**.`,
   },
   {
     match: /sentiment|instagram/i,
@@ -841,7 +845,7 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]):
   const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
   const window = resolveWindow(input.period);
   const userMsg: OaiMessage = { role: "user", content: userApiText };
-  const messages: OaiMessage[] = [{ role: "system", content: SYSTEM_PROMPT }, ...history, userMsg];
+  const messages: OaiMessage[] = [{ role: "system", content: systemPrompt() }, ...history, userMsg];
   await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: { provider: "openai", message: userMsg } });
 
   const pending: StoredMessage[] = [];

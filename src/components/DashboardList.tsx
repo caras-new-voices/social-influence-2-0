@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { BRANDS } from "@/lib/brands";
+import { useWorkspace } from "./WorkspaceProvider";
 import { relativeTime } from "@/lib/format";
 import { TEMPLATES, type TemplateId } from "@/lib/templates";
 import type { DashboardRecord } from "@/lib/widgets";
@@ -23,11 +23,12 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [template, setTemplate] = useState<TemplateId>("default");
+  const [template, setTemplate] = useState<TemplateId>("starter");
+  const ws = useWorkspace();
   const [creating, setCreating] = useState(false);
   const [path, setPath] = useState<"guided" | "template" | "blank">("guided");
   const [screen, setScreen] = useState<"choose" | "name">("choose");
-  const defaultName = `${BRANDS[0].name}, ${new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}`;
+  const defaultName = `${ws.focal}, ${new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}`;
 
   const openDialog = () => { setScreen("choose"); setPath("guided"); setOpen(true); };
 
@@ -74,10 +75,10 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
     <div style={{ padding: "1.5rem" }}>
       <div className="hero">
         <div>
-          <h1>Social influence for Venus</h1>
-          <p>Chat with an analyst over creator posts and audience comments about Venus and its competitors, approve the charts it proposes, and shape a dashboard your team can keep.</p>
+          <h1>Social influence for {ws.focal}</h1>
+          <p>Chat with an analyst over creator posts and audience comments about {ws.focal} and its competitors, approve the charts it proposes, and shape a dashboard your team can keep.</p>
           <div className="brand-chips">
-            {BRANDS.map((b) => (
+            {ws.brands.map((b) => (
               <span className="brand-chip" key={b.name}><i className="dot" style={{ background: b.color }} />{b.name}{b.role === "focal" ? " · focal brand" : ""}</span>
             ))}
           </div>

@@ -305,6 +305,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               if (w) setVoice({ widget: w, rows });
             }}
             onAddClick={() => setAdding(true)}
+            onSetPeriod={(id, p) => { mutate((ws) => ws.map((w) => (w.id === id ? { ...w, period: p } : w))); toast(p === "all" ? "This element now shows all time" : "Element period changed"); }}
           />
         </div>
       </div>

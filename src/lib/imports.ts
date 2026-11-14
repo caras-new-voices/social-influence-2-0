@@ -8,6 +8,7 @@ import type { Row } from "./db";
 import { getDb } from "./db";
 import { getCoverage } from "./coverage";
 import { detectPeriodEvents, notifyWebhook, type PeriodEvent } from "./period-events";
+import { loadWorkspace } from "./workspace";
 import { ARRAY_COLUMNS, COLUMNS, JSON_COLUMNS, PHYSICAL, ensureReady, toParam } from "./schema";
 
 export type DatasetTable = "segments" | "posts" | "comments" | "influencers";
@@ -230,6 +231,8 @@ export async function importBatch(input: ImportInput): Promise<ImportResult> {
       .catch(() => {});
     throw e;
   }
+  // New or changed segments change who the tracked brands are.
+  await loadWorkspace(db);
   const after = await getCoverage();
   const events = await detectPeriodEvents(before, after, importId);
   for (const ev of events) notifyWebhook(ev);

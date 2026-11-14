@@ -5,6 +5,7 @@ import { FOCUS_QUESTIONS, INTENTS, questionAboutWidget, START_SCAN_INSTRUCTION, 
 import type { PeriodState } from "@/lib/period";
 import { useConfirm } from "./Confirm";
 import { usePeriod } from "./PeriodContext";
+import { useWorkspace } from "./WorkspaceProvider";
 import { ProposalCard, type Proposal } from "./ProposalCard";
 import { eventMonth, latestDataEvent, previousMonth, useStoredNumber, usePeriodEvents, writeNumber } from "./usePeriodEvents";
 import { Markdown } from "./WidgetBody";
@@ -48,6 +49,7 @@ export function ChatPanel({
   onSetPeriod?: (p: PeriodState) => void;
 }) {
   const period = usePeriod();
+  const ws = useWorkspace();
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -222,8 +224,8 @@ export function ChatPanel({
           label,
           lead: nudgeEvent.kind === "month_revised" ? `New data was added to ${label}.` : `A new month was added (${label}).`,
           prevLabel,
-          summary: `Summarise what changed in ${label} versus ${prevLabel} for Venus: posts, engagement, sentiment, top creators, objections. Propose one element for the biggest change.`,
-          highlights: `What are the three most important things in the ${label} data for Venus and its competitors? Use ${label} only.`,
+          summary: `Summarise what changed in ${label} versus ${prevLabel} for us: posts, engagement, sentiment, top creators, objections. Propose one element for the biggest change.`,
+          highlights: `What are the three most important things in the ${label} data for us and our competitors? Use ${label} only.`,
         };
       })()
     : null;
@@ -263,7 +265,7 @@ export function ChatPanel({
         {messages.length === 0 && !scope && (
           <>
             <div className="chat__intro">
-              Ask anything about <strong>Venus</strong> and its competitors across <strong>{(period.coverage?.posts ?? 6168).toLocaleString("en-US")} creator posts</strong> and <strong>{(period.coverage?.comments ?? 31688).toLocaleString("en-US")} comments</strong>. I answer with real numbers and propose dashboard elements you can add, refine, or dismiss.
+              Ask anything about <strong>{ws.focal}</strong> and its competitors{period.coverage ? <> across <strong>{period.coverage.posts.toLocaleString("en-US")} creator posts</strong> and <strong>{period.coverage.comments.toLocaleString("en-US")} comments</strong></> : null}. I answer with real numbers and propose dashboard elements you can add, refine, or dismiss.
             </div>
             <div className="chat__start">
               <div className="grow">

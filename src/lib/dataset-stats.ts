@@ -34,7 +34,7 @@ export interface DatasetStats {
   analysis: Array<{ col: string; label: string; kind: "label" | "free"; filled: number; values: Array<{ value: string; n: number }>; distinct: number; example: { text: string; value: string; brand: string } | null }>;
   segmentOutputs: Array<{ brand: string; insightFields: string[]; platforms: string[]; commentPayloadKeys: string[]; model: string | null }>;
   samples: { posts: Row[]; comments: Row[] };
-  caveats: { viewsFilled: number; languageKnown: number; audienceCoverage: number; reportCoverage: number; mercadonaPosts: number; crossSegmentPosts: number };
+  caveats: { viewsFilled: number; languageKnown: number; audienceCoverage: number; reportCoverage: number; smallBrands: Array<{ brand: string; posts: number }>; crossSegmentPosts: number };
 }
 
 const CACHE_MS = 10 * 60 * 1000;
@@ -132,10 +132,10 @@ async function computeDatasetStats(): Promise<DatasetStats> {
   const samplePosts = await q(`SELECT post_id, brand, platform, post_type, username, left(text, 140) AS text, published_at, likes, comments, shares, views, saves, engagement, is_paid, tier, country, language, sentiment, emv, followers FROM posts_all WHERE text IS NOT NULL AND length(text) > 40 ORDER BY post_id LIMIT 3`);
   const sampleComments = await q(`SELECT comment_id, brand, post_id, left(text, 140) AS text, likes, published_at, sentiment, sentiment_score, emotion, language, topics, purchase_intent_type, objection_category, competitor_name, loyalty_type FROM comments_all WHERE language = 'en' AND length(text) > 30 AND (purchase_intent_type IS NOT NULL OR objection_category IS NOT NULL OR loyalty_type IS NOT NULL) ORDER BY comment_id LIMIT 3`);
 
-  const [cav] = await q<{ views: number; lang: number; aud: number; rep: number; merc: number; cross: number }>(`
+  const smallBrands = (await q<{ brand: string; posts: number }>(`SELECT brand, count(*)::int AS posts FROM posts_all GROUP BY 1 HAVING count(*) < 50 ORDER BY 2`)).map((r) => ({ brand: r.brand, posts: Number(r.posts) }));
+  const [cav] = await q<{ views: number; lang: number; aud: number; rep: number; cross: number }>(`
     SELECT (SELECT count(views)::int FROM posts_all) AS views, (SELECT count(*)::int FROM posts_all WHERE language IS NOT NULL AND language <> 'unknown') AS lang,
            (SELECT count(audience_female)::int FROM influencers) AS aud, (SELECT count(*)::int FROM influencers WHERE has_report) AS rep,
-           (SELECT count(*)::int FROM posts_all WHERE brand = 'Mercadona') AS merc,
            (SELECT count(*)::int FROM (SELECT post_id FROM posts_all GROUP BY post_id HAVING count(*) > 1) x) AS cross`);
 
   const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : "");
@@ -152,6 +152,6 @@ async function computeDatasetStats(): Promise<DatasetStats> {
     analysis,
     segmentOutputs,
     samples: { posts: samplePosts, comments: sampleComments },
-    caveats: { viewsFilled: Number(cav.views), languageKnown: Number(cav.lang), audienceCoverage: Number(cav.aud), reportCoverage: Number(cav.rep), mercadonaPosts: Number(cav.merc), crossSegmentPosts: Number(cav.cross) },
+    caveats: { viewsFilled: Number(cav.views), languageKnown: Number(cav.lang), audienceCoverage: Number(cav.aud), reportCoverage: Number(cav.rep), smallBrands, crossSegmentPosts: Number(cav.cross) },
   };
 }
