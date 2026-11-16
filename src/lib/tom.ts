@@ -146,10 +146,10 @@ us AS (
   FROM comments_all c, b WHERE c.brand = focal_brand() AND c.published_at >= b.ps AND c.published_at < b.e
 ), ${MIN_POSTS("w", "cur")},
 gap AS (SELECT theme, count(*)::float AS n, sum(coalesce(comments, 0)) AS comments, count(DISTINCT brand) AS brands FROM tags GROUP BY 1),
-top_gap AS (
+gap_c AS MATERIALIZED (
   SELECT gap.theme, 100.0 * gap.comments / NULLIF(tot.comments, 0) - 100.0 * gap.n / NULLIF(tot.cur, 0) AS pts
-  FROM gap, tot, mn WHERE gap.n >= mn.n AND ${SHARED("gap.brands")} AND ${THEME_OK("gap.theme")} ORDER BY 2 DESC NULLS LAST LIMIT 1
-)
+  FROM gap, tot, mn WHERE gap.n >= mn.n AND ${SHARED("gap.brands")} ORDER BY 2 DESC NULLS LAST LIMIT 40
+), top_gap AS (SELECT theme, pts FROM gap_c WHERE ${THEME_OK("theme")} ORDER BY pts DESC NULLS LAST LIMIT 1)
 SELECT 'Share of voice' AS label, us.cur / NULLIF(tot.cur, 0) AS value, us.prev / NULLIF(tot.prev, 0) AS compare, 'percent' AS fmt FROM us, tot
 UNION ALL SELECT 'Vs norm', us.vs_cur, us.vs_prev, 'decimal' FROM us
 UNION ALL SELECT 'Momentum', CASE WHEN us.prev >= 3 THEN us.cur / us.prev - 1 END, NULL, 'percent' FROM us
@@ -208,14 +208,14 @@ t AS (
          count(DISTINCT brand) FILTER (WHERE cur)::int AS brands, ${vs("cur")} AS vs,
          count(*) FILTER (WHERE cur AND brand = focal_brand())::float AS ours
   FROM tags GROUP BY 1
-)
+), c AS MATERIALIZED (SELECT t.* FROM t, mn WHERE t.posts >= mn.n AND ${SHARED("t.brands")} ORDER BY t.posts DESC LIMIT 120)
 SELECT theme, posts::int AS posts, brands, CASE WHEN before >= 3 THEN ${r0("100.0 * (posts / before - 1)")} END AS "momentum %", ${r2("vs")} AS "vs norm",
        ${r0("100.0 * ours / NULLIF(posts, 0)")} AS "our share %",
        CASE WHEN vs >= 1.2 AND before >= 3 AND posts >= 1.2 * before THEN 'winning'
             WHEN vs >= 1.5 THEN 'early signal'
             WHEN before >= 3 AND posts >= 1.5 * before AND vs < 1 THEN 'peaking'
             WHEN vs >= 1.2 THEN 'above norm' WHEN vs < 0.8 THEN 'below norm' ELSE 'steady' END AS status
-FROM t, mn WHERE posts >= mn.n AND ${SHARED()} AND ${THEME_OK("theme")} ORDER BY posts DESC LIMIT 25`,
+FROM c WHERE ${THEME_OK("theme")} ORDER BY posts DESC LIMIT 25`,
         rationale: "Which conversations are growing and rewarded, which are just starting, and which are fading.",
       },
       {
@@ -225,9 +225,10 @@ FROM t, mn WHERE posts >= mn.n AND ${SHARED()} AND ${THEME_OK("theme")} ORDER BY
         when: N_COMPETITORS,
         sql: `WITH ${SCORED("posts")}, ${TAGS("sp")}, ${MIN_POSTS("posts")},
 t AS (SELECT theme, count(*)::float AS posts, count(*) FILTER (WHERE brand = focal_brand())::float AS ours, ${vs()} AS vs, count(DISTINCT brand) AS brands FROM tags GROUP BY 1),
-o AS (SELECT count(*) FILTER (WHERE brand = focal_brand())::float / NULLIF(count(*), 0) AS share FROM posts)
-SELECT theme, posts::int AS posts, ${r2("vs")} AS "vs norm", ${r0("100.0 * ours / posts")} AS "our share %", ${r1("100.0 * (ours / posts - o.share)")} AS gap
-FROM t, o, mn WHERE posts >= mn.n AND vs >= 1.1 AND ours / posts < o.share AND ${SHARED()} AND ${THEME_OK("theme")} ORDER BY ours / posts - o.share ASC, posts DESC LIMIT 12`,
+o AS (SELECT count(*) FILTER (WHERE brand = focal_brand())::float / NULLIF(count(*), 0) AS share FROM posts),
+c AS MATERIALIZED (SELECT t.*, o.share FROM t, o, mn WHERE t.posts >= mn.n AND t.vs >= 1.1 AND t.ours / t.posts < o.share AND ${SHARED("t.brands")} ORDER BY t.ours / t.posts - o.share ASC, t.posts DESC LIMIT 80)
+SELECT theme, posts::int AS posts, ${r2("vs")} AS "vs norm", ${r0("100.0 * ours / posts")} AS "our share %", ${r1("100.0 * (ours / posts - share)")} AS gap
+FROM c WHERE ${THEME_OK("theme")} ORDER BY ours / posts - share ASC, posts DESC LIMIT 12`,
         rationale: "The rewarded conversations we are absent from are the cheapest ones to enter.",
       },
       {
@@ -240,7 +241,8 @@ ours AS (SELECT p.*, pc.n AS c_n, pc.intent AS c_intent FROM posts p LEFT JOIN p
 ${SCORED("ours")}, ${TAGS("sp")},
 t AS (SELECT theme, count(*)::int AS posts, sum(c_n) AS comments, sum(c_intent) AS intent, ${vs()} AS vs FROM tags GROUP BY 1)
 SELECT theme, posts, comments::int AS comments, ${r1("1000.0 * intent / comments")} AS "intent per 1K", ${r2("vs")} AS "vs norm", ${r0("1000.0 * intent / comments * coalesce(vs, 1)")} AS score
-FROM t WHERE comments >= 50 AND posts >= 5 AND intent > 0 AND ${THEME_OK("theme")} ORDER BY 1000.0 * intent / comments * coalesce(vs, 1) DESC LIMIT 12`,
+FROM (SELECT * FROM t WHERE comments >= 50 AND posts >= 5 AND intent > 0 ORDER BY 1000.0 * intent / comments * coalesce(vs, 1) DESC LIMIT 80) c
+WHERE ${THEME_OK("theme")} ORDER BY 1000.0 * intent / comments * coalesce(vs, 1) DESC LIMIT 12`,
         sample: OUR_COMMENTS,
         rationale: "Reach without intent is entertainment. These themes bring both.",
       },
@@ -303,15 +305,17 @@ FROM s JOIN top USING (brand, mo) ORDER BY s.mo DESC, s.eng / s.base DESC LIMIT 
         type: "table", w: 7, h: 6,
         title: "Rewarded, and nobody owns it",
         subtitle: `Themes at 1.2 times the norm or better where no tracked brand has more than half of the posts. ${THEME_NOTE}.`,
+        when: N_COMPETITORS,
         sql: `WITH ${SCORED("posts")}, ${TAGS("sp")}, ${MIN_POSTS("posts")},
 tb AS (SELECT theme, brand, count(*)::float AS n, sum(eng_s) AS eng_s, sum(expected) AS expected FROM tags GROUP BY 1, 2),
 t AS (
   SELECT theme, sum(n) AS posts, sum(eng_s) / NULLIF(sum(expected), 0) AS vs, max(n) AS lead_n, count(*) AS brands,
          (array_agg(brand ORDER BY n DESC))[1] AS leader, coalesce(sum(n) FILTER (WHERE brand = focal_brand()), 0) AS ours
   FROM tb GROUP BY 1
-), lim AS (SELECT greatest(0.5, 1.6 / NULLIF(count(*), 0)) AS share FROM segments)
-SELECT t.theme, t.posts::int AS posts, ${r2("t.vs")} AS "vs norm", t.leader, ${r0("100.0 * t.lead_n / t.posts")} AS "leader share %", ${r0("100.0 * t.ours / t.posts")} AS "our share %"
-FROM t, mn, lim WHERE t.posts >= mn.n AND t.vs >= 1.2 AND t.lead_n / t.posts <= lim.share AND ${SHARED("t.brands")} AND ${THEME_OK("t.theme")} ORDER BY t.vs DESC LIMIT 15`,
+), lim AS (SELECT greatest(0.5, 1.6 / NULLIF(count(*), 0)) AS share FROM segments),
+c AS MATERIALIZED (SELECT t.* FROM t, mn, lim WHERE t.posts >= mn.n AND t.vs >= 1.2 AND t.lead_n / t.posts <= lim.share AND t.brands >= 2 ORDER BY t.vs DESC LIMIT 80)
+SELECT theme, posts::int AS posts, ${r2("vs")} AS "vs norm", leader, ${r0("100.0 * lead_n / posts")} AS "leader share %", ${r0("100.0 * ours / posts")} AS "our share %"
+FROM c WHERE ${THEME_OK("theme")} ORDER BY vs DESC LIMIT 15`,
         rationale: "The audience rewards these and no brand has claimed them. Each is a brief.",
       },
       {
@@ -321,8 +325,10 @@ FROM t, mn, lim WHERE t.posts >= mn.n AND t.vs >= 1.2 AND t.lead_n / t.posts <= 
         sql: `WITH ${TAGS("posts")}, ${MIN_POSTS("posts")},
 tot AS (SELECT count(*)::float AS posts, NULLIF(sum(coalesce(comments, 0)), 0) AS comments FROM posts),
 t AS (SELECT theme, count(*)::float AS posts, sum(coalesce(comments, 0)) AS comments, count(DISTINCT brand) AS brands FROM tags GROUP BY 1)
-SELECT t.theme, ${r1("100.0 * t.comments / tot.comments - 100.0 * t.posts / tot.posts")} AS value
-FROM t, tot, mn WHERE t.posts >= mn.n AND tot.comments IS NOT NULL AND t.comments / tot.comments - t.posts / tot.posts > 0.0005 AND ${SHARED("t.brands")} AND ${THEME_OK("t.theme")} ORDER BY 2 DESC LIMIT 12`,
+SELECT c.theme, ${r1("c.pts")} AS value
+FROM (SELECT t.theme, 100.0 * t.comments / tot.comments - 100.0 * t.posts / tot.posts AS pts FROM t, tot, mn
+      WHERE t.posts >= mn.n AND tot.comments IS NOT NULL AND ${SHARED("t.brands")} ORDER BY 2 DESC LIMIT 80) c
+WHERE c.pts > 0.05 AND ${THEME_OK("c.theme")} ORDER BY c.pts DESC LIMIT 12`,
         x: "theme", y: "value", horizontal: true, format: "decimal",
         rationale: "Demand the creators are not meeting yet.",
       },
@@ -464,7 +470,8 @@ ORDER BY likes DESC NULLS LAST LIMIT 12`,
         title: "Who drives each theme",
         subtitle: `The three creators with the most views in each of the ten largest themes, across the tracked brands. ${THEME_NOTE}.`,
         sql: `WITH ${SCORED("posts")}, ${TAGS("sp")},
-big AS (SELECT theme, count(*) AS n FROM tags GROUP BY 1 HAVING ${SHARED("count(DISTINCT brand)")} AND ${THEME_OK("theme")} ORDER BY 2 DESC LIMIT 10),
+big0 AS MATERIALIZED (SELECT theme, count(*) AS n FROM tags GROUP BY 1 HAVING ${SHARED("count(DISTINCT brand)")} ORDER BY 2 DESC LIMIT 80),
+big AS (SELECT theme, n FROM big0 WHERE ${THEME_OK("theme")} ORDER BY n DESC LIMIT 10),
 c AS (
   SELECT t.theme, t.username AS creator, max(t.platform) AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views, sum(t.engagement) AS engagement,
          sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs, string_agg(DISTINCT t.brand, ', ') AS brands
