@@ -45,8 +45,12 @@ export interface TemplateCheckResult {
   ms: number;
 }
 
-/** Sections whose elements must return rows over all time for any brand with a real amount of data. */
-const CORE_SECTION = /^[123]\. /;
+/**
+ * Sections whose elements must return rows over all time for any brand with a real amount of data.
+ * Tom's template is analytical: outside its headline, a table can be rightly empty (no spike, no
+ * unowned theme), so only the headline is held to it.
+ */
+const CORE_SECTIONS: Partial<Record<TemplateId, RegExp>> = { starter: /^[123]\. /, eran: /^[123]\. /, tom: /^The eight measures/ };
 /** Below this many posts a brand is too thin for "must not be empty" to mean anything. */
 const CORE_MIN_POSTS = 20;
 
@@ -95,7 +99,7 @@ export async function checkTemplate(template: TemplateId, opts: { months?: boole
               if (window) check.emptyInPeriod++;
               else if (!win.window) {
                 check.emptyAllTime.push(w.title);
-                if (CORE_SECTION.test(section) && brand.posts >= CORE_MIN_POSTS) failures.push({ industry: ind.id, focal: brand.name, window: win.label, element: w.title, problem: "core element is empty over all time" });
+                if (CORE_SECTIONS[template]?.test(section) && brand.posts >= CORE_MIN_POSTS) failures.push({ industry: ind.id, focal: brand.name, window: win.label, element: w.title, problem: "core element is empty over all time" });
               }
             }
             if (w.sample && res.ok) {

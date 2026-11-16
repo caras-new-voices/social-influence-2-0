@@ -19,6 +19,15 @@ ${ws.hasComments === false ? "These brands have creator posts but NO audience co
 
 Time periods: the dashboard has a global period. posts and comments are views that are already filtered to that period when a query runs (by the post's or the comment's own published_at). To look outside the period (previous-period benchmarks, lifetime totals, first-seen dates) query posts_all and comments_all, which are never filtered. period_start() and period_end() return the current window bounds as timestamptz (NULL when all time); use them with posts_all to build a previous-period benchmark, e.g. WHERE published_at >= period_start() - (period_end() - period_start()) AND published_at < period_start(). A widget whose SQL uses only posts/comments follows the period bar automatically; one that must ignore it can be proposed with period 'all'.
 
+Standard measures. When asked for one of these, use this definition so numbers match the dashboards:
+- Share of voice: a brand's posts divided by all tracked brands' posts.
+- Engagement versus norm: sum(engagement) divided by sum(expected engagement), where a post's expected engagement is its reach (views; followers for Instagram image posts and posts without views) times the tracked brands' all-time engagement rate (sum(engagement) / sum(reach) over posts_all) for the same platform, creator tier and reach basis. 1.0 is the norm; 1.2 and above is outperforming.
+- Momentum: posts in the period divided by posts in the period before, minus 1.
+- Organic share: posts with is_paid false divided by all the brand's posts.
+- Purchase intent, praise, objections: comments with purchase_intent_type set, with sentiment 'positive', or with objection_category set, per 1,000 comments.
+- Theme: a hashtag in the post caption (regexp_matches(lower(text), '#([[:alnum:]_]{3,30})', 'g')), leaving out platform filler such as fyp and viral and hashtags that contain a tracked brand's name.
+- Content gap: a theme's share of audience comments (sum of posts.comments) minus its share of posts, in points.
+
 ## Table posts (one row per creator post that mentions the brand)
 post_id bigint, segment_id int, brand text, influencer_id bigint, username text, platform text, post_type text ('video'|'image'),
 url text, title text (mostly null), text text (caption), published_at timestamptz,

@@ -1,6 +1,6 @@
 # Plan: "Tom's Default Template"
 
-Status: proposal, nothing built yet.
+Status: built. Section 7 says what was built and where it differs from this plan.
 
 Source: Tom's document "Social intelligence: from conversation to content, creators and product" (7 Nov 2026). It defines five questions, three lenses (Me, Competitors, Culture), eight measures calculated the same way every month, the sub-questions under each question, and the product priority grid. This plan turns that into a dashboard template on the current dataset, and says plainly where the dataset falls short of the document.
 
@@ -144,3 +144,39 @@ About five working days. Phases A and B are the substance; C and D are small.
 - **Culture queries**: a separate dataset per culture; the Culture lens and its three sub-questions wait for it.
 - **Launch dates**: a small table of launches per brand would unlock the launch read.
 - **A 2×2 chart type** for the priority grid and the early/peaking map; not needed for the first version.
+
+## 7. As built
+
+The template is `tom` in `src/lib/templates.ts`, defined in `src/lib/tom.ts`, and appears in the New dashboard dialog as **Tom's Default Template**. It has up to 34 data elements in seven sections: the eight measures, the five questions, and the monthly read.
+
+It was built after the brand selection and the nine extra industries arrived, so three things differ from the plan above.
+
+- **No brand or category words.** "Us" is `focal_brand()`, the category is whatever brands the dashboard was given, and the template works for any selection.
+- **Conditional parts.** Like the starter, sections and elements carry a `when` condition and are left out, with a note in the chat, when the brands lack the signal: audience comments, more than one month of history, paid posts, modelled fees, audience data, competitors. On an industry with posts only it builds 13 elements in four sections.
+- **Themes are caption hashtags, not comment topics.** The plan proposed the dominant comment topic of a post. The comment topics turned out to be mostly reactions ("praise", "affection"), and nine of the ten industries have no comments at all. A theme is therefore a hashtag in the caption, without platform filler ("fyp", "viral"), without ad disclosures, and without any tracked brand's name. A hashtag used by one brand only is treated as that brand's campaign and left out of the shared-theme tables.
+
+How each measure is computed (the fragments at the top of `src/lib/tom.ts`):
+
+| Measure | As built |
+|---|---|
+| Share of voice | The brand's posts as a share of all tracked brands' posts in the period |
+| Engagement versus norm | Engagement divided by expected engagement. Expected is the post's reach (views; followers for Instagram image posts and posts with no views) times the tracked brands' all-time engagement rate for that platform, creator size and reach basis. 1.0 is the norm |
+| Momentum | Posts in the period against the period before, minus 1. With no period selected: the last 90 days against the 90 before. Shown only when the earlier period has at least 3 posts |
+| Organic share | Posts with no paid disclosure. Stands in for earned share: the data has no brand-owned flag |
+| Purchase intent, praise, objections | Comments per 1,000 comments: with a buying signal, with positive sentiment, with an objection |
+| Content gap | A theme's share of audience comments (the comment count on its posts) minus its share of posts, in points. Uses the count on the post, so it also works without the comments table |
+| Creator score | Not one number. The creator tables show its parts: engagement versus norm, share of a theme's views, buying signals per 1,000 comments, audience data |
+
+Sections and what was left out:
+
+1. **Which conversations are winning?** Themes with growth, performance and a status (winning, early signal, peaking); where we are missing from themes that work; conversations that sell; formats that win; markets that lead; what spiked and why.
+2. **Where is the white space?** Rewarded themes nobody owns (no brand has more than half the posts); content gap; questions nobody answered; platforms we under-use; audiences with more demand than creators. Left out: benefits nobody claims.
+3. **What do people say?** Buying signals and objections against rivals; objections weighted by likes; where rivals are weak and we are strong; who people compare us with; what stops people buying; what the copy should say. Left out: whether creators say what people value.
+4. **Which creators win?** Who drives each theme; who drives buying; who works with competitors; paid against organic; rising creators; good value; who reaches our buyer.
+5. **What should we build or fix?** The product priority grid as a table with the box as a column; what people wish existed; requests against rivals; objections by month; how people use it; where competitor products are weak.
+
+Still out of scope, for the reasons in section 6: the Culture lens, hooks and formats beyond platform and post type, per-product reads, launch reads, and a 2 by 2 chart for the grid.
+
+The product priority grid reads product attributes from the comment analysis tags by pattern (price, quality, ease of use, safety, availability, design, ingredients, service). An attribute is "Fix first" when it is mentioned at least as often as the median attribute and liked less than the brand's average, "Protect" when mentioned often and liked, "Start talking about" when liked but rarely mentioned.
+
+Checks: the rotation test (`/api/templates/check?template=tom`) runs every element with each of the 93 brands as the company. For this template only the headline section must return rows for every brand; a table further down can be rightly empty (no spike, no unowned theme).
