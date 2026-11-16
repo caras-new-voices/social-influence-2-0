@@ -6,6 +6,8 @@ import { useWorkspace } from "./WorkspaceProvider";
 import { relativeTime } from "@/lib/format";
 import { TEMPLATES, type TemplateId } from "@/lib/templates";
 import type { DashboardRecord } from "@/lib/widgets";
+import type { DashboardScope } from "@/lib/scope-shared";
+import { BrandPicker } from "./BrandPicker";
 import { useConfirm } from "./Confirm";
 import { useToast } from "./Toast";
 
@@ -15,8 +17,16 @@ const Ico = {
   blank: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="3" strokeDasharray="4 3" /></svg>,
 };
 
-export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
+/** The brands a dashboard looks at, computed on the server (see app/page.tsx). */
+export interface ScopeLabel {
+  focal: string;
+  competitors: number;
+  industry: string | null;
+}
+
+export function DashboardList({ initial, labels: initialLabels = {} }: { initial: DashboardRecord[]; labels?: Record<string, ScopeLabel> }) {
   const router = useRouter();
+  const [labels, setLabels] = useState(initialLabels);
   const toast = useToast();
   const confirmDialog = useConfirm();
   const [dashboards, setDashboards] = useState(initial);
@@ -27,29 +37,42 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
   const ws = useWorkspace();
   const [creating, setCreating] = useState(false);
   const [path, setPath] = useState<"guided" | "template" | "blank">("guided");
-  const [screen, setScreen] = useState<"choose" | "name">("choose");
-  const defaultName = `${ws.focal}, ${new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}`;
+  const [screen, setScreen] = useState<"choose" | "brands" | "name">("choose");
+  const [scope, setScope] = useState<DashboardScope | null>(null);
+  const defaultName = `${scope?.focal ?? ws.focal} dashboard`;
 
-  const openDialog = () => { setScreen("choose"); setPath("guided"); setOpen(true); };
+  const openDialog = () => { setScreen("choose"); setPath("guided"); setScope(null); setName(""); setDescription(""); setCreating(false); setOpen(true); };
 
   const create = async () => {
+    if (!scope) return;
     setCreating(true);
-    const r = await fetch("/api/dashboards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() || defaultName, description, template: path === "blank" ? "blank" : template }) });
-    const j = (await r.json()) as { dashboard: DashboardRecord };
-    setCreating(false);
-    setOpen(false);
-    router.push(`/dashboard/${j.dashboard.id}`);
+    try {
+      const r = await fetch("/api/dashboards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() || defaultName, description, template: path === "blank" ? "blank" : template, scope }) });
+      const j = (await r.json()) as { dashboard?: DashboardRecord; error?: string };
+      if (!r.ok || !j.dashboard) throw new Error(j.error ?? "Could not create the dashboard");
+      setOpen(false);
+      router.push(`/dashboard/${j.dashboard.id}`);
+    } catch (e) {
+      toast((e as Error).message);
+      setCreating(false);
+    }
   };
 
-  /** The guided path leaves the dialog for the wizard page; the others ask for a name first. */
-  const next = async () => {
+  /** After the brands, the guided path leaves the dialog for the wizard page; the others ask for a name. */
+  const next = () => {
+    if (screen === "choose") {
+      setScreen("brands");
+      return;
+    }
+    if (!scope) return;
     if (path === "guided") {
       setCreating(true);
-      router.push("/dashboard/new/guided");
+      router.push(`/dashboard/new/guided?scope=${encodeURIComponent(JSON.stringify(scope))}`);
       return;
     }
     setScreen("name");
   };
+  const back = () => setScreen(screen === "name" ? "brands" : "choose");
 
   const remove = async (d: DashboardRecord) => {
     const ok = await confirmDialog({
@@ -68,6 +91,8 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
     const r = await fetch(`/api/dashboards/${d.id}`, { method: "POST" });
     const j = (await r.json()) as { dashboard: DashboardRecord };
     setDashboards((ds) => [j.dashboard, ...ds]);
+    // A copy keeps the brands of the original.
+    if (labels[d.id]) setLabels((l) => ({ ...l, [j.dashboard.id]: l[d.id] }));
     toast("Dashboard duplicated");
   };
 
@@ -75,13 +100,8 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
     <div style={{ padding: "1.5rem" }}>
       <div className="hero">
         <div>
-          <h1>Social influence for {ws.focal}</h1>
-          <p>Chat with an analyst over creator posts and audience comments about {ws.focal} and its competitors, approve the charts it proposes, and shape a dashboard your team can keep.</p>
-          <div className="brand-chips">
-            {ws.brands.map((b) => (
-              <span className="brand-chip" key={b.name}><i className="dot" style={{ background: b.color }} />{b.name}{b.role === "focal" ? " · focal brand" : ""}</span>
-            ))}
-          </div>
+          <h1>Social influence dashboards</h1>
+          <p>Pick an industry, your company and its competitors. Then chat with an analyst over the creator posts about them, approve the charts it proposes, and shape a dashboard your team can keep.</p>
         </div>
         <button className="im-btn im-btn-primary" onClick={openDialog}>+ New dashboard</button>
       </div>
@@ -89,9 +109,9 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
       {dashboards.length === 0 ? (
         <div className="empty im-card">
           <p className="im-text-sub-header">No dashboards yet</p>
-          <p className="im-text-description" style={{ margin: "0.3rem 0 1rem" }}>Answer eight questions with the analyst and get a dashboard made for you, or start from a template.</p>
+          <p className="im-text-description" style={{ margin: "0.3rem 0 1rem" }}>Pick your brands, answer a few questions with the analyst and get a dashboard made for you, or start from a template.</p>
           <div className="row" style={{ justifyContent: "center", gap: "0.5rem" }}>
-            <Link className="im-btn im-btn-primary" href="/dashboard/new/guided">Build it with the analyst</Link>
+            <button className="im-btn im-btn-primary" onClick={openDialog}>Build it with the analyst</button>
             <button className="im-btn im-btn-secondary" onClick={openDialog}>Other options</button>
           </div>
         </div>
@@ -100,6 +120,12 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
           {dashboards.map((d) => (
             <Link key={d.id} href={`/dashboard/${d.id}`} className="im-card im-card--hoverable dash-card" style={{ color: "inherit", textDecoration: "none" }}>
               <h3>{d.name}{d.onboarding && !d.onboarding.completedAt && <span className="im-badge im-badge-warning" style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}>Setup in progress</span>}</h3>
+              {labels[d.id] && (
+                <span className="dash-card__scope" title={`${labels[d.id].focal} against ${labels[d.id].competitors} competitors${labels[d.id].industry ? ` in ${labels[d.id].industry}` : ""}`}>
+                  <span className="scope-chip"><i aria-hidden="true" />{labels[d.id].focal} vs {labels[d.id].competitors}</span>
+                  {labels[d.id].industry && <span>{labels[d.id].industry}</span>}
+                </span>
+              )}
               {d.description && <p className="im-text-description">{d.description}</p>}
               <div className="dash-card__meta">
                 <span>{d.widgets.length} elements</span>
@@ -116,8 +142,8 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
 
       {open && (
         <div className="modal-scrim" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-          <div className="modal" role="dialog" aria-label="New dashboard">
-            <div className="modal__head"><h3 className="im-text-header">New dashboard</h3><button className="im-btn im-btn-ghost im-btn-sm" onClick={() => setOpen(false)}>Close</button></div>
+          <div className={`modal ${screen === "brands" ? "modal--picker" : ""}`} role="dialog" aria-modal="true" aria-label="New dashboard">
+            <div className="modal__head"><h3 className="im-text-header">{screen === "brands" ? "Choose your brands" : "New dashboard"}</h3><button className="im-btn im-btn-ghost im-btn-sm" onClick={() => setOpen(false)}>Close</button></div>
             <div className="modal__body">
               {screen === "choose" ? (
                 <>
@@ -126,7 +152,7 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
                       <span className="start-card__icon">{Ico.spark}</span>
                       <b>Build it with the analyst</b>
                       <span className="im-badge im-badge-primary">Recommended · about 5 min</span>
-                      <small>Answer eight questions and get a dashboard made for you.</small>
+                      <small>Answer a few questions and get a dashboard made for you.</small>
                     </button>
                     <button className={`start-card ${path === "template" ? "is-active" : ""}`} onClick={() => setPath("template")} aria-pressed={path === "template"}>
                       <span className="start-card__icon">{Ico.grid}</span>
@@ -149,22 +175,26 @@ export function DashboardList({ initial }: { initial: DashboardRecord[] }) {
                     </div>
                   )}
                 </>
+              ) : screen === "brands" ? (
+                <BrandPicker value={scope} onChange={setScope} />
               ) : (
                 <>
-                  <p className="im-text-description">{path === "template" ? `Starting from ${TEMPLATES.find((t) => t.id === template)?.name ?? "a template"}.` : "Starting with an empty dashboard."}</p>
+                  <p className="im-text-description">{scope ? `${scope.focal} against ${scope.competitors.length} ${scope.competitors.length === 1 ? "competitor" : "competitors"}. ` : ""}{path === "template" ? `Starting from ${TEMPLATES.find((t) => t.id === template)?.name ?? "a template"}.` : "Starting with an empty dashboard."}</p>
                   <label><span className="im-label">Name</span><input className="im-input" autoFocus placeholder={defaultName} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void create(); }} /></label>
                   <label><span className="im-label">Description (optional)</span><input className="im-input" placeholder="What is this dashboard for?" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
                 </>
               )}
             </div>
             <div className="modal__foot">
-              {screen === "name" ? (
-                <button className="im-btn im-btn-secondary" onClick={() => setScreen("choose")}>Back</button>
+              {screen !== "choose" ? (
+                <button className="im-btn im-btn-secondary" onClick={back} disabled={creating}>Back</button>
               ) : (
                 <button className="im-btn im-btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
               )}
               {screen === "choose" ? (
-                <button className="im-btn im-btn-primary" onClick={() => void next()} disabled={creating}>{path === "guided" ? (creating ? "Starting…" : "Start") : "Next"}</button>
+                <button className="im-btn im-btn-primary" onClick={next}>Next: choose brands</button>
+              ) : screen === "brands" ? (
+                <button className="im-btn im-btn-primary" onClick={next} disabled={creating || !scope} title={!scope ? "Pick an industry first" : undefined}>{path === "guided" ? (creating ? "Starting…" : "Start setup") : "Next"}</button>
               ) : (
                 <button className="im-btn im-btn-primary" onClick={() => void create()} disabled={creating}>{creating ? "Creating…" : "Create dashboard"}</button>
               )}

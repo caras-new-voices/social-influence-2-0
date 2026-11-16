@@ -2,6 +2,7 @@ import { getDb, type Row } from "./db";
 import { ensureReady } from "./schema";
 import { ISO_DATE, type PeriodWindow } from "./period";
 import { capRows, guardSql, MAX_ROWS } from "./sql-guard";
+import { scopeSettings } from "./scope";
 
 export interface QueryResult {
   ok: true;
@@ -42,7 +43,7 @@ export async function runWidgetQuery(sql: string, limit = MAX_ROWS, window?: Per
   const started = Date.now();
   try {
     // opts.focal makes focal_brand() return another tracked brand for this query (template checks, per-dashboard focus).
-    const settings = periodSettings(window);
+    const settings = { ...scopeSettings(), ...periodSettings(window) };
     if (opts?.focal) settings["app.focal_brand"] = opts.focal;
     const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1), 8000, settings);
     const truncated = rows.length > limit;
@@ -55,4 +56,15 @@ export async function runWidgetQuery(sql: string, limit = MAX_ROWS, window?: Per
     const msg = (e as Error).message ?? String(e);
     return { ok: false, error: msg.replace(/\s+/g, " ").slice(0, 600) };
   }
+}
+
+/**
+ * A trusted (server-written) read that sees the dataset the way the current scope does: only the
+ * dashboard's brands, and the period when a window is given. Use it instead of db.query for
+ * anything that reads posts, comments, influencers or segments.
+ */
+export async function readScoped<T extends Row = Row>(sql: string, params: unknown[] = [], window?: PeriodWindow | null, timeoutMs = 20000): Promise<T[]> {
+  await ensureReady();
+  const db = await getDb();
+  return db.queryReadOnly<T>(sql, timeoutMs, { ...scopeSettings(), ...periodSettings(window) }, params);
 }

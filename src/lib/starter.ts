@@ -38,6 +38,10 @@ const VERSUS = "This period versus the one before (the last 90 days versus the 9
 const OUR_COMMENTS = { sql: `SELECT count(*)::int AS n FROM comments WHERE brand = focal_brand()`, min: 30, unit: "comments on our content" };
 const OUR_POSTS = { sql: `SELECT count(*)::int AS n FROM posts WHERE brand = focal_brand()`, min: 5, unit: "posts about us" };
 
+/** Some industries have creator posts but no audience comments: everything built on comments is then left out. */
+const N_COMMENTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand()`, min: 100, what: "audience comments on our content" };
+/** "What changed" compares a period with the one before, so it needs more than one month of history. */
+const N_HISTORY: StarterCondition = { sql: `SELECT coalesce(extract(epoch FROM max(published_at) - min(published_at)) / 86400, 0)::int AS n FROM posts_all WHERE brand = focal_brand()`, min: 45, what: "days of history to compare one period with the one before" };
 const N_OBJECTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND objection_category IS NOT NULL`, min: 50, what: "comments raising an objection" };
 const N_REQUESTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND feature_request_type IS NOT NULL`, min: 30, what: "comments asking for a product change" };
 const N_RISK: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND (safety_complaint_type IS NOT NULL OR crisis_risk_type IS NOT NULL)`, min: 40, what: "safety complaints or backlash flags" };
@@ -73,7 +77,7 @@ UNION ALL SELECT 'Creators', cur.creators, prev.creators, 'compact' FROM cur, pr
 UNION ALL SELECT 'Engagement', cur.engagement, prev.engagement, 'compact' FROM cur, prev
 UNION ALL SELECT 'Views', cur.views, prev.views, 'compact' FROM cur, prev
 UNION ALL SELECT 'Eng. per 1K followers', cur.epf, prev.epf, 'decimal' FROM cur, prev
-UNION ALL SELECT 'Intent per 1K comments', ci.v, pi.v, 'decimal' FROM ci, pi`,
+UNION ALL SELECT 'Intent per 1K comments', ci.v, pi.v, 'decimal' FROM ci, pi WHERE EXISTS (SELECT 1 FROM comments_all c WHERE c.brand = focal_brand())`,
         rationale: "The headline numbers and whether each one is growing.",
       },
       {
@@ -87,15 +91,16 @@ UNION ALL SELECT 'Intent per 1K comments', ci.v, pi.v, 'decimal' FROM ci, pi`,
       {
         type: "line", w: 7, h: 5,
         title: "Engagement over time",
-        subtitle: "Us against each tracked competitor: by month, or by week inside a short period. Periods with almost no posts are left out.",
-        sql: `WITH m AS (
-SELECT CASE WHEN period_start() IS NULL OR period_end() IS NULL OR period_end() - period_start() > interval '62 days'
-              THEN to_char(date_trunc('month', published_at), 'YYYY-MM')
-              ELSE to_char(date_trunc('week', published_at), 'YYYY-MM-DD') END AS bucket,
+        subtitle: "Us against the six largest tracked competitors: by month, or by week when the data in view covers two months or less. Periods with almost no posts are left out.",
+        sql: `WITH span AS (SELECT coalesce(max(published_at) - min(published_at) > interval '62 days', false) AS long FROM posts),
+m AS (
+SELECT CASE WHEN (SELECT long FROM span) THEN to_char(date_trunc('month', published_at), 'YYYY-MM')
+            ELSE to_char(date_trunc('week', published_at), 'YYYY-MM-DD') END AS bucket,
        brand, sum(engagement) AS value, count(*) AS n
 FROM posts WHERE published_at IS NOT NULL GROUP BY 1, 2
-), t AS (SELECT bucket, sum(n) AS n FROM m GROUP BY 1)
-SELECT m.bucket, m.brand, m.value FROM m JOIN t USING (bucket) WHERE t.n >= 0.05 * (SELECT max(n) FROM t) ORDER BY 1`,
+), t AS (SELECT bucket, sum(n) AS n FROM m GROUP BY 1),
+top AS (SELECT brand FROM m GROUP BY brand ORDER BY (brand = focal_brand()) DESC, sum(value) DESC NULLS LAST LIMIT 7)
+SELECT m.bucket, m.brand, m.value FROM m JOIN t USING (bucket) WHERE t.n >= 0.05 * (SELECT max(n) FROM t) AND m.brand IN (SELECT brand FROM top) ORDER BY 1`,
         x: "bucket", y: "value", series: "brand", colorBy: "brand", format: "compact",
         rationale: "Momentum, and who is gaining on whom.",
       },
@@ -139,6 +144,7 @@ FROM posts WHERE brand = focal_brand() ORDER BY engagement DESC NULLS LAST LIMIT
   },
   {
     title: "3. What does our audience say?",
+    when: N_COMMENTS,
     widgets: [
       {
         type: "stacked_bar", w: 6, h: 5,
@@ -190,6 +196,7 @@ ORDER BY array_position(ARRAY['loyalty', 'buying intent', 'question', 'objection
         type: "table", w: 6, h: 6,
         title: "Questions nobody answered",
         subtitle: "Most-liked questions on our content that received no reply",
+        when: N_COMMENTS,
         sql: `SELECT left(coalesce(c.faq_phrase, c.text), 150) AS question, c.likes, p.username AS asked_under, p.platform
 FROM comments c JOIN posts_all p ON p.post_id = c.post_id AND p.segment_id = c.segment_id
 WHERE c.brand = focal_brand() AND c.faq_topic IS NOT NULL AND coalesce(c.reply_count, 0) = 0
@@ -244,6 +251,7 @@ FROM comments WHERE brand = focal_brand() AND feature_request_type IS NOT NULL O
   },
   {
     title: "5. What changed?",
+    when: N_HISTORY,
     widgets: [
       {
         type: "table", w: 12, h: 6,
@@ -311,6 +319,7 @@ FROM posts WHERE brand = focal_brand() AND followers > 0 GROUP BY 1 ORDER BY 1`,
         type: "bar", w: 6, h: 5,
         title: "How the audience reads our sponsorships",
         subtitle: "Comments that react to the partnership itself",
+        when: N_COMMENTS,
         sql: `SELECT partnership_perception AS perception, count(*)::int AS value FROM comments
 WHERE brand = focal_brand() AND partnership_perception IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
         x: "perception", y: "value", format: "compact", horizontal: true,

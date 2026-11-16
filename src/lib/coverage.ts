@@ -1,20 +1,24 @@
+import { getWorkspace } from "./brands";
 import { getDb } from "./db";
+import { readScoped } from "./query";
 import { addDays, addMonths, monthEnd, toIsoDate, type Coverage, type MonthCoverage } from "./period";
 import { ensureReady } from "./schema";
 
 /**
- * What the dataset covers, computed from the data and the import log. Used by the period bar,
+ * What the dataset covers for the current scope's brands, computed from the data and the import log. Used by the period bar,
  * the analyst's dataset description and the new-period detection. Never hardcoded.
  */
 export async function getCoverage(): Promise<Coverage> {
   await ensureReady();
   const db = await getDb();
-  const [d] = await db.query<{ first: string | null; last: string | null; posts: number; comments: number }>(`
+  const [d] = await readScoped<{ first: string | null; last: string | null; posts: number; comments: number }>(`
     SELECT least((SELECT min(published_at) FROM posts_all), (SELECT min(published_at) FROM comments_all)) AS first,
            greatest((SELECT max(published_at) FROM posts_all), (SELECT max(published_at) FROM comments_all)) AS last,
            (SELECT count(*)::int FROM posts_all) AS posts, (SELECT count(*)::int FROM comments_all) AS comments`);
-  const [imp] = await db.query<{ covered_to: string | null }>(`SELECT max(covers_to)::text AS covered_to FROM imports WHERE status = 'done'`);
-  const rows = await db.query<{ month: string; posts: number; comments: number }>(`
+  // Imports feed the live industry only; the other industries are fixed snapshots.
+  const live = getWorkspace().industry?.live !== false;
+  const [imp] = live ? await db.query<{ covered_to: string | null }>(`SELECT max(covers_to)::text AS covered_to FROM imports WHERE status = 'done'`) : [{ covered_to: null }];
+  const rows = await readScoped<{ month: string; posts: number; comments: number }>(`
     SELECT m.month, coalesce(p.n, 0)::int AS posts, coalesce(c.n, 0)::int AS comments FROM
       (SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month FROM posts_all WHERE published_at IS NOT NULL
        UNION SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') FROM comments_all WHERE published_at IS NOT NULL) m

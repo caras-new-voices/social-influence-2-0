@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 import { addMonths, formatMonth, monthKey } from "@/lib/period";
 import type { PeriodEvent } from "@/lib/period-events";
 import { fetchCoverage } from "./PeriodContext";
+import { useWorkspace } from "./WorkspaceProvider";
 
 export type { PeriodEvent };
 
@@ -71,8 +72,12 @@ function subscribe(cb: () => void) {
 }
 
 /** All recent events, newest first; null until the first fetch. */
+const NONE: PeriodEvent[] = [];
+/** New-data events. They concern the live industry only: a dashboard on a fixed snapshot gets none. */
 export function usePeriodEvents(): PeriodEvent[] | null {
-  return useSyncExternalStore(subscribe, () => events, () => null);
+  const live = useWorkspace().industry?.live !== false;
+  const list = useSyncExternalStore(subscribe, () => events, () => null);
+  return live ? list : NONE;
 }
 
 /* ---------------------------------------------------------------- */

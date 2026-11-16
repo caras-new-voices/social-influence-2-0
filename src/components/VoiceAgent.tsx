@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Row } from "@/lib/chart-data";
 import { announceUsage, formatTokens, OUT_OF_TOKENS_MESSAGE } from "@/lib/usage-shared";
+import { getWorkspace } from "@/lib/brands";
 import type { WidgetSpec } from "@/lib/widgets";
 import { OutOfTokensCard } from "./Tokens";
 
@@ -73,7 +74,7 @@ export function VoiceAgent({ widget, rows, dashboardId, onClose }: { widget: Wid
     const partial = new Map<string, string>();
 
     async function runSql(sql: string): Promise<string> {
-      const r = await fetch("/api/widgets/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql }) });
+      const r = await fetch("/api/widgets/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql, scope: getWorkspace().scope ?? undefined }) });
       const j = (await r.json()) as { rows?: Row[]; error?: string };
       if (!r.ok) return JSON.stringify({ error: j.error ?? "query failed" });
       const out = (j.rows ?? []).slice(0, 200);
@@ -82,7 +83,7 @@ export function VoiceAgent({ widget, rows, dashboardId, onClose }: { widget: Wid
 
     async function start() {
       try {
-        const sessionRes = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ widget, rows }) });
+        const sessionRes = await fetch("/api/voice/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ widget, rows, dashboardId }) });
         const session = (await sessionRes.json()) as { clientSecret?: string; model?: string; error?: string };
         if (!sessionRes.ok || !session.clientSecret) throw new Error(session.error ?? "Could not start the voice session");
         if (cancelled) return;

@@ -1,4 +1,5 @@
-import { getDb, type Row } from "./db";
+import type { Row } from "./db";
+import { readScoped } from "./query";
 import { ensureReady } from "./schema";
 
 export interface CreatorProfile {
@@ -57,7 +58,6 @@ const parseJson = <T,>(v: unknown): T | null => (v === null || v === undefined ?
 /** Finds a creator by handle (and optionally platform or id) and gathers their activity in the dataset. */
 export async function getCreatorPage(handle: string, opts: { platform?: string; id?: number } = {}): Promise<CreatorPage | null> {
   await ensureReady();
-  const db = await getDb();
   const params: unknown[] = [handle.toLowerCase()];
   let where = `lower(username) = $1`;
   if (opts.id) {
@@ -68,7 +68,7 @@ export async function getCreatorPage(handle: string, opts: { platform?: string; 
     params.push(opts.platform.toLowerCase());
     where += ` AND lower(network) = $${params.length}`;
   }
-  const rows = await db.query(
+  const rows = await readScoped(
     `SELECT * FROM influencers WHERE ${where} ORDER BY has_report DESC NULLS LAST, followers DESC NULLS LAST`,
     params,
   );
@@ -113,7 +113,7 @@ export async function getCreatorPage(handle: string, opts: { platform?: string; 
     postParams.push(opts.platform.toLowerCase());
     postWhere += ` AND lower(platform) = $${postParams.length}`;
   }
-  const posts = (await db.query(
+  const posts = (await readScoped(
     `SELECT post_id, segment_id, brand, platform, post_type, url, left(text, 240) AS text, published_at, likes, comments, shares, views, engagement, is_paid, sentiment, emv, tier, country, followers
      FROM posts WHERE ${postWhere} ORDER BY published_at DESC LIMIT 200`,
     postParams,
@@ -164,11 +164,11 @@ export async function getCreatorPage(handle: string, opts: { platform?: string; 
   let topTopics: CreatorPage["topTopics"] = [];
   if (postKeys.length) {
     const ids = posts.map((p) => Number(p.post_id));
-    commentSentiment = (await db.query(
+    commentSentiment = (await readScoped(
       `SELECT sentiment, count(*)::int AS n FROM comments WHERE post_id = ANY($1::bigint[]) AND sentiment IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`,
       [ids],
     )) as CreatorPage["commentSentiment"];
-    topTopics = (await db.query(
+    topTopics = (await readScoped(
       `SELECT t AS topic, count(*)::int AS n FROM comments, unnest(topics) AS t WHERE post_id = ANY($1::bigint[]) GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
       [ids],
     )) as CreatorPage["topTopics"];

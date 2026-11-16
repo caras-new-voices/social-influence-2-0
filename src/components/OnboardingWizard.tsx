@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { competitorNames, focalName } from "@/lib/brands";
+import { competitorNames, focalName, type Workspace } from "@/lib/brands";
 import type { ChatEvent } from "@/lib/claude";
 import { addDays, ALL_TIME, formatMonth, monthPeriod, type Coverage, type PeriodState } from "@/lib/period";
 import type { DashboardRecord, WidgetSpec } from "@/lib/widgets";
@@ -14,6 +14,9 @@ import { Shell } from "./Shell";
 import { useToast } from "./Toast";
 import { OutOfTokensCard, UsageNote, useBalance } from "./Tokens";
 import { announceUsage, formatTokens, OUT_OF_TOKENS, type UsageLine } from "@/lib/usage-shared";
+import { DashboardScopeSchema, type DashboardScope } from "@/lib/scope-shared";
+import { BrandPicker } from "./BrandPicker";
+import { WorkspaceProvider } from "./WorkspaceProvider";
 import { Markdown } from "./WidgetBody";
 import { WizardProposalCard } from "./WizardProposalCard";
 
@@ -22,6 +25,7 @@ import { WizardProposalCard } from "./WizardProposalCard";
 /* ------------------------------------------------------------------ */
 
 interface WizardDef {
+  workspace: Workspace;
   intro: string;
   goals: Array<{ id: GoalId; label: string; blurb: string }>;
   stepIds: StepId[];
@@ -161,12 +165,111 @@ function AiMark() {
 /* The wizard                                                           */
 /* ------------------------------------------------------------------ */
 
-export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
+function parseScope(raw: string | undefined): DashboardScope | null {
+  if (!raw) return null;
+  try {
+    const parsed = DashboardScopeSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadDefinition(dashboardId: string): Promise<WizardDef> {
+  const r = await fetch(`/api/wizard/start?dashboard=${encodeURIComponent(dashboardId)}`);
+  if (!r.ok) throw new Error("Could not load the setup");
+  return (await r.json()) as WizardDef;
+}
+
+/**
+ * Guided setup. A new setup starts with the brands (from `?scope=` or the picker shown here); the
+ * setup's dashboard is then created for them, and the questions run inside that dashboard's
+ * workspace so names, colours and data requests use the chosen brands.
+ */
+export function OnboardingWizard({ resumeId, scopeParam }: { resumeId?: string; scopeParam?: string }) {
+  const [startScope, setStartScope] = useState<DashboardScope | null>(() => parseScope(scopeParam));
+  const [picked, setPicked] = useState<DashboardScope | null>(null);
+  const [session, setSession] = useState<{ id: string; def: WizardDef } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const startedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const key = resumeId ? `resume:${resumeId}` : startScope ? `scope:${JSON.stringify(startScope)}` : null;
+    if (!key || startedRef.current === key) return;
+    startedRef.current = key;
+    (async () => {
+      try {
+        let id = resumeId;
+        if (!id) {
+          const r = await fetch("/api/wizard/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scope: startScope }) });
+          const j = (await r.json().catch(() => ({}))) as { dashboard?: DashboardRecord; error?: string };
+          if (!r.ok || !j.dashboard) throw new Error(j.error ?? "Could not start the setup");
+          id = j.dashboard.id;
+          // Make a reload (or a shared link) resume this setup instead of starting another one.
+          window.history.replaceState(null, "", `/dashboard/new/guided?dashboard=${encodeURIComponent(id)}`);
+        }
+        const def = await loadDefinition(id);
+        setSession({ id, def });
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    })();
+  }, [resumeId, startScope]);
+
+  if (session) {
+    return (
+      <WorkspaceProvider workspace={session.def.workspace}>
+        <WizardSession key={session.id} dashboardId={session.id} def={session.def} />
+      </WorkspaceProvider>
+    );
+  }
+
+  let body: React.ReactNode;
+  if (error) {
+    body = (
+      <div className="wiz__panel wiz__center">
+        <h2 className="wiz__q">Something went wrong</h2>
+        <p className="im-text-regular">{error}</p>
+        <div className="row" style={{ marginTop: "1rem" }}>
+          <Link className="im-btn im-btn-primary" href="/dashboard/new/guided" onClick={() => window.setTimeout(() => window.location.reload(), 0)}>Start a new setup</Link>
+          <Link className="im-btn im-btn-ghost" href="/">Back to dashboards</Link>
+        </div>
+      </div>
+    );
+  } else if (resumeId || startScope) {
+    body = (
+      <div className="wiz__panel wiz__center" aria-busy="true">
+        <span className="spinner" /> <span className="im-text-description">Preparing your setup…</span>
+      </div>
+    );
+  } else {
+    body = (
+      <div className="wiz__panel">
+        <span className="im-micro-label">Getting started</span>
+        <h2 className="wiz__q">Which brands is this dashboard about?</h2>
+        <p className="im-text-description" style={{ marginTop: "-0.6rem" }}>Pick the industry, then your company and the competitors to compare it with. The questions that follow use these brands.</p>
+        <BrandPicker value={picked} onChange={setPicked} />
+        <div className="wiz__foot">
+          <Link className="im-btn im-btn-ghost" href="/">Back to dashboards</Link>
+          <div className="grow" />
+          {!picked && <span className="im-text-description">Pick an industry to continue</span>}
+          <button className="im-btn im-btn-primary" onClick={() => setStartScope(picked)} disabled={!picked}>Continue</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <Shell title="Set up your dashboard" actions={<Link className="im-btn im-btn-ghost" href="/">Exit</Link>}>
+      <div className="bp-page">{body}</div>
+    </Shell>
+  );
+}
+
+function WizardSession({ dashboardId: sessionId, def }: { dashboardId: string; def: WizardDef }) {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
 
-  const [def, setDef] = useState<WizardDef | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dashboardId, setDashboardId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<WizardAnswers>(() => WizardAnswersSchema.parse({}));
@@ -193,55 +296,38 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
   const currentStepId: StepId | null = current >= 1 && current <= order.length ? order[current - 1] : null;
   const period = useMemo(() => periodFor(answers.view, def?.coverage), [answers.view, def]);
 
-  /* ---------------- load: start fresh or resume ---------------- */
+  /* ---------------- load: restore the setup's saved state ---------------- */
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
     (async () => {
       try {
-        const defRes = fetch("/api/wizard/start").then((r) => (r.ok ? (r.json() as Promise<WizardDef>) : Promise.reject(new Error("Could not load the setup"))));
-        if (resumeId) {
-          const r = await fetch(`/api/dashboards/${encodeURIComponent(resumeId)}`);
-          if (!r.ok) throw new Error("This setup was not found. It may have been deleted.");
-          const { dashboard } = (await r.json()) as { dashboard: DashboardRecord };
-          const ob = dashboard.onboarding;
-          setDashboardId(dashboard.id);
-          if (ob) {
-            const restored = readAccepted(dashboard.id);
-            const keep: Accepted = {};
-            for (const s of ob.order) {
-              const ids = new Set(ob.answers.steps[s]?.added ?? []);
-              const list = (restored[s] ?? []).filter((w) => ids.has(w.id));
-              if (list.length) keep[s] = list;
-            }
-            setAnswers(ob.answers);
-            setOrder(ob.order);
-            setCurrent(Math.min(Math.max(0, ob.currentStep), ob.order.length + 1));
-            setStartedAt(ob.startedAt);
-            setGoalChosen(ob.currentStep > 0 || ob.answers.goal !== "unsure");
-            setCompleted(!!ob.completedAt);
-            setAccepted(keep);
+        const r = await fetch(`/api/dashboards/${encodeURIComponent(sessionId)}`);
+        if (!r.ok) throw new Error("This setup was not found. It may have been deleted.");
+        const { dashboard } = (await r.json()) as { dashboard: DashboardRecord };
+        const ob = dashboard.onboarding;
+        setDashboardId(dashboard.id);
+        if (ob) {
+          const restored = readAccepted(dashboard.id);
+          const keep: Accepted = {};
+          for (const s of ob.order) {
+            const ids = new Set(ob.answers.steps[s]?.added ?? []);
+            const list = (restored[s] ?? []).filter((w) => ids.has(w.id));
+            if (list.length) keep[s] = list;
           }
-        } else {
-          const r = await fetch("/api/wizard/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-          const j = (await r.json()) as { dashboard?: DashboardRecord; error?: string };
-          if (!r.ok || !j.dashboard) throw new Error(j.error ?? "Could not start the setup");
-          const ob = j.dashboard.onboarding;
-          setDashboardId(j.dashboard.id);
-          if (ob) {
-            setAnswers(ob.answers);
-            setOrder(ob.order);
-            setStartedAt(ob.startedAt);
-          }
-          // Make a reload (or a shared link) resume this setup instead of starting another one.
-          window.history.replaceState(null, "", `/dashboard/new/guided?dashboard=${encodeURIComponent(j.dashboard.id)}`);
+          setAnswers(ob.answers);
+          setOrder(ob.order);
+          setCurrent(Math.min(Math.max(0, ob.currentStep), ob.order.length + 1));
+          setStartedAt(ob.startedAt);
+          setGoalChosen(ob.currentStep > 0 || ob.answers.goal !== "unsure");
+          setCompleted(!!ob.completedAt);
+          setAccepted(keep);
         }
-        setDef(await defRes);
       } catch (e) {
         setLoadError((e as Error).message);
       }
     })();
-  }, [resumeId]);
+  }, [sessionId]);
 
   useEffect(() => {
     const streams = streamsRef.current;
@@ -501,6 +587,7 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
       {current > 0 && (
         <div className="wiz__chosen">
           <span className="im-micro-label">Your choices</span>
+          <div><span>Company</span><b>{focalName()}</b></div>
           <div><span>Goal</span><b>{goalLabel}</b></div>
           <div><span>Competitors</span><b>{answers.competitors.length ? answers.competitors.join(", ") : "None"}</b></div>
           <div><span>Default view</span><b>{viewLabel}</b></div>
@@ -545,7 +632,9 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
     );
   } else if (current === 0) {
     const cov = def.coverage;
-    const span = cov.firstDate && cov.lastDate ? `, ${formatMonth(cov.firstDate.slice(0, 7), false)} to ${formatMonth(cov.lastDate.slice(0, 7), false)}` : "";
+    const spanFrom = cov.firstDate ? formatMonth(cov.firstDate.slice(0, 7), false) : "";
+    const spanTo = cov.lastDate ? formatMonth(cov.lastDate.slice(0, 7), false) : "";
+    const span = spanFrom && spanTo ? (spanFrom === spanTo ? `, ${spanFrom}` : `, ${spanFrom} to ${spanTo}`) : "";
     const latest = latestCompleteMonth(cov);
     const prev = latest ? prevMonth(latest) : null;
     body = (
@@ -555,9 +644,9 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
           <AiMark />
           <div className="wiz__say">
             <p>
-              I have <b>{fmt(cov.posts)} creator posts</b> and <b>{fmt(cov.comments)} comments</b> about {focalName()} and {competitorNames().length} competitors{span}.
+              I have <b>{fmt(cov.posts)} creator posts</b>{cov.comments > 0 ? <> and <b>{fmt(cov.comments)} comments</b></> : null} about {focalName()} and {competitorNames().length} {competitorNames().length === 1 ? "competitor" : "competitors"}{span}.
             </p>
-            <p>{def.intro.replace(/^I have the creator posts and audience comments about [^.]+\.\s*/, "")}</p>
+            <p>{def.intro.replace(/^I have the creator posts[^.]*\.\s*/, "")}</p>
           </div>
         </div>
 

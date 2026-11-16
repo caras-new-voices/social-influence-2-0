@@ -1,0 +1,128 @@
+/* Brand picker: choose a dashboard's industry, company and competitors (BrandPicker.tsx). */
+
+.bp { container-type: inline-size; min-width: 0; }
+.bp--state { padding: 2rem 1rem; text-align: center; color: var(--Base-06); display: flex; gap: 0.5rem; align-items: center; justify-content: center; }
+.bp__layout { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.bp__main { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+
+.bp__section { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.bp__sechead { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.bp__sechead h4 { margin: 0; font-size: 15px; font-weight: 600; color: var(--Base-07); }
+.bp__step { width: 22px; height: 22px; border-radius: 999px; background: var(--Primary-100); color: var(--Primary-700); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.bp__change { margin-left: auto; }
+.bp__bulk { margin-left: auto; display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.bp__hint { margin: 0; font-size: 12.5px; color: var(--Base-06); line-height: 1.45; }
+
+/* Industries */
+.bp__industries { display: grid; grid-template-columns: 1fr; gap: 0.5rem; }
+.bp__industry { text-align: left; background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.7rem; padding: 0.6rem 0.8rem; cursor: pointer; display: flex; flex-direction: column; gap: 0.15rem; font: inherit; color: inherit; transition: border-color var(--Motion-fast), background var(--Motion-fast); min-width: 0; }
+.bp__industry:hover { border-color: var(--Primary-300); }
+.bp__industry.is-on { border-color: var(--Primary-600); background: var(--Primary-50); }
+.bp__industry:focus-visible { outline: none; box-shadow: var(--Ring-focus); }
+.bp__role:has(input:focus-visible) { outline: 2px solid var(--Primary-600); outline-offset: -3px; z-index: 1; }
+.bp__indtop { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.bp__indtop b { font-size: 13.5px; font-weight: 600; min-width: 0; }
+.bp__indtop .im-badge { flex: none; }
+.bp__indmeta { font-size: 12px; color: var(--Base-06); line-height: 1.4; }
+
+/* About the industry */
+.bp__about { background: var(--Base-02); border: 1px solid var(--Base-03); border-radius: 0.7rem; padding: 0.75rem 0.9rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.bp__abouthead { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.bp__abouthead b { font-size: 14px; font-weight: 600; }
+.bp__about p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--Base-07); }
+.bp__about .bp__facts { font-size: 12.5px; color: var(--Base-06); }
+
+/* Brands */
+.bp__brands { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.bp__brand { display: flex; flex-direction: column; gap: 0.55rem; background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.7rem; padding: 0.65rem 0.8rem; transition: border-color var(--Motion-fast), background var(--Motion-fast); min-width: 0; }
+.bp__brand.is-focal { border-color: var(--Primary-600); background: var(--Primary-50); }
+.bp__brand.is-competitor { border-color: var(--Base-04); }
+.bp__brand.is-out .bp__brandinfo { opacity: 0.62; }
+.bp__brandinfo { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.bp__brandname { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.bp__brandname b { font-size: 13.5px; font-weight: 600; }
+.bp__owner { font-size: 12px; color: var(--Base-06); }
+.bp__desc { margin: 0.1rem 0 0; font-size: 12.5px; line-height: 1.45; color: var(--Base-07); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bp__stats { margin: 0.15rem 0 0; font-size: 12px; color: var(--Base-06); line-height: 1.45; }
+
+/* Three-state role control (native radios, styled as a segmented control) */
+.bp__roles { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--Base-03); border-radius: 0.55rem; overflow: hidden; background: var(--Base-00); align-self: stretch; }
+.bp__role { position: relative; display: flex; align-items: center; justify-content: center; padding: 0.4rem 0.5rem; font-size: 12px; font-weight: 500; color: var(--Base-06); cursor: pointer; text-align: center; white-space: nowrap; transition: background var(--Motion-fast), color var(--Motion-fast); }
+.bp__role + .bp__role { border-left: 1px solid var(--Base-03); }
+.bp__role input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.bp__role:hover { background: var(--Base-02); color: var(--Base-07); }
+.bp__role.is-on { font-weight: 600; }
+.bp__role--focal.is-on { background: var(--Primary-600); color: #fff; }
+.bp__role--competitor.is-on { background: var(--Base-07); color: #fff; }
+.bp__role--out.is-on { background: var(--Base-03); color: var(--Base-07); }
+.bp__role.is-disabled { cursor: not-allowed; color: var(--Base-04); }
+.bp__role.is-disabled:hover { background: transparent; color: var(--Base-04); }
+
+/* Summary: a sticky footer on narrow screens, a side panel on wide ones */
+.bp__summary { position: sticky; bottom: -1.25rem; z-index: 2; background: var(--Base-00); border: 1px solid var(--Primary-200); border-radius: 0.8rem; box-shadow: var(--Shadow-raised); padding: 0.7rem 0.9rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.bp__sumtop { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.bp__sumhead { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--Base-07); }
+.bp__sumhead b { color: var(--Primary-700); }
+.bp__sumlist { display: none; margin: 0; flex-direction: column; gap: 0.3rem; }
+.bp__summary.is-open .bp__sumlist { display: flex; }
+.bp__sumlist div { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 12.5px; }
+.bp__sumlist dt { color: var(--Base-06); }
+.bp__sumlist dd { margin: 0; font-weight: 600; text-align: right; }
+.bp__warnings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.bp__warnings li { font-size: 12px; line-height: 1.4; padding: 0.35rem 0.55rem; border-radius: 0.45rem; background: var(--Semantic-Warning_light); color: #92400e; }
+.bp__warnings li.bp__note { background: var(--Base-02); color: var(--Base-06); }
+
+/* Narrow: keep the sticky summary short; secondary notes wait for "Show details" */
+@container (max-width: 559px) {
+  .bp__summary:not(.is-open) .bp__warnings li.bp__note, .bp__summary:not(.is-open) .bp__warnings li.bp__minor { display: none; }
+  .bp__warnings li { padding: 0.25rem 0.5rem; }
+}
+
+@container (min-width: 560px) {
+  .bp__industries { grid-template-columns: 1fr 1fr; }
+  .bp__brand { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
+  .bp__roles { align-self: center; grid-template-columns: repeat(3, auto); }
+}
+
+@container (min-width: 820px) {
+  .bp__layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; align-items: start; gap: 1.25rem; }
+  .bp__summary { top: 0; bottom: auto; box-shadow: none; border-color: var(--Base-03); background: var(--Base-02); }
+  .bp__sumtoggle { display: none; }
+  .bp__sumlist { display: flex; }
+}
+
+/* Dashboard header chip and list labels */
+.scope-chip { display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%; padding: 0.2rem 0.6rem; border-radius: 999px; background: var(--Primary-50); color: var(--Primary-700); font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--Primary-100); }
+.scope-chip i { width: 7px; height: 7px; border-radius: 999px; background: var(--Primary-600); flex: none; }
+button.scope-chip { cursor: pointer; font: inherit; font-size: 12px; }
+button.scope-chip:hover { border-color: var(--Primary-300); }
+button.scope-chip:focus-visible { outline: none; box-shadow: var(--Ring-focus); }
+.dash-card__scope { display: flex; align-items: center; gap: 0.4rem; font-size: 12px; color: var(--Base-06); min-width: 0; }
+.dash-card__scope b { color: var(--Base-07); font-weight: 600; }
+
+/* Picker inside a modal: wide, body scrolls, footer stays visible */
+.modal.modal--picker { width: min(1080px, 100%); height: min(860px, 92vh); max-height: 92vh; }
+.modal.modal--picker .modal__body { flex: 1; min-height: 0; }
+
+/* Picker as the first screen of the guided setup */
+.bp-page { height: calc(100vh - var(--header-h)); overflow: auto; background: var(--Base-02); }
+.bp-page .wiz__panel { max-width: 1100px; }
+@media (max-width: 900px) {
+  .bp-page { height: auto; overflow: visible; }
+  .bp-page .wiz__panel { margin: 1rem; padding: 1.1rem 1rem; }
+  .bp-page .bp__summary { bottom: 0; }
+}
+@media (max-width: 520px) {
+  .modal-scrim:has(.modal--picker) { padding: 0.5rem; }
+  .modal.modal--picker .modal__body { padding: 1rem; }
+  .modal.modal--picker .modal__foot { padding: 0.75rem 1rem; }
+}
+
+/* In the dashboard header the name field gives way to the brand chip */
+.title-edit .title-edit__input { flex: 0 1 auto; min-width: 12rem; }
+.title-edit .scope-chip { flex: 0 1 auto; min-width: 6rem; max-width: 300px; }
+
+/* On wide screens the brands chip keeps its full text; the dashboard name gives way instead. */
+@media (min-width: 1200px) {
+  .scope-chip { flex-shrink: 0; }
+}

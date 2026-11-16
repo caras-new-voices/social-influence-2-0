@@ -1,4 +1,6 @@
 "use client";
+import { getWorkspace } from "@/lib/brands";
+import { scopeKey } from "@/lib/scope-shared";
 import { useEffect, useState } from "react";
 import type { Row } from "@/lib/chart-data";
 import { rowsToCsv } from "@/lib/format";
@@ -25,12 +27,14 @@ export function clearWidgetCache() {
 }
 
 export function fetchWidgetRows(sql: string, window?: PeriodWindow | null, compare?: PeriodWindow | null, sampleSql?: string): Promise<WidgetData> {
-  const key = `${windowKey(window)}|${windowKey(compare)}|${sql}|${sampleSql ?? ""}`;
+  // The dashboard's brands come from the workspace of the page (set by WorkspaceProvider).
+  const scope = getWorkspace().scope ?? undefined;
+  const key = `${scopeKey(scope)}|${windowKey(window)}|${windowKey(compare)}|${sql}|${sampleSql ?? ""}`;
   if (!cache.has(key)) {
     const p = fetch("/api/widgets/data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sql, window: window && (window.start || window.end) ? window : undefined, compare: compare ?? undefined, sampleSql }),
+      body: JSON.stringify({ sql, window: window && (window.start || window.end) ? window : undefined, compare: compare ?? undefined, sampleSql, scope }),
     })
       .then(async (r) => {
         const j = (await r.json()) as { rows?: Row[]; compareRows?: Row[]; sample?: number; error?: string };

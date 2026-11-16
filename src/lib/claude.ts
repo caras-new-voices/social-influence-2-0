@@ -787,6 +787,9 @@ const MOCK_RECIPES: MockRecipe[] = [
   },
 ];
 
+/** Scripted answers built on comments are skipped for brands that have posts but no comments. */
+const usable = (r: MockRecipe) => getWorkspace().hasComments !== false || !/\b(from|join)\s+comments(_all)?\b/i.test(r.widget.sql ?? "");
+
 const MOCK_FOLLOWUPS: Record<string, string[]> = {
   default: ["Split this by platform", "Show it month by month", "Show me example comments"],
 };
@@ -822,8 +825,8 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
   await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
   const isScan = (input.instruction ?? input.userText).startsWith(START_SCAN_LABEL);
   const recipes = isScan
-    ? [MOCK_RECIPES[0], MOCK_RECIPES[1], MOCK_RECIPES[3]]
-    : [MOCK_RECIPES.find((r) => r.match.test(input.userText)) ?? MOCK_RECIPES[0]];
+    ? [MOCK_RECIPES[0], MOCK_RECIPES[1], MOCK_RECIPES[3]].filter(usable)
+    : [MOCK_RECIPES.filter(usable).find((r) => r.match.test(input.userText)) ?? MOCK_RECIPES[0]];
   const proposals: Array<{ widget: WidgetSpec }> = [];
   const parts: string[] = [];
   for (const recipe of recipes) {

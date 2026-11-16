@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assistSql } from "@/lib/sql-assist";
+import { getDashboard } from "@/lib/dashboards";
 import { ensureReady } from "@/lib/schema";
+import { runForDashboard } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -19,7 +21,8 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   try {
     await ensureReady();
-    const result = await assistSql(parsed.data);
+    const dashboard = parsed.data.dashboardId ? await getDashboard(parsed.data.dashboardId) : null;
+    const result = await runForDashboard(dashboard, () => assistSql(parsed.data));
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

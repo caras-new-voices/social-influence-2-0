@@ -4,6 +4,9 @@ import { Shell } from "@/components/Shell";
 import { CreatorPosts } from "@/components/CreatorPosts";
 import { getBrands, SENTIMENT_COLORS } from "@/lib/brands";
 import { getCreatorPage, platformProfileUrl } from "@/lib/creators";
+import { getDashboard } from "@/lib/dashboards";
+import { ensureReady } from "@/lib/schema";
+import { resolveScope, runForDashboard, runInScope } from "@/lib/scope";
 import { formatNumber } from "@/lib/format";
 import "./creator.css";
 
@@ -14,11 +17,19 @@ export default async function CreatorPage({
   searchParams,
 }: {
   params: Promise<{ handle: string }>;
-  searchParams: Promise<{ platform?: string; id?: string; from?: string }>;
+  searchParams: Promise<{ platform?: string; id?: string; from?: string; scope?: string }>;
 }) {
   const { handle } = await params;
   const sp = await searchParams;
-  const page = await getCreatorPage(decodeURIComponent(handle), { platform: sp.platform, id: sp.id ? Number(sp.id) : undefined });
+  // Opened from a dashboard: show the creator's activity for that dashboard's brands.
+  const from = sp.from ? await getDashboard(sp.from) : null;
+  await ensureReady();
+  const run = () => render(decodeURIComponent(handle), sp);
+  return sp.scope ? runInScope(resolveScope(sp.scope), run) : runForDashboard(from, run);
+}
+
+async function render(handle: string, sp: { platform?: string; id?: string; from?: string }) {
+  const page = await getCreatorPage(handle, { platform: sp.platform, id: sp.id ? Number(sp.id) : undefined });
   if (!page) notFound();
   const { profile: p, posts, totals, commentSentiment, topTopics } = page;
   const profileUrl = p.url ?? platformProfileUrl(p.network, p.username);

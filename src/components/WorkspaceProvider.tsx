@@ -6,8 +6,9 @@ const Ctx = createContext<Workspace>({ brands: [], company: null, category: null
 
 /** Makes the workspace (tracked brands, focal brand, company, category) available to client code. */
 export function WorkspaceProvider({ workspace, children }: { workspace: Workspace; children: ReactNode }) {
-  // Also fill the module registry so plain functions (chart colours, template builders) see it.
-  setWorkspace(workspace);
+  // Also fill the module registry so plain functions (chart colours, data fetches) see it. Browser only:
+  // on the server the registry holds the default workspace and must not follow the page being rendered.
+  if (typeof window !== "undefined") setWorkspace(workspace);
   return <Ctx.Provider value={workspace}>{children}</Ctx.Provider>;
 }
 

@@ -23,6 +23,8 @@ export function guardSql(raw: string): { ok: true; sql: string } | { ok: false; 
   if (!/^(select|with)\b/i.test(cleaned)) return { ok: false, reason: "Only SELECT queries are allowed." };
   const m = stripLiterals(cleaned).match(FORBIDDEN);
   if (m) return { ok: false, reason: `Query contains a forbidden keyword: ${m[1]}.` };
+  // The raw tables hold every industry; queries go through the views, which keep to the dashboard's brands.
+  if (/\b(posts|comments|segments|influencers)_raw\b/i.test(stripLiterals(cleaned))) return { ok: false, reason: "Use the posts, comments, influencers and segments tables." };
   if (cleaned.length > 12000) return { ok: false, reason: "Query is too long." };
   return { ok: true, sql: cleaned };
 }
