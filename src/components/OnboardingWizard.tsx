@@ -12,6 +12,8 @@ import { PeriodProvider } from "./PeriodContext";
 import type { Proposal } from "./ProposalCard";
 import { Shell } from "./Shell";
 import { useToast } from "./Toast";
+import { OutOfTokensCard, UsageNote, useBalance } from "./Tokens";
+import { announceUsage, formatTokens, OUT_OF_TOKENS, type UsageLine } from "@/lib/usage-shared";
 import { Markdown } from "./WidgetBody";
 import { WizardProposalCard } from "./WizardProposalCard";
 
@@ -34,6 +36,9 @@ interface Reply {
   status?: string;
   streaming: boolean;
   error?: string;
+  /** The turn was refused because the account has no tokens. */
+  outOfTokens?: boolean;
+  usage?: UsageLine;
 }
 
 /** What the analyst has shown on one question (kept per question so Back and Next keep it). */
@@ -42,6 +47,8 @@ interface StepView {
   status?: string;
   streaming: boolean;
   error?: string;
+  outOfTokens?: boolean;
+  usage?: UsageLine;
   proposals: Proposal[];
   /** The choices the last "Show me" ran with (null when only the free-text box was used). */
   shownKey: string | null;
@@ -295,6 +302,7 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
   );
 
   /* ---------------- analyst turns ---------------- */
+  const tokens = useBalance(dashboardId);
   const patchView = (id: StepId, fn: (v: StepView) => StepView) =>
     setViews((vs) => ({ ...vs, [id]: fn(vs[id] ?? { text: "", streaming: false, proposals: [], shownKey: null, replies: [] }) }));
 
@@ -304,7 +312,7 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
     if (view?.streaming || view?.replies.some((r) => r.streaming)) return;
     const replyId = `r_${Date.now()}`;
     if (mode === "propose") {
-      patchView(id, (v) => ({ ...v, text: "", status: "Reading the data", streaming: true, error: undefined, proposals: [], shownKey: choicesKey(id) }));
+      patchView(id, (v) => ({ ...v, text: "", status: "Reading the data", streaming: true, error: undefined, outOfTokens: false, usage: undefined, proposals: [], shownKey: choicesKey(id) }));
     } else {
       setInput("");
       patchView(id, (v) => ({ ...v, replies: [...v.replies, { id: replyId, question: text ?? "", text: "", status: "Thinking", streaming: true }] }));
@@ -344,7 +352,14 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
             });
             patchStep(id, (s) => ({ ...s, added: s.added.filter((x) => x !== rep) }));
           }
-        } else if (ev.type === "error") patchTarget(() => ({ error: ev.message, status: undefined }));
+        } else if (ev.type === "usage") {
+          patchTarget(() => ({ usage: ev.usage }));
+          announceUsage(ev.usage.balance);
+        } else if (ev.type === "error") {
+          const out = ev.code === OUT_OF_TOKENS;
+          patchTarget(() => ({ error: ev.message, outOfTokens: out, status: undefined }));
+          if (out) announceUsage();
+        }
         else if (ev.type === "done") patchTarget(() => ({ streaming: false, status: undefined }));
       });
     } catch (e) {
@@ -649,7 +664,8 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
             <div className="wiz__say">
               {view.text ? <Markdown text={view.text} /> : null}
               {view.status && <div className="msg__status"><span className="spinner" /> {view.status}…</div>}
-              {view.error && <div className="chat__error">{view.error}</div>}
+              {view.error && (view.outOfTokens ? <OutOfTokensCard message={view.error} /> : <div className="chat__error">{view.error}</div>)}
+              {!view.streaming && view.usage && <UsageNote usage={view.usage} />}
             </div>
           </div>
         )}
@@ -696,7 +712,8 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
                   <div className="wiz__say">
                     {r.text ? <Markdown text={r.text} /> : null}
                     {r.status && <div className="msg__status"><span className="spinner" /> {r.status}…</div>}
-                    {r.error && <div className="chat__error">{r.error}</div>}
+                    {r.error && (r.outOfTokens ? <OutOfTokensCard message={r.error} /> : <div className="chat__error">{r.error}</div>)}
+                    {!r.streaming && r.usage && <UsageNote usage={r.usage} />}
                   </div>
                 </div>
               </div>
@@ -773,6 +790,7 @@ export function OnboardingWizard({ resumeId }: { resumeId?: string }) {
           <div><span>Default view</span><b>{viewDetail}</b></div>
           <div><span>Competitors</span><b>{answers.competitors.length ? answers.competitors.join(", ") : "None"}</b></div>
         </div>
+        {tokens?.dashboardMonth ? <p className="im-text-description">Setting this dashboard up has used {formatTokens(tokens.dashboardMonth)} tokens. {formatTokens(tokens.balance)} left on the account.</p> : null}
         <label className="wiz__free">
           <span>Dashboard name</span>
           <input className="im-input" value={name ?? defaultName} maxLength={120} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void finish(); }} />

@@ -5,6 +5,8 @@ import { usePeriod } from "./PeriodContext";
 import type { Row } from "@/lib/chart-data";
 import { WIDGET_TYPES, isDataWidget, type WidgetSpec } from "@/lib/widgets";
 import { Markdown, WidgetBody } from "./WidgetBody";
+import { announceUsage, OUT_OF_TOKENS_MESSAGE, type UsageLine } from "@/lib/usage-shared";
+import { OutOfTokensCard, UsageNote } from "./Tokens";
 
 async function runSql(sql: string, win?: { start?: string; end?: string }): Promise<{ rows: Row[]; error?: string }> {
   const r = await fetch("/api/widgets/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql, window: win }) });
@@ -13,7 +15,7 @@ async function runSql(sql: string, win?: { start?: string; end?: string }): Prom
   return { rows: j.rows ?? [] };
 }
 
-export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec; onSave: (w: WidgetSpec) => void; onClose: () => void }) {
+export function WidgetEditor({ initial, dashboardId, onSave, onClose }: { initial: WidgetSpec; dashboardId?: string; onSave: (w: WidgetSpec) => void; onClose: () => void }) {
   const [spec, setSpec] = useState<WidgetSpec>(initial);
   const period = usePeriod();
   const winStart = effectiveWindow(period.window, spec.period).start;
@@ -23,7 +25,7 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
   const [running, setRunning] = useState(false);
   const [assistRequest, setAssistRequest] = useState("");
   const [assistBusy, setAssistBusy] = useState<"explain" | "modify" | null>(null);
-  const [assistOut, setAssistOut] = useState<{ kind: "explain" | "modify" | "error"; text: string } | null>(null);
+  const [assistOut, setAssistOut] = useState<{ kind: "explain" | "modify" | "error"; text: string; usage?: UsageLine; outOfTokens?: boolean } | null>(null);
   const [previousSql, setPreviousSql] = useState<string | null>(null);
 
   const assist = async (mode: "explain" | "modify") => {
@@ -34,21 +36,23 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
       const r = await fetch("/api/sql-assist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, sql: spec.sql, request: assistRequest, widget: { title: spec.title, type: spec.type, x: spec.x, y: spec.y, series: spec.series } }),
+        body: JSON.stringify({ mode, sql: spec.sql, request: assistRequest, dashboardId, widget: { title: spec.title, type: spec.type, x: spec.x, y: spec.y, series: spec.series } }),
       });
-      const j = (await r.json()) as { error?: string; explanation?: string; sql?: string; summary?: string; columns?: string[]; rowCount?: number; warning?: string };
+      const j = (await r.json()) as { error?: string; usage?: UsageLine; explanation?: string; sql?: string; summary?: string; columns?: string[]; rowCount?: number; warning?: string };
       if (!r.ok) throw new Error(j.error ?? "The assistant failed");
+      if (j.usage) announceUsage(j.usage.balance);
       if (mode === "explain") {
-        setAssistOut({ kind: "explain", text: j.explanation ?? "" });
+        setAssistOut({ kind: "explain", text: j.explanation ?? "", usage: j.usage });
       } else if (j.sql) {
         setPreviousSql(spec.sql);
         set("sql", j.sql);
         setAssistRequest("");
-        setAssistOut({ kind: "modify", text: `${j.summary ?? "Query updated."} ${j.rowCount ?? 0} rows, columns: ${(j.columns ?? []).join(", ")}.${j.warning ? ` ${j.warning}` : ""}` });
+        setAssistOut({ kind: "modify", text: `${j.summary ?? "Query updated."} ${j.rowCount ?? 0} rows, columns: ${(j.columns ?? []).join(", ")}.${j.warning ? ` ${j.warning}` : ""}`, usage: j.usage });
         setResult(await runSql(j.sql, win));
       }
     } catch (e) {
-      setAssistOut({ kind: "error", text: (e as Error).message });
+      const message = (e as Error).message;
+      setAssistOut({ kind: "error", text: message, outOfTokens: message === OUT_OF_TOKENS_MESSAGE });
     } finally {
       setAssistBusy(null);
     }
@@ -164,8 +168,9 @@ export function WidgetEditor({ initial, onSave, onClose }: { initial: WidgetSpec
                   </button>
                 </div>
                 {assistOut && (
-                  <div className={`assist__out ${assistOut.kind === "error" ? "assist__out--error" : ""}`}>
-                    {assistOut.kind === "explain" ? <Markdown text={assistOut.text} /> : <p>{assistOut.text}</p>}
+                  <div className={`assist__out ${assistOut.kind === "error" && !assistOut.outOfTokens ? "assist__out--error" : ""}`}>
+                    {assistOut.outOfTokens ? <OutOfTokensCard message={assistOut.text} /> : assistOut.kind === "explain" ? <Markdown text={assistOut.text} /> : <p>{assistOut.text}</p>}
+                    {assistOut.usage && <UsageNote usage={assistOut.usage} />}
                     {assistOut.kind === "modify" && previousSql && (
                       <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => { set("sql", previousSql); setPreviousSql(null); setAssistOut(null); void runSql(previousSql, win).then(setResult); }}>Revert to previous query</button>
                     )}

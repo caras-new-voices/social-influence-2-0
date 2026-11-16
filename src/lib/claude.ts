@@ -8,6 +8,8 @@ import { getDb, type Row } from "./db";
 import { runWidgetQuery } from "./query";
 import { ensureReady } from "./schema";
 import { datasetDoc } from "./schema-doc";
+import { canSpend, estimateTokens, recordUsage } from "./usage";
+import { OUT_OF_TOKENS, OUT_OF_TOKENS_MESSAGE, type UsageKind, type UsageLine } from "./usage-shared";
 import { materialize, ProposedWidgetSchema, START_SCAN_LABEL, type ProposedWidget, type WidgetSpec } from "./widgets";
 
 /* ------------------------------------------------------------------ */
@@ -21,8 +23,9 @@ export type ChatEvent =
   | { type: "widget"; widget: WidgetSpec; data: Row[]; replaces?: string; error?: string }
   | { type: "followups"; items: string[] }
   | { type: "period"; period: PeriodState }
+  | { type: "usage"; usage: UsageLine }
   | { type: "done"; messageId: number | null }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 export interface WidgetSummary {
   id: string;
@@ -39,6 +42,8 @@ export interface ChatTurnInput {
   widgets: WidgetSummary[];
   /** The dashboard's current period; queries run within it. */
   period?: PeriodState;
+  /** What kind of interaction this is, for the usage log. Defaults to "chat". */
+  kind?: UsageKind;
   /** Guided setup: the scripted text and the element recipes for this step (used by demo mode; the LLM path gets them through `instruction`). */
   wizard?: { text: string; proposals: ProposedWidget[] };
 }
@@ -323,14 +328,16 @@ export interface DisplayMessage {
   content: string;
   proposals: Array<{ widget: WidgetSpec; replaces?: string }> | null;
   followups: string[] | null;
+  /** Tokens the turn that produced this message used (on the turn's last message). */
+  usage: UsageLine | null;
   created_at: string;
 }
 
 export async function listMessages(dashboardId: string): Promise<DisplayMessage[]> {
   await ensureReady();
   const db = await getDb();
-  const rows = await db.query<{ id: number; role: string; content: string; proposals: unknown; followups: unknown; created_at: string }>(
-    `SELECT id, role, content, proposals, followups, created_at FROM chat_messages WHERE dashboard_id = $1 ORDER BY id ASC`,
+  const rows = await db.query<{ id: number; role: string; content: string; proposals: unknown; followups: unknown; usage: unknown; created_at: string }>(
+    `SELECT id, role, content, proposals, followups, usage, created_at FROM chat_messages WHERE dashboard_id = $1 ORDER BY id ASC`,
     [dashboardId],
   );
   const parse = <T,>(v: unknown): T | null => (v === null || v === undefined ? null : ((typeof v === "string" ? JSON.parse(v) : v) as T));
@@ -342,6 +349,7 @@ export async function listMessages(dashboardId: string): Promise<DisplayMessage[
       content: r.content,
       proposals: parse<DisplayMessage["proposals"]>(r.proposals),
       followups: parse<string[]>(r.followups),
+      usage: parse<UsageLine>(r.usage),
       created_at: new Date(r.created_at).toISOString(),
     }));
 }
@@ -479,15 +487,86 @@ async function executeTool(
 /* Main turn                                                             */
 /* ------------------------------------------------------------------ */
 
+/** Token counts accumulated over the rounds of one turn. */
+interface Meter {
+  input: number;
+  output: number;
+  cached: number;
+  rounds: number;
+  tools: number;
+}
+
+/**
+ * One analyst turn. Wraps the provider-specific turn with the token accounting: refuses to start
+ * when the account is out of tokens, then records what the turn used, attaches it to the stored
+ * message and emits it as a `usage` event just before `done`.
+ */
 export async function* runChatTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]): AsyncGenerator<ChatEvent> {
   await ensureReady();
+  if (!(await canSpend())) {
+    yield { type: "error", message: OUT_OF_TOKENS_MESSAGE, code: OUT_OF_TOKENS };
+    yield { type: "done", messageId: null };
+    return;
+  }
+  const mode = llmMode();
+  const meter: Meter = { input: 0, output: 0, cached: 0, rounds: 0, tools: 0 };
+  const started = Date.now();
+  let lastId: number | null = null;
+  let outText = "";
+  let proposed = "";
+  for await (const ev of providerTurn(input, existingWidgets, meter)) {
+    if (ev.type === "done") {
+      lastId = ev.messageId;
+      continue;
+    }
+    if (ev.type === "text") outText += ev.delta;
+    else if (ev.type === "widget") proposed += JSON.stringify(ev.widget);
+    yield ev;
+  }
+  try {
+    const estimated = mode === "mock";
+    if (estimated) {
+      // No provider counts in demo mode: estimate from what a real turn would send and receive.
+      meter.input = estimateTokens(systemPrompt()) + estimateTokens(`${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`);
+      meter.output = estimateTokens(outText) + estimateTokens(proposed);
+      meter.rounds = 1;
+    }
+    if (meter.input + meter.output > 0) {
+      const usage = await recordUsage({
+        kind: input.kind ?? "chat",
+        dashboardId: input.dashboardId,
+        label: input.userText,
+        provider: mode === "mock" ? "demo" : mode,
+        model: llmModel(),
+        input: meter.input,
+        output: meter.output,
+        cached: meter.cached,
+        rounds: Math.max(1, meter.rounds),
+        toolCalls: meter.tools,
+        durationMs: Date.now() - started,
+        estimated,
+        messageId: lastId,
+      });
+      if (lastId !== null) {
+        const db = await getDb();
+        await db.query(`UPDATE chat_messages SET usage = $1::jsonb WHERE id = $2`, [JSON.stringify(usage), lastId]);
+      }
+      yield { type: "usage", usage };
+    }
+  } catch (e) {
+    console.error("[usage] could not record the turn:", (e as Error).message);
+  }
+  yield { type: "done", messageId: lastId };
+}
+
+async function* providerTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[], meter: Meter): AsyncGenerator<ChatEvent> {
   const mode = llmMode();
   if (mode === "mock") {
     yield* mockTurn(input, existingWidgets);
     return;
   }
   if (mode === "openai") {
-    yield* openAiTurn(input, existingWidgets);
+    yield* openAiTurn(input, existingWidgets, meter);
     return;
   }
 
@@ -543,6 +622,14 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
         yield n.value;
       }
       const message = await finalPromise;
+      const u = message.usage;
+      if (u) {
+        const cacheRead = u.cache_read_input_tokens ?? 0;
+        meter.input += (u.input_tokens ?? 0) + cacheRead + (u.cache_creation_input_tokens ?? 0);
+        meter.output += u.output_tokens ?? 0;
+        meter.cached += cacheRead;
+      }
+      meter.rounds++;
       const flushed = gate.flush();
       if (flushed.rest) yield { type: "text", delta: flushed.rest };
       const rawText = message.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("");
@@ -568,6 +655,7 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
       const results: ContentBlock[] = [];
       for (const tu of toolUses) {
         const toolEvents: ChatEvent[] = [];
+        meter.tools++;
         const r = await executeTool(tu.name, tu.input, existingWidgets, (e) => toolEvents.push(e), proposals, window);
         for (const e of toolEvents) yield e;
         results.push({ type: "tool_result", tool_use_id: tu.id, content: r.content, is_error: r.isError });
@@ -839,7 +927,7 @@ interface ToolCallAcc {
   args: string;
 }
 
-async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]): AsyncGenerator<ChatEvent> {
+async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[], meter: Meter): AsyncGenerator<ChatEvent> {
   const client = new OpenAI({ apiKey: openAiKey(), maxRetries: 2, timeout: 180_000 });
   const history = await loadOpenAiHistory(input.dashboardId);
   const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
@@ -860,13 +948,21 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]):
         messages,
         tools: OPENAI_TOOLS,
         stream: true,
+        stream_options: { include_usage: true },
         max_completion_tokens: 8000,
         ...(process.env.OPENAI_REASONING_EFFORT ? { reasoning_effort: process.env.OPENAI_REASONING_EFFORT as OpenAI.ReasoningEffort } : {}),
       });
       let rawText = "";
       const calls = new Map<number, ToolCallAcc>();
       let finish: string | null = null;
+      meter.rounds++;
       for await (const chunk of stream) {
+        if (chunk.usage) {
+          // The last chunk of a stream carries the round's usage (and no choices).
+          meter.input += chunk.usage.prompt_tokens ?? 0;
+          meter.output += chunk.usage.completion_tokens ?? 0;
+          meter.cached += chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
+        }
         const choice = chunk.choices?.[0];
         if (!choice) continue;
         const delta = choice.delta;
@@ -918,7 +1014,7 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]):
         const toolEvents: ChatEvent[] = [];
         const r = parsedArgs === null
           ? { content: "INVALID_JSON: tool arguments could not be parsed; call the tool again.", isError: true }
-          : await executeTool(c.name, parsedArgs, existingWidgets, (e) => toolEvents.push(e), proposals, window);
+          : (meter.tools++, await executeTool(c.name, parsedArgs, existingWidgets, (e) => toolEvents.push(e), proposals, window));
         for (const e of toolEvents) yield e;
         const toolMsg: OaiMessage = { role: "tool", tool_call_id: c.id, content: r.content };
         messages.push(toolMsg);

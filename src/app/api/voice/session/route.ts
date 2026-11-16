@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ensureReady } from "@/lib/schema";
+import { assertCanSpend } from "@/lib/llm";
 import { createVoiceSession } from "@/lib/voice";
 import { WidgetSpecSchema } from "@/lib/widgets";
 
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   try {
     await ensureReady();
+    await assertCanSpend();
     const session = await createVoiceSession(parsed.data.widget, parsed.data.rows);
     return NextResponse.json(session);
   } catch (e) {

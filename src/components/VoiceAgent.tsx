@@ -1,7 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Row } from "@/lib/chart-data";
+import { announceUsage, formatTokens, OUT_OF_TOKENS_MESSAGE } from "@/lib/usage-shared";
 import type { WidgetSpec } from "@/lib/widgets";
+import { OutOfTokensCard } from "./Tokens";
 
 type Status = "connecting" | "listening" | "speaking" | "thinking" | "error" | "ended";
 interface Line {
@@ -18,7 +20,7 @@ const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
  * The server mints a short-lived client secret; audio and events flow directly between the
  * browser and the model. The model's run_sql tool calls are executed through our data API.
  */
-export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows: Row[]; onClose: () => void }) {
+export function VoiceAgent({ widget, rows, dashboardId, onClose }: { widget: WidgetSpec; rows: Row[]; dashboardId?: string; onClose: () => void }) {
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
@@ -28,6 +30,9 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
   const micRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Tokens the session's responses used so far; reported to the usage log when the session ends.
+  const meterRef = useRef({ input: 0, output: 0, responses: 0, started: 0 });
+  const [spent, setSpent] = useState(0);
 
   const upsert = useCallback((id: string, role: Line["role"], text: string, final: boolean) => {
     setLines((ls) => {
@@ -42,6 +47,18 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
   }, []);
 
   const end = useCallback(() => {
+    const m = meterRef.current;
+    if (m.input + m.output > 0) {
+      meterRef.current = { input: 0, output: 0, responses: 0, started: 0 };
+      void fetch("/api/usage/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({ dashboardId, label: `Voice: ${widget.title}`, input: m.input, output: m.output, responses: m.responses, durationMs: m.started ? Date.now() - m.started : undefined }),
+      })
+        .then(() => announceUsage())
+        .catch(() => {});
+    }
     dcRef.current?.close();
     pcRef.current?.close();
     micRef.current?.getTracks().forEach((t) => t.stop());
@@ -49,7 +66,7 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
     pcRef.current = null;
     micRef.current = null;
     setStatus("ended");
-  }, []);
+  }, [dashboardId, widget.title]);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +107,7 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
         };
 
         dc.onopen = () => {
+          meterRef.current.started = Date.now();
           setStatus("thinking");
           // Kick off the opening explanation without waiting for the person to speak.
           send({ type: "response.create" });
@@ -105,7 +123,17 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
           if (type === "input_audio_buffer.speech_started") setStatus("listening");
           else if (type === "response.created") setStatus("thinking");
           else if (type === "response.output_audio.delta") setStatus("speaking");
-          else if (type === "response.done") setStatus("listening");
+          else if (type === "response.done") {
+            setStatus("listening");
+            const u = (ev.response as { usage?: { input_tokens?: number; output_tokens?: number } } | undefined)?.usage;
+            if (u) {
+              const m = meterRef.current;
+              m.input += u.input_tokens ?? 0;
+              m.output += u.output_tokens ?? 0;
+              m.responses++;
+              setSpent(m.input + m.output);
+            }
+          }
           else if (type === "response.output_audio_transcript.delta") {
             const id = String(ev.item_id);
             const t = (partial.get(id) ?? "") + String(ev.delta ?? "");
@@ -209,7 +237,7 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
       </div>
       <div className="voice__lines" ref={scrollRef}>
         {error ? (
-          <div className="chat__error">{error}</div>
+          error === OUT_OF_TOKENS_MESSAGE ? <OutOfTokensCard message={error} /> : <div className="chat__error">{error}</div>
         ) : lines.length === 0 ? (
           <div className="im-text-description">{status === "connecting" ? "Setting up the microphone and the voice connection…" : "The analyst will start by explaining this element. Ask anything when it pauses."}</div>
         ) : (
@@ -221,7 +249,7 @@ export function VoiceAgent({ widget, rows, onClose }: { widget: WidgetSpec; rows
           ))
         )}
       </div>
-      <div className="voice__foot im-text-description">Two-way voice: speak when the analyst pauses, or interrupt it. Transcript stays here for the session.</div>
+      <div className="voice__foot im-text-description">Two-way voice: speak when the analyst pauses, or interrupt it. Transcript stays here for the session.{spent > 0 ? ` ${formatTokens(spent)} tokens used so far.` : ""}</div>
     </div>
   );
 }

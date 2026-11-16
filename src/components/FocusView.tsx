@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { rowsToCsv } from "@/lib/format";
 import { formatWindow } from "@/lib/period";
+import type { UsageKind } from "@/lib/usage-shared";
 import { askAboutWidget, EXPLAIN_CHANGE_QUESTION, type WidgetSpec } from "@/lib/widgets";
 import { usePeriod } from "./PeriodContext";
 import { ChatPanel } from "./ChatPanel";
@@ -29,13 +30,13 @@ export function FocusView({
 }) {
   const { rows, compareRows, loading, error, window: win } = useWidgetRows(widget);
   const period = usePeriod();
-  const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number } | undefined>();
+  const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number; kind?: UsageKind } | undefined>();
   // "Explain the change" is offered only while the dashboard compares two periods and this element follows it.
   const comparing = !!period.compareWindow && !!widget.sql && Array.isArray(compareRows);
   const explainChange = () => {
     if (!period.compareWindow) return;
     const ctx = { periodLabel: formatWindow(win), compareLabel: formatWindow(period.compareWindow), rows, compareRows };
-    setAsk({ ...askAboutWidget(widget, ctx), nonce: Date.now() });
+    setAsk({ ...askAboutWidget(widget, ctx), nonce: Date.now(), kind: "explain_change" });
   };
   const [tableView, setTableView] = useState(widget.type === "table");
   const toast = useToast();

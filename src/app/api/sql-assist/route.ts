@@ -10,6 +10,7 @@ const Body = z.object({
   mode: z.enum(["explain", "modify"]),
   sql: z.string().min(1).max(12000),
   request: z.string().max(2000).optional(),
+  dashboardId: z.string().optional(),
   widget: z.object({ title: z.string().optional(), type: z.string().optional(), x: z.string().optional(), y: z.string().optional(), series: z.string().optional() }).default({}),
 });
 

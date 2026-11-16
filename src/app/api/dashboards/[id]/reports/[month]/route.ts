@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDashboard } from "@/lib/dashboards";
 import { ISO_MONTH } from "@/lib/period";
 import { generateMonthReview, getStoredReport } from "@/lib/reports";
+import { OUT_OF_TOKENS, OUT_OF_TOKENS_MESSAGE } from "@/lib/usage-shared";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -25,6 +26,8 @@ export async function POST(req: Request, ctx: Ctx) {
     const report = await generateMonthReview(id, month, { force });
     return NextResponse.json({ report });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const message = (e as Error).message;
+    if (message === OUT_OF_TOKENS_MESSAGE) return NextResponse.json({ error: message, code: OUT_OF_TOKENS }, { status: 402 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -329,3 +329,9 @@
 .widget__thin { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.45rem; text-align: center; padding: 0.75rem 1rem; color: var(--Base-06); font-size: 12.5px; background: var(--Base-01); border: 1px dashed var(--Base-04); border-radius: 0.75rem; }
 .widget__thin b { color: var(--Base-07); font-size: 13.5px; font-weight: 600; }
 .widget__thinnote { font-size: 11.5px; color: #b45309; background: var(--Semantic-Warning_light); border-radius: 0.4rem; padding: 0.15rem 0.5rem; margin-bottom: 0.3rem; align-self: flex-start; display: inline-block; }
+
+/* Token usage in the chat header */
+.chat__headright { display: flex; align-items: center; gap: 0.5rem; }
+.chat__spent { font-size: 11px; color: var(--Base-05); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat__head h2 { white-space: nowrap; min-width: 0; }
+.chat__head h2 .im-badge { white-space: nowrap; }

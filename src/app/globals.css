@@ -196,3 +196,48 @@ p { margin: 0; }
 .start-template b { font-size: 13.5px; font-weight: 600; }
 .start-template small { font-size: 12px; color: var(--Base-06); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 @media (max-width: 720px) { .start-grid, .start-templates { grid-template-columns: 1fr; } .start-card { min-height: 0; } }
+
+/* ---------- Token usage: header pill, usage line, out-of-tokens and top-up ---------- */
+.tok { position: relative; display: inline-flex; }
+.tok__pill { display: inline-flex; align-items: center; gap: 0.35rem; height: 32px; padding: 0 0.7rem; border-radius: 999px; border: 1px solid var(--Base-03); background: var(--Base-00); color: var(--Base-07); font-size: 12.5px; cursor: pointer; transition: border-color var(--Motion-fast), background var(--Motion-fast); white-space: nowrap; }
+.tok__pill:hover { border-color: var(--Primary-300); background: var(--Primary-50); }
+.tok__pill svg { color: var(--Primary-600); }
+.tok__pill b { font-weight: 650; font-variant-numeric: tabular-nums; }
+.tok__unit { color: var(--Base-06); }
+.tok__pill.is-low { border-color: #f59e0b; background: var(--Semantic-Warning_light); color: #b45309; }
+.tok__pill.is-low svg, .tok__pill.is-low .tok__unit { color: #b45309; }
+.tok__pill.is-out { border-color: #ef4444; background: var(--Semantic-Error_light); color: #b91c1c; }
+.tok__pill.is-out svg, .tok__pill.is-out .tok__unit { color: #b91c1c; }
+.tok__pop { position: absolute; top: calc(100% + 8px); right: 0; width: 280px; background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.9rem; box-shadow: var(--Shadow-pop); z-index: 60; padding: 0.9rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.tok__big { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.tok__big small { font-size: 12px; font-weight: 500; color: var(--Base-06); margin-left: 0.35rem; letter-spacing: 0; }
+.tok__warn { font-size: 12px; color: #b45309; background: var(--Semantic-Warning_light); border-radius: 0.5rem; padding: 0.4rem 0.55rem; margin: 0; }
+.tok__stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.15rem 0 0.25rem; }
+.tok__stats div { background: var(--Base-01); border-radius: 0.6rem; padding: 0.5rem 0.6rem; }
+.tok__stats dt { font-size: 11px; color: var(--Base-06); }
+.tok__stats dd { margin: 0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tok__actions { display: flex; gap: 0.5rem; }
+.tok__actions > * { flex: 1; justify-content: center; text-align: center; }
+
+.tok-note { display: flex; align-items: center; gap: 0.35rem; font-size: 11px; color: var(--Base-05); font-variant-numeric: tabular-nums; }
+.tok-note svg { flex: none; }
+
+.tok-out { border: 1px solid #fecaca; background: var(--Semantic-Error_light); border-radius: 0.75rem; padding: 0.75rem 0.85rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 12.5px; }
+.tok-out b { color: #b91c1c; font-size: 13px; }
+.tok-out p { margin: 0; color: var(--Base-07); }
+.tok-out__actions { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+
+.tok-low { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 12px; color: #b45309; background: var(--Semantic-Warning_light); border-radius: 0.6rem; padding: 0.4rem 0.6rem; }
+.tok-low.is-out { color: #b91c1c; background: var(--Semantic-Error_light); }
+
+.tok-packs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin: 0.25rem 0 0.5rem; }
+.tok-pack { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; padding: 0.85rem 0.5rem; border-radius: 0.8rem; border: 1px solid var(--Base-03); background: var(--Base-00); cursor: pointer; transition: border-color var(--Motion-fast), background var(--Motion-fast); }
+.tok-pack:hover { border-color: var(--Primary-300); }
+.tok-pack b { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.tok-pack small { font-size: 11px; color: var(--Base-06); }
+.tok-pack.is-active { border-color: var(--Primary-600); background: var(--Primary-50); box-shadow: 0 0 0 1px var(--Primary-600) inset; }
+.tok-demo { font-size: 11.5px; color: var(--Base-06); margin: 0.25rem 0 0; }
+
+@media (max-width: 720px) {
+  .tok__unit { display: none; }
+}
