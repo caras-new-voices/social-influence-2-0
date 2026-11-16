@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   proposals jsonb,
   api_content jsonb,
   followups jsonb,
+  usage jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS chat_messages_dash_idx ON chat_messages (dashboard_id, id);
@@ -89,6 +90,37 @@ CREATE TABLE IF NOT EXISTS imports (
   influencers_added integer NOT NULL DEFAULT 0,
   status text NOT NULL DEFAULT 'done',
   notes text
+);
+CREATE TABLE IF NOT EXISTS usage_events (
+  id bigserial PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  dashboard_id text,
+  kind text NOT NULL,
+  label text,
+  provider text NOT NULL,
+  model text NOT NULL,
+  input_tokens bigint NOT NULL DEFAULT 0,
+  output_tokens bigint NOT NULL DEFAULT 0,
+  cached_tokens bigint NOT NULL DEFAULT 0,
+  total_tokens bigint NOT NULL DEFAULT 0,
+  rounds integer NOT NULL DEFAULT 1,
+  tool_calls integer NOT NULL DEFAULT 0,
+  duration_ms integer NOT NULL DEFAULT 0,
+  estimated boolean NOT NULL DEFAULT false,
+  automatic boolean NOT NULL DEFAULT false,
+  cost_usd double precision NOT NULL DEFAULT 0,
+  message_id bigint
+);
+CREATE INDEX IF NOT EXISTS usage_events_created_idx ON usage_events (created_at);
+CREATE INDEX IF NOT EXISTS usage_events_dash_idx ON usage_events (dashboard_id, created_at);
+CREATE TABLE IF NOT EXISTS token_ledger (
+  id bigserial PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,
+  tokens bigint NOT NULL,
+  usage_event_id bigint,
+  note text,
+  balance_after bigint NOT NULL
 );
 CREATE TABLE IF NOT EXISTS period_events (
   id bigserial PRIMARY KEY,
@@ -131,6 +163,7 @@ ALTER TABLE segments DROP COLUMN IF EXISTS brandwatch_query;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS followups jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS period jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS onboarding jsonb;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS usage jsonb;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS influencers_updated integer NOT NULL DEFAULT 0;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS segments_upserted integer NOT NULL DEFAULT 0;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS finished_at timestamptz;
@@ -260,6 +293,12 @@ export function ensureReady(): Promise<void> {
       }
       await recordSeedImport(db);
       await seedWorkspaceMeta(db);
+      // Every account starts with a token allowance (see usage.ts).
+      const starting = Number(process.env.STARTING_TOKENS ?? 1_000_000) || 1_000_000;
+      await db.query(
+        `INSERT INTO token_ledger (kind, tokens, note, balance_after) SELECT 'grant', $1::bigint, 'Starting allowance', $1::bigint WHERE NOT EXISTS (SELECT 1 FROM token_ledger)`,
+        [starting],
+      );
       await loadWorkspace(db);
     })().catch((err) => {
       g.__siReady = undefined;

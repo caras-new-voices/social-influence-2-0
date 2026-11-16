@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useWorkspace } from "./WorkspaceProvider";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { NotificationBell } from "./NotificationBell";
+import { TokenPill } from "./Tokens";
 
 const Icon = {
   grid: (
@@ -23,6 +24,9 @@ const Icon = {
   ),
   search: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+  ),
+  usage: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
   ),
   chevron: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 5l-7 7 7 7" /></svg>
@@ -101,6 +105,7 @@ export function Shell({ title, actions, children, titleSlot }: { title: string; 
         <span className="im-micro-label sidebar__section">Workspace</span>
         {item("Dashboards", Icon.grid, "/", active("/"))}
         {item("Dataset", Icon.data, "/data", active("/data"))}
+        {item("Usage", Icon.usage, "/usage", active("/usage"))}
         <span className="im-micro-label sidebar__section">Other workspaces</span>
         {item("Discovery", Icon.search)}
         {item("UGC", Icon.video)}
@@ -111,7 +116,7 @@ export function Shell({ title, actions, children, titleSlot }: { title: string; 
       <div className="main">
         <header className="topbar">
           <div className="topbar__title">{titleSlot ?? <h1>{title}</h1>}</div>
-          <div className="topbar__actions"><NotificationBell />{actions}</div>
+          <div className="topbar__actions"><TokenPill /><NotificationBell />{actions}</div>
         </header>
         <main className="content" style={{ padding: 0 }}>{children}</main>
       </div>

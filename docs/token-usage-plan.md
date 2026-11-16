@@ -167,3 +167,33 @@ About five working days. A and B are the part a client sees in a demo; C is what
 ## 14. Out of scope
 
 Real payments and invoices; per-person usage (needs sign-in); per-client price plans; alerts by email. Each is a small addition on this structure.
+
+## 15. As built
+
+Built with the recommended answers to section 13: 1,000,000 tokens to start (`STARTING_TOKENS`), packs of 250K, 1M and 5M, a hard stop at zero for new turns, automatic month reviews draw from the balance and are skipped at zero, tokens shown everywhere with the dollar estimate on the usage page only, demo-mode estimates spend the balance, raw tokens as the unit.
+
+| Part | Where |
+|---|---|
+| Shared types, kinds, formatting, the browser refresh event | `src/lib/usage-shared.ts` |
+| Recording, balance, top-up, summary, log, statement, CSV, price table | `src/lib/usage.ts` |
+| Tables `usage_events` and `token_ledger`, `chat_messages.usage`, the starting grant | `src/lib/schema.ts` |
+| Chat and guided-setup turns: balance check, per-round counts from Claude and OpenAI, demo estimates, the `usage` stream event | `runChatTurn` in `src/lib/claude.ts` |
+| Month reviews and the query assistant | `complete()` and `recordEstimate()` in `src/lib/llm.ts`, called from `src/lib/reports.ts` and `src/lib/sql-assist.ts` |
+| Voice: the browser sums `response.done` usage and reports it when the session ends | `src/components/VoiceAgent.tsx`, `POST /api/usage/voice` |
+| API | `GET /api/usage/balance`, `summary`, `events` (`format=csv`), `ledger`; `POST /api/usage/top-up`, `voice` |
+| The line under answers, the header pill, the low and out-of-tokens states | `src/components/Tokens.tsx` |
+| The top-up dialog | `src/components/AddTokensDialog.tsx` |
+| The usage page | `src/app/usage/page.tsx`, `src/components/UsageView.tsx`, `src/app/usage.css` |
+| The check | `scripts/check_usage.py` (`npm run check:usage`, add `--drain` for the hard stop) |
+
+Differences from the plan and known limits:
+
+- The balance is the sum of the ledger; each ledger row stores the balance after it, so the statement needs no recalculation.
+- A turn that starts with tokens left is allowed to finish, so the balance can go slightly below zero. The next turn is refused.
+- The chat header shows the tokens the dashboard has used this month. The guided setup shows the same number on its last page.
+- The usage log keeps its rows when a dashboard is deleted; the page shows "Deleted dashboard".
+- Days and months are counted in UTC.
+- Voice usage is reported by the browser when the session ends. A tab that is closed mid-session can lose that report.
+- Cached input tokens count at face value. The cost estimate uses list prices and ignores cache discounts.
+- The top-up endpoint has no sign-in, like the rest of the proof of concept. Set `DEMO_TOPUP=0` to turn it off.
+- The Claude and OpenAI counting paths follow the providers' documented usage fields, but were verified end to end in demo mode only (no model key in the build environment). Check the first real answers against the provider's console.

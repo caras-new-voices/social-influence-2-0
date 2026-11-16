@@ -10,6 +10,8 @@ import { ProposalCard, type Proposal } from "./ProposalCard";
 import { eventMonth, latestDataEvent, previousMonth, useStoredNumber, usePeriodEvents, writeNumber } from "./usePeriodEvents";
 import { Markdown } from "./WidgetBody";
 import { formatMonth } from "@/lib/period";
+import { announceUsage, formatTokens, OUT_OF_TOKENS, type UsageKind, type UsageLine } from "@/lib/usage-shared";
+import { LowTokensNotice, OutOfTokensCard, UsageNote, useBalance } from "./Tokens";
 
 interface QueryLog { sql: string; ok: boolean; rows?: number; error?: string }
 interface UiMessage {
@@ -22,6 +24,9 @@ interface UiMessage {
   status?: string;
   streaming?: boolean;
   error?: string;
+  /** Set when the turn was refused because the account has no tokens. */
+  outOfTokens?: boolean;
+  usage?: UsageLine;
 }
 
 export function ChatPanel({
@@ -42,7 +47,7 @@ export function ChatPanel({
   prefill?: string;
   onPrefillConsumed: () => void;
   /** A programmatic question (from an element's Ask AI button); nonce changes on every click. */
-  ask?: { text: string; instruction: string; nonce: number };
+  ask?: { text: string; instruction: string; nonce: number; kind?: UsageKind };
   /** Focused mode: every question is about one element; history is not loaded. */
   scope?: { widget: WidgetSpec };
   /** Called when the analyst changes the dashboard period (set_period tool). */
@@ -50,6 +55,7 @@ export function ChatPanel({
 }) {
   const period = usePeriod();
   const ws = useWorkspace();
+  const tokens = useBalance(dashboardId);
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,6 +79,7 @@ export function ChatPanel({
             proposals: (m.proposals ?? []).map((p) => ({ widget: p.widget, replaces: p.replaces })),
             queries: [],
             followups: m.followups ?? [],
+            usage: m.usage ?? undefined,
           })),
         ),
       )
@@ -113,15 +120,15 @@ export function ChatPanel({
     seenCount.current = messages.length;
   }, [messages]);
 
-  const sendRef = useRef<(text: string, instruction?: string) => Promise<void>>(async () => {});
+  const sendRef = useRef<(text: string, instruction?: string, kind?: UsageKind) => Promise<void>>(async () => {});
   useEffect(() => {
     if (!ask) return;
-    const t = setTimeout(() => void sendRef.current(ask.text, ask.instruction), 0);
+    const t = setTimeout(() => void sendRef.current(ask.text, ask.instruction, ask.kind ?? "ask_element"), 0);
     return () => clearTimeout(t);
   }, [ask]);
 
   const send = useCallback(
-    async (text: string, instruction?: string) => {
+    async (text: string, instruction?: string, kind?: UsageKind) => {
       const trimmed = text.trim();
       if (!trimmed || busy) return;
       setInput("");
@@ -146,6 +153,8 @@ export function ChatPanel({
             instruction: instruction ?? (scope ? questionAboutWidget(scope.widget, trimmed) : undefined),
             widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })),
             period: period.state,
+            // Everything asked in the focused view is about one element.
+            kind: kind ?? (scope ? "ask_element" : "chat"),
           }),
           signal: ctrl.signal,
         });
@@ -173,7 +182,14 @@ export function ChatPanel({
             else if (ev.type === "widget") patch((m) => ({ ...m, proposals: [...m.proposals, { widget: ev.widget, data: ev.data, replaces: ev.replaces }] }));
             else if (ev.type === "followups") patch((m) => ({ ...m, followups: ev.items }));
             else if (ev.type === "period") onSetPeriod?.(ev.period);
-            else if (ev.type === "error") patch((m) => ({ ...m, error: ev.message, status: undefined }));
+            else if (ev.type === "usage") {
+              patch((m) => ({ ...m, usage: ev.usage }));
+              announceUsage(ev.usage.balance);
+            } else if (ev.type === "error") {
+              const out = ev.code === OUT_OF_TOKENS;
+              patch((m) => ({ ...m, error: ev.message, outOfTokens: out, status: undefined }));
+              if (out) announceUsage();
+            }
             else if (ev.type === "done") patch((m) => ({ ...m, streaming: false, status: undefined }));
           }
         }
@@ -246,7 +262,10 @@ export function ChatPanel({
           {scope ? "Ask about this element" : "Analyst"}
           {demoMode && <span className="im-badge im-badge-warning" title="Set an LLM key to use the analyst">Demo mode</span>}
         </h2>
-        {!scope && messages.length > 0 && <button className="im-btn im-btn-ghost im-btn-sm" onClick={clearChat}>Clear</button>}
+        <div className="chat__headright">
+          {!scope && tokens?.dashboardMonth ? <span className="chat__spent" title={`This dashboard has used ${tokens.dashboardMonth.toLocaleString("en-US")} tokens this month`}>{formatTokens(tokens.dashboardMonth)} tokens used</span> : null}
+          {!scope && messages.length > 0 && <button className="im-btn im-btn-ghost im-btn-sm" onClick={clearChat}>Clear</button>}
+        </div>
       </div>
       <div className="chat__scroll" ref={scrollRef}>
         {messages.length === 0 && scope && (
@@ -272,7 +291,7 @@ export function ChatPanel({
                 <b>Not sure where to begin?</b>
                 <small>I&apos;ll scan the data and come back with three observations, each with an element you can add.</small>
               </div>
-              <button className="im-btn im-btn-primary im-btn-sm" onClick={() => void send(START_SCAN_LABEL, START_SCAN_INSTRUCTION)}>{START_SCAN_LABEL}</button>
+              <button className="im-btn im-btn-primary im-btn-sm" onClick={() => void send(START_SCAN_LABEL, START_SCAN_INSTRUCTION, "scan")}>{START_SCAN_LABEL}</button>
             </div>
             <span className="im-micro-label">Or pick a goal</span>
             <div className="intents">
@@ -331,7 +350,8 @@ export function ChatPanel({
                 onRefine={() => { setInput(`Refine "${p.widget.title}": `); inputRef.current?.focus(); }}
               />
             ))}
-            {m.error && <div className="chat__error">{m.error}</div>}
+            {m.error && (m.outOfTokens ? <OutOfTokensCard message={m.error} /> : <div className="chat__error">{m.error}</div>)}
+            {m.role === "assistant" && !m.streaming && m.usage && <UsageNote usage={m.usage} />}
             {m.role === "assistant" && !m.streaming && m.followups.length > 0 && idx === messages.length - 1 && (
               <div className="followups" aria-label="Suggested next questions">
                 {m.followups.map((q) => (
@@ -359,6 +379,7 @@ export function ChatPanel({
         <div ref={spacerRef} aria-hidden="true" style={{ flex: "none" }} />
       </div>
       <div className="chat__compose">
+        <LowTokensNotice info={tokens} />
         <div className="chat__input">
           <textarea
             ref={inputRef}

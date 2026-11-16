@@ -4,6 +4,7 @@ import type { Layout } from "react-grid-layout";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ALL_TIME, formatWindow, periodFromParams, periodToParams, resolveCompare, resolveWindow, type PeriodState } from "@/lib/period";
+import type { UsageKind } from "@/lib/usage-shared";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
 import { NewDataBanner } from "./NewDataBanner";
 import { PeriodBar } from "./PeriodBar";
@@ -29,7 +30,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [editing, setEditing] = useState<WidgetSpec | null>(null);
   const [adding, setAdding] = useState(false);
   const [prefill, setPrefill] = useState<string | undefined>();
-  const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number } | undefined>();
+  const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number; kind?: UsageKind } | undefined>();
   const [focusId, setFocusId] = useState<string | null>(null);
   const [voice, setVoice] = useState<{ widget: WidgetSpec; rows: Row[] } | null>(null);
   const [demo, setDemo] = useState(false);
@@ -296,7 +297,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               const win = resolveWindow(period);
               void fetchWidgetRows(w.sql, win, compareWin).then((res) => {
                 const ctx = res.error ? undefined : { periodLabel: formatWindow(win), compareLabel: formatWindow(compareWin), rows: res.rows, compareRows: res.compareRows };
-                setAsk({ ...askAboutWidget(w, ctx), nonce: Date.now() });
+                setAsk({ ...askAboutWidget(w, ctx), nonce: Date.now(), kind: ctx ? "explain_change" : "ask_element" });
               });
             }}
             onExpand={(id) => setFocusId(id)}
@@ -312,12 +313,13 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
       {editing && (
         <WidgetEditor
           initial={editing}
+          dashboardId={dashboard.id}
           onClose={() => setEditing(null)}
           onSave={(w) => { mutate((ws) => ws.map((x) => (x.id === w.id ? w : x))); setEditing(null); toast("Element updated"); }}
         />
       )}
       {adding && <AddWidgetDrawer onAdd={addFromTemplate} onClose={() => setAdding(false)} />}
-      {voice && <VoiceAgent key={voice.widget.id} widget={voice.widget} rows={voice.rows} onClose={() => setVoice(null)} />}
+      {voice && <VoiceAgent key={voice.widget.id} dashboardId={dashboard.id} widget={voice.widget} rows={voice.rows} onClose={() => setVoice(null)} />}
       {focusWidget && (
         <FocusView
           widget={focusWidget}

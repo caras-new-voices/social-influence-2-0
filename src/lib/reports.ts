@@ -3,7 +3,8 @@ import { getCoverage } from "./coverage";
 import { getDashboard } from "./dashboards";
 import { getDb, type Row } from "./db";
 import { llmMode } from "./claude";
-import { complete } from "./llm";
+import { assertCanSpend, complete, recordEstimate } from "./llm";
+import type { UsageLine } from "./usage-shared";
 import { addMonths, formatMonth, monthEnd, monthKey, monthStart, type MonthCoverage, type PeriodWindow } from "./period";
 import { runWidgetQuery } from "./query";
 import { datasetDoc } from "./schema-doc";
@@ -176,10 +177,12 @@ function mockReview(month: string, prev: string | null, k: MonthKpis, p: MonthKp
 }
 
 /** Builds (or rebuilds) the month in review for a dashboard and month, running every data element for both months. */
-export async function generateMonthReview(dashboardId: string, month: string, { force = false } = {}): Promise<StoredReport> {
+export async function generateMonthReview(dashboardId: string, month: string, { force = false, automatic = false }: { force?: boolean; automatic?: boolean } = {}): Promise<StoredReport> {
   await ensureReports();
   const existing = await getStoredReport(dashboardId, month);
   if (existing && !force) return existing;
+  // Writing a review uses the analyst: it needs tokens (automatic reviews are skipped at zero by the caller's catch).
+  await assertCanSpend();
   const dashboard = await getDashboard(dashboardId);
   if (!dashboard) throw new Error("Dashboard not found");
   const start = monthStart(month);
@@ -201,11 +204,14 @@ export async function generateMonthReview(dashboardId: string, month: string, { 
     if (widgets.length >= 14) break;
   }
 
+  const meta = { kind: "month_review" as const, dashboardId, label: `Month in review: ${formatMonth(month)}`, automatic };
+  let usage: UsageLine | null = null;
   let summary: string;
   let model: string | null = null;
   if (llmMode() === "mock") {
     summary = mockReview(month, prev ? prevMonth : null, k, p, widgets);
     model = "demo";
+    usage = await recordEstimate(meta, reviewSystem() + JSON.stringify(widgets.map((w) => [w.title, compactRows(w.rows), compactRows(w.prevRows)])), summary);
   } else {
     const user = [
       `Dashboard: "${dashboard.name}". Focal brand: ${focalName()}. Month under review: ${formatMonth(month)} (${start} to ${end}, end exclusive).${prev ? ` Previous month: ${formatMonth(prevMonth)}.` : " No previous month available."}`,
@@ -215,12 +221,14 @@ export async function generateMonthReview(dashboardId: string, month: string, { 
       "",
       "Write the month in review in markdown, under 320 words: a heading '## <Month> in review'; a one-paragraph lead with the headline numbers and the direction versus the previous month; then 3 to 5 bullets on what grew, what fell and why (name creators, channels, topics, objections with the numbers); then 2 or 3 notable verbatim comments if present in the data (quoted, short); then one bullet 'Suggested action'. Only use numbers present in the data. Do not mention SQL or tools.",
     ].join("\n\n");
-    summary = (await complete(reviewSystem(), user, 1800)).trim();
+    const res = await complete(reviewSystem(), user, 1800, meta);
+    summary = res.text.trim();
+    usage = res.usage;
     model = process.env.OPEN_AI_KEY || process.env.OPENAI_API_KEY ? process.env.OPENAI_MODEL ?? "gpt-5.2" : process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
   }
 
   const db = await getDb();
-  const data = { kpis: k, previous: p, elements: widgets.map((w) => ({ title: w.title, rows: w.rows.length, prevRows: w.prevRows.length })) };
+  const data = { usage, kpis: k, previous: p, elements: widgets.map((w) => ({ title: w.title, rows: w.rows.length, prevRows: w.prevRows.length })) };
   const rows = await db.query<StoredReport>(
     `INSERT INTO period_reports (dashboard_id, period_start, period_end, summary_md, model, data) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      ON CONFLICT (dashboard_id, period_start, period_end) DO UPDATE SET summary_md = EXCLUDED.summary_md, model = EXCLUDED.model, data = EXCLUDED.data, created_at = now()

@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (e: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        for await (const ev of runChatTurn({ dashboardId, userText, instruction, widgets: [], period: period ?? dashboard.period ?? undefined, wizard }, dashboard.widgets)) send(ev);
+        for await (const ev of runChatTurn({ dashboardId, userText, instruction, widgets: [], period: period ?? dashboard.period ?? undefined, wizard, kind: mode === "discuss" ? "wizard_discuss" : "wizard_step" }, dashboard.widgets)) send(ev);
       } catch (e) {
         send({ type: "error", message: (e as Error).message });
         send({ type: "done", messageId: null });

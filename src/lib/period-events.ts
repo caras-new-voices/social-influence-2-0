@@ -76,7 +76,7 @@ async function writeReviewsFor(months: string[]) {
     const { generateMonthReview } = await import("./reports");
     for (const dash of await listDashboards()) {
       for (const month of months) {
-        await generateMonthReview(dash.id, month, { force: true }).catch((e: Error) => console.error(`[period-events] review ${dash.id} ${month} failed:`, e.message));
+        await generateMonthReview(dash.id, month, { force: true, automatic: true }).catch((e: Error) => console.error(`[period-events] review ${dash.id} ${month} failed:`, e.message));
       }
     }
   } catch (e) {

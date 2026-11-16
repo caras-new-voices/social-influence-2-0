@@ -23,6 +23,8 @@ npm run db:seed
 
 Open http://localhost:3000 and create a dashboard: build it with the analyst (eight guided questions, see `docs/onboarding-wizard-plan.md`), start from a template, or start blank, then ask the analyst a question. Every dashboard has a global time period (the bar above the grid): a month, a custom range or all time, with an optional comparison period. The period is applied inside the database, so every saved query follows it without changes (see `docs/time-periods-plan.md`). Templates live in `src/lib/templates.ts`: the starter template (`src/lib/starter.ts`: five first-person questions that work for any brand, with sections left out when the data cannot support them, see `docs/starter-template-plan.md`) and Eran's template (eight strategic questions). Nothing in the code names a brand: the tracked brands and the focal brand come from the `segments` table, and SQL uses `focal_brand()` and `is_competitor(brand)`. `npm run check:templates` runs every element with each tracked brand as the focal brand.
 
+Every AI interaction is metered in tokens (see `docs/token-usage-plan.md`). The answer shows what it used and what is left, the header shows the balance, and the Usage page (`/usage`) shows the totals, a daily chart, where the tokens went, the full log (with CSV export) and the statement. At zero the analyst stops until tokens are added. In demo mode the counts are estimates from text length and are labelled "estimated". `npm run check:usage` runs one interaction of every kind against a local app and checks the log, the statement and the balance agree.
+
 ## Deploy to Vercel
 
 1. Create a Postgres database (Vercel Postgres / Neon) and copy its connection string.
@@ -48,6 +50,9 @@ Serverless functions have a 300 second limit configured for the chat route (`max
 | `MOCK_LLM` | Set `1` to force demo mode. |
 | `IMPORT_TOKEN` | When set, `POST /api/imports`, `GET /api/imports` and `/api/cron/coverage` require `Authorization: Bearer <token>` (Vercel's `CRON_SECRET` is accepted for the cron). Unset means open (local). |
 | `NOTIFY_WEBHOOK_URL` | Optional: every new period event is POSTed there as JSON (`{ type: "period_event", event }`). |
+| `STARTING_TOKENS` | Token allowance granted the first time the app starts on a database. Defaults to 1,000,000. |
+| `DEMO_TOPUP` | The demo "Add tokens" button and `POST /api/usage/top-up` are on by default (no payment is taken). Set `0` to turn them off. |
+| `USAGE_PRICES` | Optional JSON price table for the cost estimate on the usage page: `{ "model-id": [usd per million input tokens, usd per million output tokens] }`. Defaults are in `src/lib/usage.ts`. |
 
 ## Project layout
 

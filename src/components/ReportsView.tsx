@@ -7,6 +7,7 @@ import type { MonthKpis, MonthReportRow, StoredReport } from "@/lib/reports";
 import type { DashboardRecord } from "@/lib/widgets";
 import { Shell } from "./Shell";
 import { useToast } from "./Toast";
+import { announceUsage, type UsageLine } from "@/lib/usage-shared";
 import { Markdown } from "./WidgetBody";
 
 type Initial = { rows: MonthReportRow[]; coveredTo: string | null };
@@ -34,6 +35,13 @@ function fmtKpi(v: number | null, fmt: "compact" | "number" | "percent1"): strin
   return formatNumber(v, fmt);
 }
 
+/** " · written with 2,140 tokens" for a stored review (older reviews have no count). */
+function reviewUsage(review: StoredReport): string {
+  const u = (review.data as { usage?: UsageLine | null } | null)?.usage;
+  if (!u) return "";
+  return ` · written with ${u.estimated ? "about " : ""}${u.total.toLocaleString("en-US")} tokens${u.estimated ? " (estimated)" : ""}`;
+}
+
 /** Month-by-month report index for one dashboard, with the stored month-in-review. */
 export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord; initial: Initial }) {
   const toast = useToast();
@@ -48,6 +56,7 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
       const j = (await r.json()) as { report?: StoredReport; error?: string };
       if (!r.ok || !j.report) throw new Error(j.error ?? "Could not generate the review");
       setRows((rs) => rs.map((x) => (x.month === month ? { ...x, review: j.report! } : x)));
+      announceUsage();
       setOpen(month);
       toast(force ? "Review regenerated" : "Review ready");
     } catch (e) {
@@ -136,7 +145,7 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
               {current.review ? (
                 <div className="rep__review">
                   <Markdown text={current.review.summary_md} />
-                  <p className="im-text-description rep__meta">Written {new Date(current.review.created_at).toLocaleString("en-GB")}{current.review.model ? ` · ${current.review.model}` : ""}. Numbers above are live; the narrative is frozen at the time it was written.</p>
+                  <p className="im-text-description rep__meta">Written {new Date(current.review.created_at).toLocaleString("en-GB")}{current.review.model ? ` · ${current.review.model}` : ""}{reviewUsage(current.review)}. Numbers above are live; the narrative is frozen at the time it was written.</p>
                 </div>
               ) : (
                 <div className="rep__empty">
