@@ -33,10 +33,12 @@ def tier(f):
     return "nano" if f < 5_000 else "micro" if f < 50_000 else "mid" if f < 250_000 else "macro" if f < 1_000_000 else "mega"
 
 def handle(r):
+    """The name a creator is shown under. Most YouTube rows have no handle, only a channel name."""
     u = (r.get("username") or "").strip()
     if u: return u[:120]
     m = re.search(r"tiktok\.com/@([^/?]+)", r.get("link") or "")
-    return (m.group(1) if m else r["user_id"])[:120]
+    if m: return m.group(1)[:120]
+    return ((r.get("display_name") or "").strip() or r["user_id"])[:120]
 
 catalog = json.load(open(os.path.join(SEED, "catalog.json"), encoding="utf-8"))
 os.makedirs(os.path.join(SEED, "packs"), exist_ok=True)
