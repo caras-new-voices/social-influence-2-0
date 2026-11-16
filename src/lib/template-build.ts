@@ -1,5 +1,6 @@
 import { runWidgetQuery } from "./query";
-import { STARTER_SECTIONS, type StarterCondition } from "./starter";
+import { STARTER_SECTIONS, type StarterCondition, type StarterSection } from "./starter";
+import { TOM_SECTIONS } from "./tom";
 import { buildTemplate, ERAN_SECTIONS, layoutSections, type TemplateId, type TemplateSection } from "./templates";
 import type { WidgetSpec } from "./widgets";
 
@@ -22,15 +23,21 @@ async function passes(cond: StarterCondition, focal?: string): Promise<{ ok: boo
  */
 export async function buildTemplateForWorkspace(id: TemplateId, opts: { focal?: string } = {}): Promise<BuiltTemplate> {
   if (id === "eran") return buildWithoutComments(ERAN_SECTIONS, opts.focal);
-  if (id !== "starter") return { widgets: buildTemplate(id), skipped: [] };
+  if (id === "starter") return buildConditional(STARTER_SECTIONS, opts.focal);
+  if (id === "tom") return buildConditional(TOM_SECTIONS, opts.focal);
+  return { widgets: buildTemplate(id), skipped: [] };
+}
+
+/** Lays out sections whose parts carry `when` conditions, leaving out the parts the data cannot support. */
+async function buildConditional(all: StarterSection[], focal?: string): Promise<BuiltTemplate> {
   const skipped: BuiltTemplate["skipped"] = [];
   const cache = new Map<string, { ok: boolean; have: number }>();
   const check = async (c: StarterCondition) => {
-    if (!cache.has(c.sql)) cache.set(c.sql, await passes(c, opts.focal));
+    if (!cache.has(c.sql)) cache.set(c.sql, await passes(c, focal));
     return cache.get(c.sql)!;
   };
   const sections: TemplateSection[] = [];
-  for (const sec of STARTER_SECTIONS) {
+  for (const sec of all) {
     if (sec.when) {
       const r = await check(sec.when);
       if (!r.ok) {
