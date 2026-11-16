@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ISO_DATE } from "@/lib/period";
 import { runWidgetQuery } from "@/lib/query";
+import { ensureReady } from "@/lib/schema";
+import { resolveScope, runInScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,8 @@ const BodySchema = z.object({
   compare: WindowSchema,
   /** Optional sample check: one row with column n, run in the main window. */
   sampleSql: z.string().max(2000).optional(),
+  /** The dashboard's brand scope; omit for the default selection. */
+  scope: z.unknown().optional(),
 });
 
 /** Executes a widget's saved SQL (within the dashboard period) and returns rows for rendering. */
@@ -21,6 +25,12 @@ export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 });
   const { sql, window, compare, sampleSql } = parsed.data;
+  await ensureReady();
+  return runInScope(resolveScope(parsed.data.scope), () => run(sql, window, compare, sampleSql));
+}
+
+type Window = z.infer<typeof WindowSchema>;
+async function run(sql: string, window: Window, compare: Window, sampleSql?: string) {
   const result = await runWidgetQuery(sql, undefined, window ?? undefined);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
   let compareRows: typeof result.rows | undefined;

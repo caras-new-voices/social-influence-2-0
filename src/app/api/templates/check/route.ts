@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * Runs the rotation test for a template: each tracked brand as the focal brand, every element over
- * all time and each month. Read-only. ?template=starter&months=0 skips the per-month runs,
- * ?brand=<name> limits it to one focal brand.
+ * Runs the rotation test for a template: in every industry each brand as the focal brand, every
+ * element over all time and each month. Read-only. ?template=starter&months=0 skips the per-month
+ * runs, ?industry=<id> limits it to one industry, ?brand=<name> to one focal brand.
  */
 export async function GET(req: Request) {
   if (!isAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,6 +19,7 @@ export async function GET(req: Request) {
     const result = await checkTemplate(toTemplateId(url.searchParams.get("template") ?? "starter"), {
       months: url.searchParams.get("months") !== "0",
       brands: brand ? [brand] : undefined,
+      industries: url.searchParams.get("industry") ? [url.searchParams.get("industry")!] : undefined,
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 422 });
   } catch (e) {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { competitorNames, focalName } from "./brands";
+import { competitorNames, focalName, getWorkspace } from "./brands";
 import { NOT_SELF, type TemplateWidget } from "./templates";
 import type { ProposedWidget } from "./widgets";
 
@@ -35,9 +35,16 @@ const GOAL_FIRST: Record<GoalId, StepId[]> = {
   risk: ["pushback", "unanswered", "driving"],
   unsure: [],
 };
+/** Questions answered from audience comments. They are left out for brands that have posts but no comments. */
+const NEEDS_COMMENTS: ReadonlySet<StepId> = new Set<StepId>(["intent", "love", "pushback", "unanswered", "build", "emerging"]);
+const READS_COMMENTS = /\b(from|join)\s+comments(_all)?\b/i;
+/** False only when the brands in view are known to have no audience comments. */
+const commentsAvailable = () => getWorkspace().hasComments !== false;
+
 export function stepOrder(goal: GoalId | null | undefined): StepId[] {
   const first = goal ? GOAL_FIRST[goal] : [];
-  return [...first, ...STEP_IDS.filter((s) => !first.includes(s))];
+  const all = [...first, ...STEP_IDS.filter((s) => !first.includes(s))];
+  return commentsAvailable() ? all : all.filter((s) => !NEEDS_COMMENTS.has(s));
 }
 
 /* ------------------------------------------------------------------ */
@@ -478,7 +485,10 @@ export const STEPS_BY_ID: Record<StepId, WizardStep> = Object.fromEntries(WIZARD
 /** Element recipes for a step as propose_widget inputs. */
 export function stepProposals(stepId: StepId, answers: WizardAnswers): ProposedWidget[] {
   const step = STEPS_BY_ID[stepId];
-  return step.elements(answers).map(({ w, h, ...spec }) => ({ ...spec, width: w, height: h }));
+  const withComments = commentsAvailable();
+  return step.elements(answers)
+    .filter((el) => withComments || !(el.sql && READS_COMMENTS.test(el.sql)))
+    .map(({ w, h, ...spec }) => ({ ...spec, width: w, height: h }));
 }
 
 /** Human summary of the choices made so far, for the analyst's context and the summary screen. */
@@ -502,7 +512,7 @@ export function stepInstruction(stepId: StepId, answers: WizardAnswers, dataSumm
   const chosen = step.choices.map((c) => `${c.label}: ${get(st, c).join(", ")}`).join("; ");
   return [
     `GUIDED SETUP, question "${step.question}"`,
-    `The person is building their dashboard by answering eight questions. Their choices so far:\n${describeAnswers(answers, stepId)}`,
+    `The person is building their dashboard by answering a short set of questions. Their choices so far:\n${describeAnswers(answers, stepId)}`,
     `For this question they chose: ${chosen}.${st?.text ? ` They added: "${st.text}".` : ""}`,
     `Grounding, from a query already run for this question: ${dataSummary}`,
     `Reply with exactly: two or three plain sentences on what the data says for this question with the key numbers (you may run one or two more queries if needed), then call propose_widget once for each of the following elements, keeping their SQL, titles and recipes unless the person's added text asks for a change (then adapt the SQL minimally and say what you changed). Do not add other elements. No follow-up questions line.`,
@@ -514,11 +524,20 @@ export function stepInstruction(stepId: StepId, answers: WizardAnswers, dataSumm
 export function stepDiscussInstruction(stepId: StepId, answers: WizardAnswers, text: string, proposedIds: Array<{ id: string; title: string }>): string {
   const step = STEPS_BY_ID[stepId];
   return [
-    `GUIDED SETUP, question "${step.question}". The person is on this question of the eight-question setup; their choices so far:\n${describeAnswers(answers)}`,
+    `GUIDED SETUP, question "${step.question}". The person is on this question of the guided setup; their choices so far:\n${describeAnswers(answers)}`,
     proposedIds.length ? `Elements currently proposed for this question: ${proposedIds.map((p) => `${p.id} "${p.title}"`).join("; ")}.` : "",
     `They say: "${text}"`,
     `Answer briefly and concretely with numbers from the data. If they ask to change one of the proposed elements, call propose_widget with the full new spec and replaces_widget_id set to that element's id. If they ask for something new that answers this question, propose it (at most two elements). Keep the reply under 120 words. No follow-up questions line.`,
   ].filter(Boolean).join("\n\n");
 }
 
-export const wizardIntro = () => `I have the creator posts and audience comments about ${focalName()} and its competitors. Let's set up a dashboard around eight questions. For each one I'll show what the data says, you tell me what matters to you, and I'll propose the elements. It takes about five minutes, and you can stop early and let me fill in the rest.`;
+const COUNT_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight"];
+export const wizardIntro = () => {
+  const n = stepOrder(null).length;
+  const questions = `${COUNT_WORDS[n] ?? n} ${n === 1 ? "question" : "questions"}`;
+  // The first sentence is replaced by live counts on the setup page; keep it one sentence.
+  const have = commentsAvailable()
+    ? `I have the creator posts and audience comments about ${focalName()} and its competitors.`
+    : `I have the creator posts about ${focalName()} and its competitors. This data has no audience comments, so the questions answered from comments are left out.`;
+  return `${have} Let's set up a dashboard around ${questions}. For each one I'll show what the data says, you tell me what matters to you, and I'll propose the elements. It takes about five minutes, and you can stop early and let me fill in the rest.`;
+};

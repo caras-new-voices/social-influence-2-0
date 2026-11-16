@@ -1,6 +1,6 @@
 import { runWidgetQuery } from "./query";
 import { STARTER_SECTIONS, type StarterCondition } from "./starter";
-import { buildTemplate, layoutSections, type TemplateId, type TemplateSection } from "./templates";
+import { buildTemplate, ERAN_SECTIONS, layoutSections, type TemplateId, type TemplateSection } from "./templates";
 import type { WidgetSpec } from "./widgets";
 
 export interface BuiltTemplate {
@@ -21,6 +21,7 @@ async function passes(cond: StarterCondition, focal?: string): Promise<{ ok: boo
  * dashboard onto an empty chart. `focal` builds it as if another tracked brand were "us".
  */
 export async function buildTemplateForWorkspace(id: TemplateId, opts: { focal?: string } = {}): Promise<BuiltTemplate> {
+  if (id === "eran") return buildWithoutComments(ERAN_SECTIONS, opts.focal);
   if (id !== "starter") return { widgets: buildTemplate(id), skipped: [] };
   const skipped: BuiltTemplate["skipped"] = [];
   const cache = new Map<string, { ok: boolean; have: number }>();
@@ -51,12 +52,39 @@ export async function buildTemplateForWorkspace(id: TemplateId, opts: { focal?: 
     }
     if (widgets.length) sections.push({ title: sec.title, widgets });
   }
+  // Numbered questions stay 1, 2, 3 when one in the middle was left out.
+  let n = 0;
+  const numbered = sections.map((sec) => (/^\d+\. /.test(sec.title) ? { ...sec, title: `${++n}. ${sec.title.replace(/^\d+\. /, "")}` } : sec));
+  return { widgets: layoutSections(numbered), skipped };
+}
+
+/** True when a query reads the comments table (not the comments count column on posts). */
+const READS_COMMENTS = /\b(from|join)\s+comments(_all)?\b/i;
+
+/**
+ * A fixed template on brands that have creator posts but no audience comments: the elements that
+ * read comments are left out (with a note), so the dashboard does not open onto empty charts.
+ */
+async function buildWithoutComments(all: TemplateSection[], focal?: string): Promise<BuiltTemplate> {
+  const have = await passes({ sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand()`, min: 1, what: "" }, focal);
+  if (have.ok) return { widgets: layoutSections(all), skipped: [] };
+  const skipped: BuiltTemplate["skipped"] = [];
+  const sections: TemplateSection[] = [];
+  for (const sec of all) {
+    const widgets = sec.widgets.filter((w) => !(w.sql && READS_COMMENTS.test(w.sql)));
+    for (const w of sec.widgets) if (!widgets.includes(w)) skipped.push({ title: w.title, what: "audience comments", have: 0, need: 1 });
+    if (widgets.length) sections.push({ title: sec.title, widgets });
+  }
   return { widgets: layoutSections(sections), skipped };
 }
 
 /** The note the analyst leaves in the chat when parts of the starter were left out. */
 export function skippedNote(skipped: BuiltTemplate["skipped"]): string | null {
   if (!skipped.length) return null;
-  const lines = skipped.map((s) => `- **${s.title.replace(/\?$/, "")}**: needs ${s.need}+ ${s.what}; there ${s.have === 1 ? "is" : "are"} ${s.have} so far.`);
-  return `I built this dashboard from the starter template and left out what the data cannot support yet:\n\n${lines.join("\n")}\n\nThey will be worth adding as more data arrives. Ask me for any of them and I will propose it with what is there.`;
+  // Brands with posts but no comments lose many elements for one reason: say it once.
+  const noComments = skipped.filter((s) => s.have === 0 && /comments/.test(s.what));
+  const rest = skipped.filter((s) => !noComments.includes(s));
+  const lines = rest.map((s) => `- **${s.title.replace(/^\d+\. /, "").replace(/\?$/, "")}**: needs ${s.need}+ ${s.what}; there ${s.have === 1 ? "is" : "are"} ${s.have} so far.`);
+  if (noComments.length) lines.unshift(`- **Everything built on audience comments** (${noComments.map((s) => s.title.replace(/^\d+\. /, "").replace(/\?$/, "")).join("; ")}): these brands have creator posts but no comments.`);
+  return `I built this dashboard from the template and left out what the data cannot support yet:\n\n${lines.join("\n")}\n\nThey will be worth adding when that data arrives. Ask me for any of them and I will propose it with what is there.`;
 }

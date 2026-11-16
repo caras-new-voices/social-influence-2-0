@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     "/dashboard/**": ["./data/seed/**"],
     "/data": ["./data/seed/**"],
     "/": ["./data/seed/**"],
+    "/usage": ["./data/seed/**"],
+    "/creator/**": ["./data/seed/**"],
   },
 };
 

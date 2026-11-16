@@ -3,6 +3,8 @@
  * "us", the company and the category are loaded from the data (see workspace.ts) into a small
  * registry that server code and client components both read.
  */
+import type { DashboardScope } from "./scope-shared";
+
 export type BrandRole = "focal" | "competitor";
 
 export interface Brand {
@@ -22,6 +24,12 @@ export interface Workspace {
   category: string | null;
   /** ILIKE patterns that also mean the focal brand (parent brand, common misspellings). */
   aliases: string[];
+  /** The industry the brands belong to. `live` is true for the one that receives new months. */
+  industry?: { id: string; name: string; live: boolean } | null;
+  /** The brand selection this workspace was built from (a dashboard's scope). */
+  scope?: DashboardScope | null;
+  /** False when none of the brands has audience comments (posts-only data). */
+  hasComments?: boolean;
 }
 
 /**
@@ -29,7 +37,12 @@ export interface Workspace {
  * worst adjacent CVD ΔE 10.6, normal-vision ΔE 19.8. The focal brand always gets the IMAI primary
  * purple; competitors take the rest in a stable order (most posts first).
  */
-export const BRAND_PALETTE = ["#7132f5", "#eb6834", "#2a78d6", "#c98500", "#1baf7a", "#872450", "#595ffc", "#e34948"];
+export const BRAND_PALETTE = [
+  "#7132f5", "#eb6834", "#2a78d6", "#c98500", "#1baf7a", "#872450", "#595ffc", "#e34948",
+  // A second tier for selections with more than eight brands. Not validated like the first eight:
+  // such charts are hard to read whatever the colours, and the brand picker says so.
+  "#0f9fb0", "#7a8b1f", "#e056a8", "#9a5b2e", "#5b6b8c", "#5cb531", "#1f3f8f", "#f08a9b",
+];
 
 function wash(hex: string): string {
   const n = parseInt(hex.slice(1), 16);
@@ -48,14 +61,19 @@ export function makeBrands(rows: Array<{ id: number; brand: string; role: string
 }
 
 const EMPTY: Workspace = { brands: [], company: null, category: null, aliases: [] };
-// On globalThis so every server bundle (pages, route handlers) and the browser share one registry.
-const g = globalThis as unknown as { __siWorkspace?: Workspace };
+/**
+ * On globalThis so every server bundle (pages, route handlers) and the browser share one registry.
+ * On the server the registry holds the default workspace, and a request that runs inside a
+ * dashboard's scope (see scope.ts) gets that dashboard's workspace instead. In the browser the
+ * registry holds the workspace of the page being shown.
+ */
+const g = globalThis as unknown as { __siWorkspace?: Workspace; __siScopedWorkspace?: () => Workspace | undefined };
 
 export function setWorkspace(ws: Workspace) {
   g.__siWorkspace = ws;
 }
 export function getWorkspace(): Workspace {
-  return g.__siWorkspace ?? EMPTY;
+  return g.__siScopedWorkspace?.() ?? g.__siWorkspace ?? EMPTY;
 }
 export function getBrands(): Brand[] {
   return getWorkspace().brands;

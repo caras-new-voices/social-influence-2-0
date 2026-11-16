@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { ReportsView } from "@/components/ReportsView";
+import { WorkspaceProvider } from "@/components/WorkspaceProvider";
+import { scopeOrDefault, workspaceFor } from "@/lib/catalog";
 import { getDashboard } from "@/lib/dashboards";
 import { listMonthReports } from "@/lib/reports";
 import "@/app/reports.css";
@@ -11,5 +13,9 @@ export default async function ReportsPage({ params }: { params: Promise<{ id: st
   const dashboard = await getDashboard(id);
   if (!dashboard) notFound();
   const initial = await listMonthReports(id);
-  return <ReportsView dashboard={dashboard} initial={initial} />;
+  return (
+    <WorkspaceProvider workspace={workspaceFor(scopeOrDefault(dashboard.scope))}>
+      <ReportsView dashboard={dashboard} initial={initial} />
+    </WorkspaceProvider>
+  );
 }

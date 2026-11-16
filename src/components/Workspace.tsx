@@ -19,6 +19,10 @@ import { DashboardCanvas } from "./DashboardCanvas";
 import { Shell } from "./Shell";
 import { useToast } from "./Toast";
 import { WidgetEditor } from "./WidgetEditor";
+import { BrandPicker } from "./BrandPicker";
+import { useConfirm } from "./Confirm";
+import { useWorkspace } from "./WorkspaceProvider";
+import { scopeKey, type DashboardScope } from "@/lib/scope-shared";
 
 export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const router = useRouter();
@@ -35,6 +39,38 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [voice, setVoice] = useState<{ widget: WidgetSpec; rows: Row[] } | null>(null);
   const [demo, setDemo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
+
+  // The dashboard's brands (its scope): shown as a chip in the header, changed in the brand picker.
+  const ws = useWorkspace();
+  const confirmDialog = useConfirm();
+  const currentScope = ws.scope ?? null;
+  const [brandDraft, setBrandDraft] = useState<DashboardScope | null>(null);
+  const [savingBrands, setSavingBrands] = useState(false);
+  const reloadingRef = useRef(false);
+  const saveBrands = async () => {
+    if (!brandDraft) return;
+    if (currentScope && brandDraft.industry !== currentScope.industry) {
+      const ok = await confirmDialog({
+        title: "Change the industry?",
+        message: `The elements on this dashboard were made for ${ws.industry?.name ?? "the current industry"}. They will show the new brands, but their titles and notes may still refer to the old ones.`,
+        confirmLabel: "Change industry",
+      });
+      if (!ok) return;
+    }
+    setSavingBrands(true);
+    try {
+      // Unsaved edits go along with the brands, since the page reloads afterwards.
+      const body = dirty ? { scope: brandDraft, name, widgets } : { scope: brandDraft };
+      const r = await fetch(`/api/dashboards/${dashboard.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) throw new Error(j.error ?? "Could not change the brands");
+      reloadingRef.current = true;
+      window.location.reload();
+    } catch (e) {
+      toast((e as Error).message);
+      setSavingBrands(false);
+    }
+  };
 
   // Global period: the URL wins (shareable links), then the saved dashboard period, then all time.
   // The URL wins (shareable links), then the saved dashboard period, then all time. useSearchParams is
@@ -71,7 +107,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
 
   useEffect(() => {
     if (!dirty) return;
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    const h = (e: BeforeUnloadEvent) => { if (!reloadingRef.current) e.preventDefault(); };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
@@ -239,6 +275,16 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           <span className="im-text-description" style={{ whiteSpace: "nowrap" }}>
             {dirty ? <span className="im-badge im-badge-warning">Unsaved changes</span> : <span className="im-badge im-badge-success">Saved {new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
           </span>
+          {ws.brands.length > 0 && (
+            <button
+              type="button"
+              className="scope-chip"
+              onClick={() => setBrandDraft(currentScope)}
+              title={`${ws.focal} against ${ws.competitors.join(", ") || "no competitors"}${ws.industry ? ` (${ws.industry.name})` : ""}. Click to change the brands.`}
+            >
+              <i aria-hidden="true" />{ws.focal} vs {ws.competitors.length}
+            </button>
+          )}
         </div>
       }
       actions={
@@ -251,6 +297,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M15 14l5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h4" /></svg>
             </button>
           </span>
+          <button className="im-btn im-btn-secondary" onClick={() => setBrandDraft(currentScope)} title="Choose the company and competitors this dashboard shows">Brands</button>
           <button className="im-btn im-btn-secondary" onClick={() => setAdding(true)}>+ Add element</button>
           <Link className="im-btn im-btn-secondary" href={`/dashboard/${dashboard.id}/reports`} title="Month-by-month reports and the month in review">Reports</Link>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Export")}>Export</button>
@@ -317,6 +364,20 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           onClose={() => setEditing(null)}
           onSave={(w) => { mutate((ws) => ws.map((x) => (x.id === w.id ? w : x))); setEditing(null); toast("Element updated"); }}
         />
+      )}
+      {brandDraft && (
+        <div className="modal-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget && !savingBrands) setBrandDraft(null); }}>
+          <div className="modal modal--picker" role="dialog" aria-modal="true" aria-label="Brands on this dashboard">
+            <div className="modal__head"><h3 className="im-text-header">Brands on this dashboard</h3><button className="im-btn im-btn-ghost im-btn-sm" onClick={() => setBrandDraft(null)} disabled={savingBrands}>Close</button></div>
+            <div className="modal__body">
+              <BrandPicker value={brandDraft} onChange={setBrandDraft} />
+            </div>
+            <div className="modal__foot">
+              <button className="im-btn im-btn-secondary" onClick={() => setBrandDraft(null)} disabled={savingBrands}>Cancel</button>
+              <button className="im-btn im-btn-primary" onClick={() => void saveBrands()} disabled={savingBrands || scopeKey(brandDraft) === scopeKey(currentScope)}>{savingBrands ? "Saving…" : "Save and reload"}</button>
+            </div>
+          </div>
+        </div>
       )}
       {adding && <AddWidgetDrawer onAdd={addFromTemplate} onClose={() => setAdding(false)} />}
       {voice && <VoiceAgent key={voice.widget.id} dashboardId={dashboard.id} widget={voice.widget} rows={voice.rows} onClose={() => setVoice(null)} />}

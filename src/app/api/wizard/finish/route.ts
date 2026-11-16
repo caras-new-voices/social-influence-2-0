@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getCoverage, latestMonth } from "@/lib/coverage";
 import { getDashboard, updateDashboard } from "@/lib/dashboards";
 import { addDays, monthPeriod, type PeriodState } from "@/lib/period";
+import { runForDashboard } from "@/lib/scope";
 import { layoutSections, type TemplateSection } from "@/lib/templates";
 import { WidgetSpecSchema, materialize, type WidgetSpec } from "@/lib/widgets";
 import { STEP_IDS, STEPS_BY_ID, stepProposals, WizardAnswersSchema, type StepId } from "@/lib/wizard";
@@ -24,10 +25,14 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 });
-  const { dashboardId, name, answers, order, accepted, fillRest } = parsed.data;
+  const { dashboardId } = parsed.data;
   const dashboard = await getDashboard(dashboardId);
   if (!dashboard) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return runForDashboard(dashboard, () => finish(dashboard, parsed.data));
+}
 
+async function finish(dashboard: NonNullable<Awaited<ReturnType<typeof getDashboard>>>, data: z.infer<typeof BodySchema>) {
+  const { dashboardId, name, answers, order, accepted, fillRest } = data;
   const sections: TemplateSection[] = [];
   let n = 0;
   for (const stepId of order) {

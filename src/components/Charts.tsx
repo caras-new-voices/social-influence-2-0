@@ -1,4 +1,5 @@
 "use client";
+import { getWorkspace } from "@/lib/brands";
 import Link from "next/link";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import {
@@ -270,6 +271,9 @@ function creatorHref(row: Row, value: string): string {
   const params = new URLSearchParams();
   if (platform) params.set("platform", platform);
   if (id) params.set("id", String(id));
+  // The creator page shows the creator's activity for the same brands as the dashboard.
+  const scope = getWorkspace().scope;
+  if (scope) params.set("scope", JSON.stringify(scope));
   const q = params.toString();
   return `/creator/${encodeURIComponent(value)}${q ? `?${q}` : ""}`;
 }

@@ -21,7 +21,9 @@ The first request creates the schema and loads the dataset into an embedded PGli
 npm run db:seed
 ```
 
-Open http://localhost:3000 and create a dashboard: build it with the analyst (eight guided questions, see `docs/onboarding-wizard-plan.md`), start from a template, or start blank, then ask the analyst a question. Every dashboard has a global time period (the bar above the grid): a month, a custom range or all time, with an optional comparison period. The period is applied inside the database, so every saved query follows it without changes (see `docs/time-periods-plan.md`). Templates live in `src/lib/templates.ts`: the starter template (`src/lib/starter.ts`: five first-person questions that work for any brand, with sections left out when the data cannot support them, see `docs/starter-template-plan.md`) and Eran's template (eight strategic questions). Nothing in the code names a brand: the tracked brands and the focal brand come from the `segments` table, and SQL uses `focal_brand()` and `is_competitor(brand)`. `npm run check:templates` runs every element with each tracked brand as the focal brand.
+Open http://localhost:3000 and create a dashboard: build it with the analyst (guided questions, see `docs/onboarding-wizard-plan.md`), start from a template, or start blank, then ask the analyst a question. Every dashboard has a global time period (the bar above the grid): a month, a custom range or all time, with an optional comparison period. The period is applied inside the database, so every saved query follows it without changes (see `docs/time-periods-plan.md`). Templates live in `src/lib/templates.ts`: the starter template (`src/lib/starter.ts`: five first-person questions that work for any brand, with sections left out when the data cannot support them, see `docs/starter-template-plan.md`) and Eran's template (eight strategic questions). Nothing in the code names a brand: the tracked brands and the focal brand come from the `segments` table, and SQL uses `focal_brand()` and `is_competitor(brand)`. `npm run check:templates` runs every element with each brand of every industry as the focal brand.
+
+Every dashboard looks at a chosen set of brands: one industry, one brand as "your company" and the competitors you pick from that industry. You choose them when you create a dashboard (the picker shows what each brand is, who owns it and how much data it has, with a summary of the industry) and can change them later with the Brands button. The choice is enforced in the database, not in each query: `posts`, `comments`, `influencers` and `segments` are views that only return the dashboard's brands, so every template, saved element and analyst query follows it without changes. The catalogue (`/data`, one industry at a time) lists what is loaded.
 
 Every AI interaction is metered in tokens (see `docs/token-usage-plan.md`). The answer shows what it used and what is left, the header shows the balance, and the Usage page (`/usage`) shows the totals, a daily chart, where the tokens went, the full log (with CSV export) and the statement. At zero the analyst stops until tokens are added. In demo mode the counts are estimates from text length and are labelled "estimated". `npm run check:usage` runs one interaction of every kind against a local app and checks the log, the statement and the balance agree.
 
@@ -69,7 +71,9 @@ src/lib/templates.ts  dashboard templates (default, Eran's template, blank) and 
 src/lib/period.ts     period model: month/range/all time, comparison windows, URL serialisation
 src/lib/coverage.ts   what the dataset covers, per month, from the data and the import log
 src/lib/brands.ts     workspace registry (tracked brands, focal brand) and the validated categorical palette
-src/lib/workspace.ts  loads the workspace from the segments table and app_meta
+src/lib/catalog.ts    the industries and brands, loaded from the data; catalogue file and industry packs
+src/lib/scope.ts      the brand scope of a request: which brands a dashboard sees
+src/lib/workspace.ts  reloads the catalogue after an import
 src/lib/starter.ts    the brand-neutral starter template
 src/components/       workspace UI (chat panel, proposal cards, grid canvas, charts, editor)
 src/lib/imports.ts    incremental imports (idempotent upserts, import log)
@@ -77,6 +81,22 @@ src/lib/period-events.ts  month_started / completed / revised / missing detectio
 scripts/import.ts     CLI import (npm run import -- <dir>)
 src/app/api/          dashboards, chat (NDJSON stream), widget data, status, imports, period-events, cron
 ```
+
+## Industries and brands
+
+The database holds several industries. One is "live": it has audience comments with comment analysis and receives new months through imports. The others are fixed snapshots of creator posts for one month, loaded from industry packs.
+
+- `data/seed/catalog.json` describes every industry (name, category, region, summary, suggested company) and every brand (description, owner, kind, aliases). It is the only place brand and industry words live; the app copies it into the `industries` and `segments_raw` tables when the file changes.
+- `data/seed/packs/<industry>.json.gz` holds one industry's posts and creators. The app loads packs that are missing or changed a few seconds at a time after start, and remembers how far it got, so the first requests after a deploy are not held up. An industry appears in the picker once its pack has finished loading.
+- To build packs from per-brand post exports (one folder per industry, `<month>/<Brand>.csv` inside), add the industry and its brands to `catalog.json` with `"source"` set to the folder and file names, then run:
+
+```bash
+python3 -I scripts/build_packs.py <folder with the exports> --cap 1000
+```
+
+Each brand is sampled at random down to the cap (fixed seed, so a rebuild gives the same pack). Posts-only industries have no comments, so the starter template leaves out the sections that need them, Eran's template leaves out its comment-based elements, and the guided setup asks only the questions the data can answer. Each says so in the dashboard's chat.
+
+How scoping works: the data lives in `posts_raw`, `comments_raw`, `influencers_raw` and `segments_raw`. A request that belongs to a dashboard runs inside its scope (`src/lib/scope.ts`), which sets two transaction-local settings, `app.brands` and `app.focal_brand`. The views `posts_all`, `comments_all`, `influencers` and `segments` filter to those brands; `posts` and `comments` add the period. `focal_brand()` and `is_competitor(brand)` follow the same settings. Queries written by a person or by the analyst cannot name the raw tables.
 
 ## Rebuilding the dataset
 

@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "industries": [
+    {
+      "id": "hair-removal",
+      "name": "Hair removal and shaving",
+      "category": "female hair removal and shaving",
+      "region": "Europe",
+      "summary": "Women's razors, shavers and hair-removal products in Europe. Creator content is mostly TikTok and Instagram routines, hauls and reviews. This is the only industry here with audience comments and comment analysis, so every dashboard section is available.",
+      "suggestedFocal": "Venus",
+      "pack": null,
+      "brands": [
+        { "name": "Venus", "owner": "P&G", "aliases": ["gil%ette"], "description": "Gillette's razor and hair-removal brand for women, owned by Procter & Gamble." },
+        { "name": "Estrid", "owner": "Estrid", "description": "Swedish direct-to-consumer razor brand sold mainly by subscription, known for pastel handles and vegan positioning." },
+        { "name": "Veet", "owner": "Reckitt", "description": "Hair-removal creams, wax strips and trimmers from Reckitt." },
+        { "name": "Philips OneBlade", "owner": "Philips", "description": "Philips' hybrid electric trimmer and shaver, tracked here for its intimate and female range." },
+        { "name": "Wilkinson Sword", "owner": "Edgewell Personal Care", "description": "Razor brand from Edgewell, sold as Schick in some markets. Tracked here for its women's range." },
+        { "name": "Mercadona", "owner": "Mercadona", "description": "Spanish supermarket chain. Its own-label hair-removal products appear in creator hauls." }
+      ]
+    },
+    {
+      "id": "ev-europe",
+      "name": "Electric vehicles, Europe",
+      "category": "electric vehicles in Europe",
+      "region": "Europe",
+      "summary": "Car makers competing for electric-vehicle buyers in Europe: Chinese entrants, European incumbents, Korean brands and Tesla. Creator content is reviews, test drives, launches and ownership stories across Instagram, TikTok and YouTube.",
+      "suggestedFocal": "XPENG",
+      "pack": "ev-europe",
+      "source": "xpeng",
+      "brands": [
+        { "name": "XPENG", "source": "XPENG", "owner": "XPeng Inc.", "description": "Chinese electric-vehicle maker expanding across Europe, known for driver-assistance technology." },
+        { "name": "Tesla", "source": "Tesla", "owner": "Tesla, Inc.", "description": "US electric-vehicle maker and the reference brand for the category." },
+        { "name": "BYD", "source": "BYD", "owner": "BYD Company", "description": "Chinese maker of electric and plug-in hybrid cars, and one of the largest EV producers in the world." },
+        { "name": "Volkswagen", "source": "Volkswagen", "owner": "Volkswagen Group", "description": "German volume car maker. Its ID range is its electric line." },
+        { "name": "MG (SAIC)", "source": "MG (SAIC)", "owner": "SAIC Motor", "description": "British-heritage brand owned by China's SAIC, selling affordable electric cars in Europe." },
+        { "name": "Skoda", "source": "Skoda", "owner": "Volkswagen Group", "description": "Czech car maker in the Volkswagen Group. The Enyaq and Elroq are its electric models." },
+        { "name": "Renault", "source": "Renault", "owner": "Renault Group", "description": "French car maker with a long-running electric range, including the Renault 5 E-Tech." },
+        { "name": "Kia", "source": "Kia", "owner": "Hyundai Motor Group", "description": "Korean car maker. Its EV range runs from the EV3 to the EV9." },
+        { "name": "BMW", "source": "BMW", "owner": "BMW Group", "description": "German premium car maker. Its electric models carry the i badge." },
+        { "name": "Polestar", "source": "Polestar", "owner": "Polestar", "description": "Swedish electric performance car brand with roots in Volvo and Geely." },
+        { "name": "Leapmotor", "source": "Leapmotor", "owner": "Leapmotor", "description": "Chinese electric-vehicle maker sold in Europe through a joint venture with Stellantis." },
+        { "name": "Zeekr", "source": "Zeekr", "owner": "Geely", "description": "Premium electric brand from China's Geely group, entering European markets." },
+        { "name": "Mercedes-Benz", "source": "Mercedes-Benz", "owner": "Mercedes-Benz Group", "description": "German premium car maker. Its electric models are sold under EQ and electric versions of its core lines." },
+        { "name": "Volvo", "source": "Volvo", "owner": "Volvo Cars", "description": "Swedish car maker, majority-owned by Geely, moving its range to electric." },
+        { "name": "Hyundai", "source": "Hyundai", "owner": "Hyundai Motor Group", "description": "Korean car maker. The IONIQ line is its electric range." },
+        { "name": "EV market in the EU", "source": "EV Market in EU (copy)", "kind": "topic", "description": "The wider conversation about electric vehicles in the EU, not tied to one brand. Useful as a market baseline, not as a competitor." }
+      ]
+    },
+    {
+      "id": "caribbean-tourism",
+      "name": "Caribbean and Latin America tourism",
+      "category": "Caribbean and Latin America travel destinations, as seen by North American travellers",
+      "region": "North America",
+      "summary": "Holiday destinations competing for North American travellers. Each destination is tracked as a brand. Creator content is travel vlogs, resort reviews, itineraries and beach footage across Instagram, YouTube and TikTok.",
+      "suggestedFocal": "Dominican Republic",
+      "pack": "caribbean-tourism",
+      "source": "dr_tourism",
+      "brands": [
+        { "name": "Dominican Republic", "source": "Dominican Republic", "kind": "destination", "description": "Caribbean destination known for Punta Cana's all-inclusive resorts, beaches and golf." },
+        { "name": "Mexico", "source": "Mexico", "kind": "destination", "description": "The largest destination in the set: Cancún, the Riviera Maya, Los Cabos and Mexico City." },
+        { "name": "Bahamas", "source": "Bahamas", "kind": "destination", "description": "Island nation close to Florida, known for Nassau, the Exumas and cruise stops." },
+        { "name": "Jamaica", "source": "Jamaica", "kind": "destination", "description": "Caribbean island known for Montego Bay and Negril resorts, music and food." },
+        { "name": "Aruba", "source": "Aruba", "kind": "destination", "description": "Dutch Caribbean island outside the hurricane belt, known for dry weather and beaches." },
+        { "name": "Puerto Rico", "source": "Puerto Rico", "kind": "destination", "description": "US territory. Travellers from the US need no passport. Known for San Juan and El Yunque." },
+        { "name": "Costa Rica", "source": "Costa Rica", "kind": "destination", "description": "Central American destination known for eco-tourism, rainforest and surf." },
+        { "name": "Turks & Caicos", "source": "Turks & Caicos", "kind": "destination", "description": "Luxury beach destination centred on Grace Bay in Providenciales." },
+        { "name": "U.S. Virgin Islands", "source": "U.S. Virgin Islands", "kind": "destination", "description": "US territory made up of St. Thomas, St. John and St. Croix." },
+        { "name": "Cayman Islands", "source": "Cayman Islands", "kind": "destination", "description": "British territory known for Seven Mile Beach, diving and upmarket stays." },
+        { "name": "Barbados", "source": "Barbados", "kind": "destination", "description": "Eastern Caribbean island known for beaches, rum and a strong British travel link." },
+        { "name": "St. Lucia", "source": "St. Lucia", "kind": "destination", "description": "Eastern Caribbean island known for the Pitons and honeymoon resorts." },
+        { "name": "Curaçao", "source": "Curaçao", "kind": "destination", "description": "Dutch Caribbean island known for Willemstad's waterfront and diving." },
+        { "name": "Belize", "source": "Belize", "kind": "destination", "description": "Central American destination known for its barrier reef, cayes and Maya sites." },
+        { "name": "Colombia", "source": "Colombia", "kind": "destination", "description": "South American destination: Cartagena, Medellín and the Caribbean coast." },
+        { "name": "St. Martin", "source": "St. Martin", "kind": "destination", "description": "Island shared by France and the Netherlands, known for beaches and dining." }
+      ]
+    },
+    {
+      "id": "premium-fashion",
+      "name": "Premium fashion and accessories",
+      "category": "premium and accessible-luxury fashion and accessories",
+      "region": "Europe",
+      "summary": "Premium and accessible-luxury fashion houses and accessory brands. Creator content is outfit posts, hauls, unboxings and campaign content, concentrated on Instagram with a growing TikTok share.",
+      "suggestedFocal": "Karl Lagerfeld",
+      "pack": "premium-fashion",
+      "source": "lagerfeld",
+      "brands": [
+        { "name": "Karl Lagerfeld", "source": "Karl lagerfeld", "owner": "G-III Apparel Group", "description": "Fashion house built on the late designer's name and monochrome Parisian look, owned by G-III." },
+        { "name": "Hugo Boss", "source": "Hugo Boss", "owner": "Hugo Boss AG", "description": "German premium fashion group behind the BOSS and HUGO lines." },
+        { "name": "Ralph Lauren", "source": "Ralph Lauren", "owner": "Ralph Lauren Corporation", "description": "American fashion house known for Polo and a preppy heritage look." },
+        { "name": "Tommy Hilfiger", "source": "Tommy Hilfiger", "owner": "PVH", "description": "American premium lifestyle brand, owned by PVH." },
+        { "name": "Michael Kors", "source": "Michael Kors", "owner": "Capri Holdings", "description": "American accessible-luxury brand known for handbags and watches." },
+        { "name": "Coach", "source": "Coach", "owner": "Tapestry", "description": "American leather goods and handbag brand, owned by Tapestry." },
+        { "name": "Sandro", "source": "Sandro", "owner": "SMCP", "description": "Parisian contemporary fashion label in the SMCP group." },
+        { "name": "Maje", "source": "Maje", "owner": "SMCP", "description": "Parisian contemporary womenswear label in the SMCP group." },
+        { "name": "Guess", "source": "Guess", "owner": "Guess?, Inc.", "description": "American denim and lifestyle brand with a large accessories line." },
+        { "name": "Calvin Klein", "source": "Calvin Klein", "owner": "PVH", "description": "American brand known for underwear, denim and minimalist design, owned by PVH." },
+        { "name": "Longchamp", "source": "Longchamp", "owner": "Longchamp", "description": "Family-owned French leather goods house, known for the Le Pliage bag." },
+        { "name": "Polène", "source": "Polène", "owner": "Polène", "description": "Paris-based direct-to-consumer leather handbag brand." },
+        { "name": "Marc Jacobs", "source": "Marc Jacobs", "owner": "LVMH", "description": "American designer brand known for the Tote Bag, part of LVMH." },
+        { "name": "Charles & Keith", "source": "Charles & Keith", "owner": "Charles & Keith Group", "description": "Singapore-based fashion brand for affordable bags and shoes." },
+        { "name": "AMI Paris", "source": "AMI Paris", "owner": "AMI Paris", "description": "French contemporary label founded by Alexandre Mattiussi, known for its heart logo." },
+        { "name": "Ganni", "source": "Ganni", "owner": "Ganni", "description": "Danish contemporary womenswear brand with a strong creator following." }
+      ]
+    },
+    {
+      "id": "enterprise-tech",
+      "name": "Enterprise technology and cloud",
+      "category": "enterprise technology, cloud and AI",
+      "region": "North America",
+      "summary": "Enterprise technology and cloud providers. Creator content is mostly long-form YouTube: explainers, product news, tutorials and career content, with shorter clips on Instagram and TikTok.",
+      "suggestedFocal": "IBM",
+      "pack": "enterprise-tech",
+      "source": "ibm",
+      "brands": [
+        { "name": "IBM", "source": "IBM", "owner": "IBM", "description": "Enterprise technology company focused on hybrid cloud, AI (watsonx) and consulting." },
+        { "name": "Microsoft", "source": "Microsoft", "owner": "Microsoft", "description": "Software and cloud company: Azure, Microsoft 365 and Copilot. By far the largest conversation in the set." },
+        { "name": "Amazon Web Services", "source": "Amazon Web Services", "owner": "Amazon", "description": "Amazon's cloud computing business and the largest cloud provider." },
+        { "name": "Google Cloud", "source": "Google Cloud", "owner": "Alphabet", "description": "Google's cloud platform, including its data and AI services." },
+        { "name": "Oracle", "source": "Oracle", "owner": "Oracle", "description": "Database and enterprise software company with a growing cloud infrastructure business." }
+      ]
+    },
+    {
+      "id": "sleep-tech",
+      "name": "Sleep technology and wearables",
+      "category": "sleep technology, smart beds and sleep-tracking wearables",
+      "region": "North America",
+      "summary": "Smart beds, bed cooling systems, premium mattresses and the wearables that track sleep. The wearables are far larger conversations than the bed brands, so compare like with like. Creator content is reviews, routines and sponsored integrations, led by YouTube.",
+      "suggestedFocal": "Eight Sleep",
+      "pack": "sleep-tech",
+      "source": "esleep",
+      "brands": [
+        { "name": "Eight Sleep", "source": "8-sleep", "owner": "Eight Sleep", "description": "Maker of the Pod, a mattress cover that heats, cools and tracks sleep." },
+        { "name": "Sleep Number", "source": "Sleep Number", "owner": "Sleep Number", "description": "Adjustable-firmness smart beds sold through its own stores." },
+        { "name": "Tempur-Pedic", "source": "Tempur-Pedic", "owner": "Somnigroup", "description": "Premium memory-foam mattress brand." },
+        { "name": "Chilipad", "source": "Chilipad", "owner": "Sleepme", "description": "Water-cooled mattress pad from Sleepme." },
+        { "name": "Ooler (Sleepme)", "source": "Ooler (Sleepme)", "owner": "Sleepme", "description": "Sleepme's earlier app-controlled water-cooled sleep system." },
+        { "name": "BedJet", "source": "BedJet", "owner": "BedJet", "description": "Air-based heating and cooling system that fits an existing bed." },
+        { "name": "Orion", "source": "Orion", "owner": "Orion Sleep", "description": "Temperature-regulating smart mattress cover and a direct alternative to the Pod." },
+        { "name": "Bedgear", "source": "Eight Sleep alternative Bedgear", "owner": "Bedgear", "description": "Performance bedding and mattress brand, tracked here as an alternative to smart bed covers." },
+        { "name": "Layla Sleep", "source": "Layla Sleep", "owner": "Layla Sleep", "description": "Direct-to-consumer flippable memory-foam mattress brand." },
+        { "name": "Bryte", "source": "Bryte", "owner": "Bryte", "description": "AI-controlled smart bed, sold mainly through luxury hotels. Very little data this month." },
+        { "name": "Oura", "source": "Oura", "owner": "Oura", "description": "Finnish smart ring that tracks sleep, recovery and activity." },
+        { "name": "WHOOP", "source": "WHOOP", "owner": "WHOOP", "description": "Subscription fitness band built around recovery, strain and sleep." },
+        { "name": "Apple Watch", "source": "Apple Watch", "owner": "Apple", "description": "Apple's smartwatch. A very broad conversation, of which sleep tracking is a small part." }
+      ]
+    },
+    {
+      "id": "hair-care",
+      "name": "Hair care, North America",
+      "category": "hair care in North America",
+      "region": "North America",
+      "summary": "Shampoo and hair-treatment brands in North America. Creator content is routines, before-and-after results and product reviews on Instagram and TikTok, with a high share of sponsored posts.",
+      "suggestedFocal": "Head & Shoulders",
+      "pack": "hair-care",
+      "source": "head_shoulders",
+      "brands": [
+        { "name": "Head & Shoulders", "source": "Head & Shoulders", "owner": "P&G", "description": "Anti-dandruff shampoo brand from Procter & Gamble." },
+        { "name": "Pantene", "source": "Pantene", "owner": "P&G", "description": "Mass-market hair care brand from Procter & Gamble. A sister brand, not a rival, for a P&G team." },
+        { "name": "K18 Hair", "source": "K18 Hair", "owner": "Unilever", "description": "Premium bond-repair hair treatment brand with a large creator following, owned by Unilever." }
+      ]
+    },
+    {
+      "id": "spirits",
+      "name": "Spirits and ready-to-drink",
+      "category": "whiskey, tequila and ready-to-drink cocktails in the United States",
+      "region": "North America",
+      "summary": "American whiskey, tequila and ready-to-drink brands in the United States. Several belong to the same owner, so pick your company's brand and leave its sister brands out of the competitor list. Creator content is cocktail recipes, reviews and bar content, mostly on Instagram.",
+      "suggestedFocal": "Jim Beam",
+      "pack": "spirits",
+      "source": "suntory",
+      "brands": [
+        { "name": "Jim Beam", "source": "Jim Beam", "owner": "Suntory Global Spirits", "description": "Kentucky bourbon and one of the best-selling bourbons in the world." },
+        { "name": "Maker’s Mark", "source": "Maker’s Mark", "owner": "Suntory Global Spirits", "description": "Wheated Kentucky bourbon known for its red wax seal." },
+        { "name": "Knob Creek", "source": "Knob Creek", "owner": "Suntory Global Spirits", "description": "Small-batch Kentucky bourbon and rye." },
+        { "name": "Basil Hayden’s", "source": "Basil Hayden’s", "owner": "Suntory Global Spirits", "description": "Lighter, high-rye Kentucky bourbon." },
+        { "name": "Hornitos", "source": "Hornitos", "owner": "Suntory Global Spirits", "description": "100 percent agave tequila." },
+        { "name": "Sauza + Tres Generaciones", "source": "Sauza + Tres Generaciones", "owner": "Suntory Global Spirits", "description": "Two tequila brands tracked together. Very little data this month." },
+        { "name": "-196 + On The Rocks", "source": "196 + On The Rocks", "owner": "Suntory Global Spirits", "description": "A vodka seltzer and a premium bottled-cocktail brand, tracked together." },
+        { "name": "Jack Daniel’s", "source": "Jack Daniel’s", "owner": "Brown-Forman", "description": "Tennessee whiskey and the largest conversation in the set." },
+        { "name": "Woodford Reserve", "source": "Woodford Reserve", "owner": "Brown-Forman", "description": "Premium Kentucky bourbon." },
+        { "name": "Buffalo Trace", "source": "Buffalo Trace", "owner": "Sazerac", "description": "Kentucky bourbon from the distillery of the same name." },
+        { "name": "Bulleit", "source": "Bulleit", "owner": "Diageo", "description": "High-rye bourbon and rye whiskey." },
+        { "name": "Jose Cuervo", "source": "Jose Cuervo", "owner": "Becle", "description": "The best-selling tequila brand in the world." },
+        { "name": "Casamigos", "source": "Casamigos", "owner": "Diageo", "description": "Premium tequila co-founded by George Clooney." },
+        { "name": "Teremana + Espolon", "source": "Teremana + Espolon", "description": "Two competing tequila brands tracked together: Teremana, founded by Dwayne Johnson, and Espolòn, from Campari Group." },
+        { "name": "High Noon", "source": "High Noon", "owner": "E. & J. Gallo", "description": "Vodka and tequila hard seltzer, a leader in ready-to-drink." }
+      ]
+    },
+    {
+      "id": "nfl-new-york",
+      "name": "NFL, New York teams",
+      "category": "NFL teams in the New York market",
+      "region": "North America",
+      "summary": "The two NFL teams that share the New York market and MetLife Stadium. Creator content is game analysis, news, fan reactions and highlights, led by YouTube. The data covers August 2026, the pre-season.",
+      "suggestedFocal": "New York Jets",
+      "pack": "nfl-new-york",
+      "source": "nfl",
+      "brands": [
+        { "name": "New York Jets", "source": "New York Jets", "kind": "team", "description": "NFL team in the AFC East." },
+        { "name": "New York Giants", "source": "New York Giants", "kind": "team", "description": "NFL team in the NFC East." }
+      ]
+    },
+    {
+      "id": "nation-brand",
+      "name": "Israel, global conversation",
+      "category": "the global social conversation about Israel",
+      "region": "Global",
+      "summary": "A single tracked topic: creator posts about Israel worldwide. There are no competitors, so comparisons against competitors stay empty. Useful for volume, platforms, creators and top posts.",
+      "suggestedFocal": "Nation of Israel",
+      "pack": "nation-brand",
+      "source": "israel",
+      "brands": [
+        { "name": "Nation of Israel", "source": "Nation of Israel", "kind": "topic", "description": "Creator posts about Israel across countries and platforms." }
+      ]
+    }
+  ]
+}

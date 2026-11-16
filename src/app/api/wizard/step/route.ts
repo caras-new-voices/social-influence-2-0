@@ -3,6 +3,8 @@ import { runChatTurn, type ChatEvent } from "@/lib/claude";
 import { getDashboard } from "@/lib/dashboards";
 import { PeriodStateSchema, resolveWindow } from "@/lib/period";
 import { runWidgetQuery } from "@/lib/query";
+import { scopeOrDefault } from "@/lib/catalog";
+import { iterateInScope, runInScope } from "@/lib/scope";
 import { STEP_IDS, STEPS_BY_ID, stepDiscussInstruction, stepInstruction, stepProposals, WizardAnswersSchema } from "@/lib/wizard";
 
 export const dynamic = "force-dynamic";
@@ -24,10 +26,16 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new Response(JSON.stringify({ error: parsed.error.issues[0]?.message ?? "Invalid request" }), { status: 400 });
-  const { dashboardId, stepId, answers, period, mode, text, proposed } = parsed.data;
+  const { dashboardId, stepId } = parsed.data;
   const dashboard = await getDashboard(dashboardId);
   if (!dashboard) return new Response(JSON.stringify({ error: "Dashboard not found" }), { status: 404 });
   const step = STEPS_BY_ID[stepId];
+  const scope = scopeOrDefault(dashboard.scope);
+  return runInScope(scope, () => respond(parsed.data, dashboard, step, scope));
+}
+
+async function respond(data: z.infer<typeof BodySchema>, dashboard: NonNullable<Awaited<ReturnType<typeof getDashboard>>>, step: (typeof STEPS_BY_ID)[keyof typeof STEPS_BY_ID], scope: ReturnType<typeof scopeOrDefault>) {
+  const { dashboardId, stepId, answers, period, mode, text, proposed } = data;
 
   let userText: string;
   let instruction: string;
@@ -54,7 +62,8 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (e: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        for await (const ev of runChatTurn({ dashboardId, userText, instruction, widgets: [], period: period ?? dashboard.period ?? undefined, wizard, kind: mode === "discuss" ? "wizard_discuss" : "wizard_step" }, dashboard.widgets)) send(ev);
+        const turn = () => runChatTurn({ dashboardId, userText, instruction, widgets: [], period: period ?? dashboard.period ?? undefined, wizard, kind: mode === "discuss" ? "wizard_discuss" : "wizard_step" }, dashboard.widgets);
+        for await (const ev of iterateInScope(scope, turn)) send(ev);
       } catch (e) {
         send({ type: "error", message: (e as Error).message });
         send({ type: "done", messageId: null });

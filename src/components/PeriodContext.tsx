@@ -1,6 +1,8 @@
 "use client";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { getWorkspace } from "@/lib/brands";
 import { ALL_TIME, resolveCompare, resolveWindow, type Coverage, type PeriodState, type PeriodWindow } from "@/lib/period";
+import { scopeKey } from "@/lib/scope-shared";
 
 export interface PeriodContextValue {
   state: PeriodState;
@@ -20,13 +22,19 @@ export function usePeriod(): PeriodContextValue {
   return useContext(Ctx);
 }
 
-let coverageCache: Promise<Coverage> | null = null;
+const coverageCache = new Map<string, Promise<Coverage>>();
+/** Coverage of the page's brands (the workspace scope). `force` drops what was cached for every scope. */
 export function fetchCoverage(force = false): Promise<Coverage> {
-  if (!coverageCache || force) {
-    coverageCache = fetch("/api/coverage").then((r) => r.json() as Promise<Coverage>);
-    coverageCache.catch(() => { coverageCache = null; });
+  if (force) coverageCache.clear();
+  const scope = getWorkspace().scope ?? null;
+  const key = scopeKey(scope);
+  let p = coverageCache.get(key);
+  if (!p) {
+    p = fetch(`/api/coverage${scope ? `?scope=${encodeURIComponent(JSON.stringify(scope))}` : ""}`).then((r) => r.json() as Promise<Coverage>);
+    coverageCache.set(key, p);
+    p.catch(() => coverageCache.delete(key));
   }
-  return coverageCache;
+  return p;
 }
 
 export function PeriodProvider({ state, onChange, children }: { state: PeriodState; onChange: (next: PeriodState) => void; children: ReactNode }) {

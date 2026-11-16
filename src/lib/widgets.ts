@@ -102,6 +102,8 @@ export interface DashboardRecord {
   period: PeriodState | null;
   /** Guided setup state; null when the dashboard was not created through the wizard (or it finished and was cleared). */
   onboarding?: import("./wizard").OnboardingState | null;
+  /** The brands the dashboard looks at; null means the default selection of the live industry. */
+  scope?: import("./scope-shared").DashboardScope | null;
   created_at: string;
   updated_at: string;
 }

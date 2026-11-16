@@ -3,6 +3,9 @@ import { ensureReady } from "./schema";
 import { PeriodStateSchema, type PeriodState } from "./period";
 import { OnboardingStateSchema, type OnboardingState } from "./wizard";
 import { buildTemplateForWorkspace, skippedNote } from "./template-build";
+import { defaultScope, normalizeScope } from "./catalog";
+import { runInScope } from "./scope";
+import type { DashboardScope } from "./scope-shared";
 import type { TemplateId } from "./templates";
 import { newId, type DashboardRecord, type WidgetSpec } from "./widgets";
 
@@ -26,6 +29,7 @@ function rowToRecord(r: Record<string, unknown>): DashboardRecord {
     widgets: (typeof r.widgets === "string" ? JSON.parse(r.widgets) : r.widgets) as WidgetSpec[],
     period: parsePeriod(r.period),
     onboarding: parseOnboarding(r.onboarding),
+    scope: normalizeScope(r.scope),
     created_at: new Date(r.created_at as string).toISOString(),
     updated_at: new Date(r.updated_at as string).toISOString(),
   };
@@ -45,15 +49,17 @@ export async function getDashboard(id: string): Promise<DashboardRecord | null> 
   return rows[0] ? rowToRecord(rows[0]) : null;
 }
 
-export async function createDashboard(input: { name: string; description?: string; template: TemplateId }): Promise<DashboardRecord> {
+export async function createDashboard(input: { name: string; description?: string; template: TemplateId; scope?: DashboardScope | null }): Promise<DashboardRecord> {
   await ensureReady();
   const db = await getDb();
   const id = newId("d");
-  const built = await buildTemplateForWorkspace(input.template);
+  // The template is built for the chosen brands: conditional sections depend on their data.
+  const scope = normalizeScope(input.scope) ?? defaultScope();
+  const built = await runInScope(scope, () => buildTemplateForWorkspace(input.template));
   const widgets = built.widgets;
   const rows = await db.query(
-    `INSERT INTO dashboards (id, name, description, widgets) VALUES ($1, $2, $3, $4::jsonb) RETURNING *`,
-    [id, input.name, input.description ?? null, JSON.stringify(widgets)],
+    `INSERT INTO dashboards (id, name, description, widgets, scope) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb) RETURNING *`,
+    [id, input.name, input.description ?? null, JSON.stringify(widgets), scope ? JSON.stringify(scope) : null],
   );
   const note = skippedNote(built.skipped);
   if (note) {
@@ -65,7 +71,7 @@ export async function createDashboard(input: { name: string; description?: strin
 
 export async function updateDashboard(
   id: string,
-  patch: { name?: string; description?: string | null; widgets?: WidgetSpec[]; period?: PeriodState | null; onboarding?: OnboardingState | null },
+  patch: { name?: string; description?: string | null; widgets?: WidgetSpec[]; period?: PeriodState | null; onboarding?: OnboardingState | null; scope?: DashboardScope | null },
 ): Promise<DashboardRecord | null> {
   await ensureReady();
   const db = await getDb();
@@ -91,6 +97,10 @@ export async function updateDashboard(
     params.push(patch.onboarding ? JSON.stringify(patch.onboarding) : null);
     sets.push(`onboarding = $${params.length}::jsonb`);
   }
+  if (patch.scope !== undefined) {
+    params.push(patch.scope ? JSON.stringify(patch.scope) : null);
+    sets.push(`scope = $${params.length}::jsonb`);
+  }
   if (!sets.length) return getDashboard(id);
   params.push(id);
   const rows = await db.query(
@@ -114,8 +124,8 @@ export async function duplicateDashboard(id: string): Promise<DashboardRecord | 
   const copyId = newId("d");
   const widgets = src.widgets.map((w) => ({ ...w, id: newId() }));
   const rows = await db.query(
-    `INSERT INTO dashboards (id, name, description, widgets, period) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb) RETURNING *`,
-    [copyId, `${src.name} (copy)`, src.description, JSON.stringify(widgets), src.period ? JSON.stringify(src.period) : null],
+    `INSERT INTO dashboards (id, name, description, widgets, period, scope) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING *`,
+    [copyId, `${src.name} (copy)`, src.description, JSON.stringify(widgets), src.period ? JSON.stringify(src.period) : null, src.scope ? JSON.stringify(src.scope) : null],
   );
   return rowToRecord(rows[0]);
 }

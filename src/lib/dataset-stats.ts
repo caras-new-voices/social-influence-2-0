@@ -1,5 +1,9 @@
-import { getDb, type Row } from "./db";
+import { catalogGeneration } from "./catalog";
+import type { Row } from "./db";
+import { readScoped } from "./query";
 import { ensureReady } from "./schema";
+import { currentScope } from "./scope";
+import { scopeKey } from "./scope-shared";
 
 export const ANALYSIS_FIELDS: Array<{ col: string; label: string; kind: "label" | "free" }> = [
   { col: "sentiment", label: "Sentiment", kind: "label" },
@@ -38,25 +42,26 @@ export interface DatasetStats {
 }
 
 const CACHE_MS = 10 * 60 * 1000;
-const g = globalThis as unknown as { __siStats?: { at: number; value: Promise<DatasetStats> } };
+const g = globalThis as unknown as { __siStats?: Map<string, { at: number; value: Promise<DatasetStats> }> };
 
-/** The dataset is static, so the page statistics are memoised per server instance. */
+/** Statistics for the brands of the current scope, memoised per scope and server instance. */
 export function getDatasetStats(): Promise<DatasetStats> {
   const now = Date.now();
-  if (!g.__siStats || now - g.__siStats.at > CACHE_MS) {
-    const value = computeDatasetStats().catch((err) => {
-      g.__siStats = undefined;
-      throw err;
-    });
-    g.__siStats = { at: now, value };
-  }
-  return g.__siStats.value;
+  const cache = (g.__siStats ??= new Map());
+  const key = `${catalogGeneration()}|${scopeKey(currentScope())}`;
+  const hit = cache.get(key);
+  if (hit && now - hit.at <= CACHE_MS) return hit.value;
+  const value = computeDatasetStats().catch((err) => {
+    cache.delete(key);
+    throw err;
+  });
+  cache.set(key, { at: now, value });
+  return value;
 }
 
 async function computeDatasetStats(): Promise<DatasetStats> {
   await ensureReady();
-  const db = await getDb();
-  const q = <T extends Row = Row>(sql: string) => db.query<T>(sql);
+  const q = <T extends Row = Row>(sql: string) => readScoped<T>(sql, [], null, 30000);
 
   const [c] = await q<{ posts: number; comments: number; influencers: number; segments: number; creators: number }>(`
     SELECT (SELECT count(*)::int FROM posts_all) AS posts, (SELECT count(*)::int FROM comments_all) AS comments,

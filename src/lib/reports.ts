@@ -6,6 +6,7 @@ import { llmMode } from "./claude";
 import { assertCanSpend, complete, recordEstimate } from "./llm";
 import type { UsageLine } from "./usage-shared";
 import { addMonths, formatMonth, monthEnd, monthKey, monthStart, type MonthCoverage, type PeriodWindow } from "./period";
+import { runForDashboard } from "./scope";
 import { runWidgetQuery } from "./query";
 import { datasetDoc } from "./schema-doc";
 import { ensureReady } from "./schema";
@@ -101,7 +102,12 @@ function monthsForReports(months: MonthCoverage[]): MonthCoverage[] {
   return withPosts.slice().reverse();
 }
 
+/** One row per month of the dashboard's brands, with headline numbers and any stored review. */
 export async function listMonthReports(dashboardId: string): Promise<{ rows: MonthReportRow[]; coveredTo: string | null }> {
+  return runForDashboard(await getDashboard(dashboardId), () => listReports(dashboardId));
+}
+
+async function listReports(dashboardId: string): Promise<{ rows: MonthReportRow[]; coveredTo: string | null }> {
   await ensureReports();
   const cov = await getCoverage();
   const months = monthsForReports(cov.months);
@@ -177,7 +183,11 @@ function mockReview(month: string, prev: string | null, k: MonthKpis, p: MonthKp
 }
 
 /** Builds (or rebuilds) the month in review for a dashboard and month, running every data element for both months. */
-export async function generateMonthReview(dashboardId: string, month: string, { force = false, automatic = false }: { force?: boolean; automatic?: boolean } = {}): Promise<StoredReport> {
+export async function generateMonthReview(dashboardId: string, month: string, opts: { force?: boolean; automatic?: boolean } = {}): Promise<StoredReport> {
+  return runForDashboard(await getDashboard(dashboardId), () => writeReview(dashboardId, month, opts));
+}
+
+async function writeReview(dashboardId: string, month: string, { force = false, automatic = false }: { force?: boolean; automatic?: boolean } = {}): Promise<StoredReport> {
   await ensureReports();
   const existing = await getStoredReport(dashboardId, month);
   if (existing && !force) return existing;

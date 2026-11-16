@@ -159,7 +159,7 @@ SELECT topic, current, previous, current - previous AS change, example FROM t WH
   },
 ];
 
-const ERAN_SECTIONS: TemplateSection[] = [
+export const ERAN_SECTIONS: TemplateSection[] = [
   {
     title: "1. What is driving the conversation about us right now? Creators, creatives and channels",
     widgets: [

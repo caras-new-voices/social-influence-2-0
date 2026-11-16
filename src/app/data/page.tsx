@@ -1,4 +1,9 @@
+import Link from "next/link";
 import { Shell } from "@/components/Shell";
+import { defaultScope, getCatalog } from "@/lib/catalog";
+import { ensureReady } from "@/lib/schema";
+import { runInScope } from "@/lib/scope";
+import type { CatalogIndustry } from "@/lib/scope-shared";
 import { getBrands, getWorkspace } from "@/lib/brands";
 import { getDatasetStats } from "@/lib/dataset-stats";
 import { formatNumber, languageName, prettyKey } from "@/lib/format";
@@ -53,12 +58,34 @@ function Rows({ data, valueKey, labelKey, total, labelTitle }: { data: Array<Rec
   );
 }
 
-export default async function DataPage() {
+export default async function DataPage({ searchParams }: { searchParams: Promise<{ industry?: string | string[] }> }) {
+  const sp = await searchParams;
+  await ensureReady();
+  const industries = getCatalog().industries;
+  const wanted = Array.isArray(sp.industry) ? sp.industry[0] : sp.industry;
+  const industry = industries.find((i) => i.id === wanted) ?? industries.find((i) => i.live) ?? industries[0];
+  if (!industry) return <Shell title="Dataset"><div className="ds"><p className="im-text-description">No data has been loaded yet.</p></div></Shell>;
+  // The page describes one industry: every brand in it, whichever is "us".
+  const base = defaultScope(industry.id)!;
+  const scope = { ...base, competitors: industry.brands.map((b) => b.name).filter((b) => b !== base.focal) };
+  return runInScope(scope, () => render(industries, industry));
+}
+
+async function render(industries: CatalogIndustry[], industry: CatalogIndustry) {
   const s = await getDatasetStats();
   const { counts } = s;
   return (
     <Shell title="Dataset">
       <div className="ds">
+        <nav className="ds__industries" aria-label="Industry">
+          {industries.map((i) => (
+            <Link key={i.id} href={`/data?industry=${encodeURIComponent(i.id)}`} className={`ds__industry ${i.id === industry.id ? "is-active" : ""}`} aria-current={i.id === industry.id ? "page" : undefined}>
+              {i.name}
+              <small>{i.brands.length} {i.brands.length === 1 ? "brand" : "brands"} · {formatNumber(i.posts, "compact")} posts</small>
+            </Link>
+          ))}
+        </nav>
+        {industry.summary && <p className="im-text-description ds__summary">{industry.summary}</p>}
         {/* 1. Overview */}
         <section className="ds__section">
           <h2 className="im-text-header">What this dataset is</h2>

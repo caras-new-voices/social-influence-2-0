@@ -9,8 +9,8 @@ export async function GET() {
   try {
     await ensureReady();
     const db = await getDb();
-    const [p] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM posts");
-    const [c] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM comments");
+    const [p] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM posts_raw");
+    const [c] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM comments_raw");
     return NextResponse.json({
       ok: true,
       db: db.kind,

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { runChatTurn, type ChatEvent } from "@/lib/claude";
 import { getDashboard } from "@/lib/dashboards";
 import { PeriodStateSchema } from "@/lib/period";
+import { scopeOrDefault } from "@/lib/catalog";
+import { iterateInScope } from "@/lib/scope";
 import { USAGE_KINDS } from "@/lib/usage-shared";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +32,9 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (e: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        for await (const ev of runChatTurn({ dashboardId, userText: message, instruction, widgets, period: period ?? dashboard.period ?? undefined, kind: kind ?? "chat" }, dashboard.widgets)) send(ev);
+        const turn = () => runChatTurn({ dashboardId, userText: message, instruction, widgets, period: period ?? dashboard.period ?? undefined, kind: kind ?? "chat" }, dashboard.widgets);
+        // Every query the analyst runs sees only this dashboard's brands.
+        for await (const ev of iterateInScope(scopeOrDefault(dashboard.scope), turn)) send(ev);
       } catch (e) {
         send({ type: "error", message: (e as Error).message });
         send({ type: "done", messageId: null });
