@@ -1,6 +1,6 @@
 # Plan: Tom's Default Template without hashtags
 
-Status: proposal, nothing built yet.
+Status: a first version is built as the template "Toms No Hash", with word rules in place of the model classifier. Section 11 says what was built and what is still to do.
 
 ## 1. What we are solving
 
@@ -124,3 +124,47 @@ About six and a half working days, plus Tom's time to approve the theme lists. P
 - **New conversations appear.** A fixed list cannot name a theme that did not exist when it was written. Each month the "other" posts are re-run through discovery, and themes that would capture a meaningful share are proposed to the list owner.
 - **A changed list changes history.** Reclassifying under a new version rewrites past months. The version is stored and shown, and a version change is a deliberate event, not a side effect.
 - **Sampling.** Themes computed on a 1,000-post sample per brand are less stable for small themes. The minimum-sample rules in the template already hide small cells.
+
+## 11. As built: "Toms No Hash", first version
+
+The template exists as `tomnohash` ("Toms No Hash" in the New dashboard dialog). It is Tom's Default Template with themes that do not depend on hashtags, plus two hook elements. Tom's Default Template itself is unchanged and still uses hashtags, so the two can be compared side by side.
+
+What was built from this plan:
+
+- **The table and the views.** `post_labels_raw` holds one row per post and label; the views `post_themes` and `post_hooks` read it and keep to the dashboard's brands like every other dataset view. The template's theme fragment joins `post_themes` instead of extracting hashtags (`src/lib/tom.ts`, one factory for both templates).
+- **Theme lists.** One list per industry, 15 or 16 themes each, and one list of 12 hooks for all industries, in `data/seed/themes.json`. They are the lists in `docs/theme-lists-draft.md`.
+- **Hook elements.** "Hooks that win" (engagement versus norm by hook, us against competitors) and "Hooks we under-use" (our mix of hooks against theirs).
+- **The analyst** is told about `post_themes` and `post_hooks`.
+
+What is different from the plan, and why:
+
+- **Word rules, not a model.** The build environment has no model key, so each theme and hook is assigned by a regular expression on the words of the caption (`src/lib/themes.ts`). The rules run inside the database when data is loaded or imported, cost nothing, and give the same answer every time. They are cruder than a model: they match words, not meaning, and they are strongest in English.
+- **Several themes per post, no primary theme.** A rule either matches or not, so a post has every theme whose rule matches. Theme shares therefore add up to more than 100%.
+- **No "about the brand" flag.** Rules cannot judge that. Off-topic posts are still counted.
+- **Captions were not reloaded.** The nine new industries still have captions cut at 600 characters.
+
+Coverage, as the share of posts that get at least one theme, against the share that have a hashtag:
+
+| Industry | With a theme | With a hashtag |
+|---|---|---|
+| Hair removal | 78% | 84% |
+| Electric vehicles | 53% | 51% |
+| Tourism | 62% | 56% |
+| Fashion | 63% | 53% |
+| Enterprise technology | 81% | 22% |
+| Sleep technology | 66% | 44% |
+| Hair care | 80% | 82% |
+| Spirits | 80% | 36% |
+| NFL | 73% | 43% |
+| Israel | 63% | 43% |
+
+(Measured before three over-broad rules were tightened; the figures for tourism, sleep technology and NFL are a few points lower now.)
+
+The gain is not mainly coverage. It is that a theme is now a readable conversation shared across languages ("Range, battery and charging") and not a tag ("#elektroauto"), and that there are 15 of them per industry and not thousands.
+
+Still to do, in the order that matters:
+
+1. **Tom reviews the theme lists.** They are a draft from reading samples.
+2. **Measure how right the rules are.** Label 150 posts per industry by hand and compare. Nothing has been measured yet beyond coverage.
+3. **Replace the rules with the model classifier** (sections 3 and 6), which adds a primary theme, the "about the brand" flag and languages other than English. It writes to the same table, so the template does not change.
+4. **Reload full captions** for the nine new industries.

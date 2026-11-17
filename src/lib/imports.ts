@@ -9,6 +9,7 @@ import { getDb } from "./db";
 import { getCoverage } from "./coverage";
 import { detectPeriodEvents, notifyWebhook, type PeriodEvent } from "./period-events";
 import { loadWorkspace } from "./workspace";
+import { classifyPosts } from "./themes";
 import { ARRAY_COLUMNS, COLUMNS, JSON_COLUMNS, PHYSICAL, ensureReady, toParam } from "./schema";
 
 export type DatasetTable = "segments" | "posts" | "comments" | "influencers";
@@ -233,6 +234,8 @@ export async function importBatch(input: ImportInput): Promise<ImportResult> {
   }
   // New or changed segments change who the tracked brands are.
   await loadWorkspace(db);
+  // New posts get their themes and hooks before anyone looks at them.
+  await classifyPosts(db, 60_000).catch((e: Error) => console.error("[themes] classification after import failed:", e.message));
   const after = await getCoverage();
   const events = await detectPeriodEvents(before, after, importId);
   for (const ev of events) notifyWebhook(ev);

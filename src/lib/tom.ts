@@ -65,21 +65,31 @@ const FILLER = ["fyp", "fy", "foryou", "foryoupage", "foryourpage", "fypage", "v
  * tags: one row per post of `src` and hashtag in its caption, carrying the post's columns, so a
  * theme can be aggregated in one pass. Filter the aggregated themes with THEME_OK.
  */
-const TAGS = (src = "posts") => `tags AS (
+const HASH_TAGS = (src = "posts") => `tags AS (
   SELECT DISTINCT ON (p.segment_id, p.post_id, m[1]) p.*, m[1] AS theme
   FROM ${src} p, LATERAL regexp_matches(lower(p.text), '#([[:alnum:]_]{3,30})', 'g') AS m
   WHERE p.text LIKE '%#%'
 )`;
 /** True for a hashtag that is a conversation: not platform filler, not a number, not a tracked brand's name. Apply after grouping by theme. */
-const THEME_OK = (col = "theme") => `${col} NOT IN (${FILLER.map((f) => `'${f}'`).join(", ")}) AND ${col} !~ '^(fyp|foryou|viral|explore)' AND ${col} !~ '^[0-9_]+$'
+const HASH_OK = (col = "theme") => `${col} NOT IN (${FILLER.map((f) => `'${f}'`).join(", ")}) AND ${col} !~ '^(fyp|foryou|viral|explore)' AND ${col} !~ '^[0-9_]+$'
     AND NOT EXISTS (SELECT 1 FROM segments bk WHERE length(regexp_replace(lower(bk.brand), '[^a-z0-9]', '', 'g')) >= 3
       AND (${col} LIKE '%' || regexp_replace(lower(bk.brand), '[^a-z0-9]', '', 'g') || '%' OR (length(${col}) >= 6 AND regexp_replace(lower(bk.brand), '[^a-z0-9]', '', 'g') LIKE '%' || ${col} || '%')))
     AND NOT EXISTS (SELECT 1 FROM segments bw, regexp_split_to_table(lower(bw.brand), '[^a-z0-9]+') AS word WHERE length(word) >= 6 AND ${col} LIKE '%' || word || '%')`;
 /** A hashtag only one brand's creators use is that brand's campaign, not a conversation. True when at least two brands share it (or only one brand is tracked). */
-const SHARED = (brands = "brands") => `(${brands} >= 2 OR (SELECT count(*) FROM segments) < 2)`;
+const HASH_SHARED = (brands = "brands") => `(${brands} >= 2 OR (SELECT count(*) FROM segments) < 2)`;
 /** The smallest number of posts a theme needs to be shown, scaled to how much there is in view. Needs a CTE of posts named in `src`. */
 const MIN_POSTS = (src: string, where = "TRUE") => `mn AS (SELECT CASE WHEN count(*) >= 3000 THEN 30 WHEN count(*) >= 600 THEN 12 ELSE 5 END AS n FROM ${src} WHERE ${where})`;
-const THEME_NOTE = "A theme is a caption hashtag, with brand names and platform filler removed";
+const HASH_NOTE = "A theme is a caption hashtag, with brand names and platform filler removed";
+
+/**
+ * The same shape from classified posts: one row per post of `src` and theme it was given (see
+ * themes.ts). Themes come from a fixed list per industry, so they need no name check and are
+ * shared by definition.
+ */
+const LABEL_TAGS = (src = "posts") => `tags AS (
+  SELECT p.*, pt.theme FROM ${src} p JOIN post_themes pt ON pt.segment_id = p.segment_id AND pt.post_id = p.post_id
+)`;
+const LABEL_NOTE = "A theme is assigned from the words of the caption, from a fixed list for the industry; a post can have several";
 
 const r2 = (expr: string) => `round((${expr})::numeric, 2)`;
 const r1 = (expr: string) => `round((${expr})::numeric, 1)`;
@@ -102,6 +112,8 @@ const N_USE_CASES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM com
 const N_OBJECTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND objection_category IS NOT NULL`, min: 50, what: "comments raising an objection" };
 const N_RIVAL_MENTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND competitor_name IS NOT NULL AND ${NOT_SELF("competitor_name")}`, min: 20, what: "comments naming another brand" };
 const N_BLOCKERS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND purchase_blocker IS NOT NULL`, min: 10, what: "comments naming what stops a purchase" };
+const N_THEMED: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_themes`, min: 50, what: "posts with a theme" };
+const N_HOOKS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_hooks WHERE brand = focal_brand()`, min: 20, what: "of our posts with a recognisable hook" };
 const HAS_INSIGHT: StarterCondition = { sql: `SELECT count(*)::int AS n FROM segments WHERE brand = focal_brand() AND insight_headline IS NOT NULL`, min: 1, what: "a precomputed strategy insight" };
 
 /**
@@ -123,7 +135,16 @@ const ATTRIBUTES = `attr(name, pattern) AS (VALUES
 /* The template                                                          */
 /* ------------------------------------------------------------------ */
 
-export const TOM_SECTIONS: StarterSection[] = [
+/** Where themes come from: the hashtags in the caption, or the labels given to each post. */
+type ThemeSource = "hashtags" | "labels";
+
+function sections(source: ThemeSource): StarterSection[] {
+  const labels = source === "labels";
+  const TAGS = labels ? LABEL_TAGS : HASH_TAGS;
+  const THEME_OK = labels ? () => "TRUE" : HASH_OK;
+  const SHARED = labels ? () => "TRUE" : HASH_SHARED;
+  const THEME_NOTE = labels ? LABEL_NOTE : HASH_NOTE;
+  const all: StarterSection[] = [
   {
     title: "The eight measures",
     widgets: [
@@ -201,7 +222,7 @@ FROM comments GROUP BY brand HAVING count(*) >= 100 OR brand = focal_brand() ORD
       {
         type: "table", w: 12, h: 7,
         title: "Themes: growth and performance",
-        subtitle: `${THEME_NOTE}; themes only one brand uses are left out. Winning is growing 20% or more with engagement at 1.2 times the norm; an early signal is 1.5 times the norm without the growth yet; peaking is fast growth below the norm.`,
+        subtitle: `${THEME_NOTE}${labels ? "" : "; themes only one brand uses are left out"}. Winning is growing 20% or more with engagement at 1.2 times the norm; an early signal is 1.5 times the norm without the growth yet; peaking is fast growth below the norm.`,
         sql: `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")}, ${TAGS("sp")}, ${MIN_POSTS("w", "cur")},
 t AS (
   SELECT theme, count(*) FILTER (WHERE cur)::float AS posts, count(*) FILTER (WHERE NOT cur)::float AS before,
@@ -671,8 +692,55 @@ FROM r JOIN tot USING (brand) JOIN ex ON ex.brand = r.brand AND ex.objection = r
       {
         type: "text", w: 12, h: 3,
         title: "How to read this every month",
-        content: "The eight measures at the top are calculated the same way every month. Set the period bar to a month and switch on Compare to see what moved. The Reports page keeps a written review for each month.\n\n- **Engagement versus norm** compares each post with what its platform and creator size normally earn across the tracked brands. 1.0 is the norm.\n- **Themes** are the hashtags creators use, with brand names removed.\n- **Organic share** counts posts with no paid disclosure. The data does not mark brand-owned accounts.\n- Small samples are left out of every table.",
+        content: `The eight measures at the top are calculated the same way every month. Set the period bar to a month and switch on Compare to see what moved. The Reports page keeps a written review for each month.\n\n- **Engagement versus norm** compares each post with what its platform and creator size normally earn across the tracked brands. 1.0 is the norm.\n- **Themes** ${labels ? "are assigned from the words of each caption, from a fixed list for the industry. A post can have several, so theme shares add up to more than 100%. Hashtags are not needed." : "are the hashtags creators use, with brand names removed."}\n- **Organic share** counts posts with no paid disclosure. The data does not mark brand-owned accounts.\n- Small samples are left out of every table.`,
       },
     ],
   },
 ];
+
+  if (!labels) return all;
+
+  // With a theme for every post, hooks (how a post is told) become available as well.
+  const hooksThatWin: StarterSection["widgets"][number] = {
+    type: "bar", w: 6, h: 6,
+    title: "Hooks that win",
+    subtitle: `Engagement versus norm by how the post is told, us against the tracked competitors (hooks with 5+ posts). ${NORM_NOTE}.`,
+    when: N_HOOKS,
+    sql: `WITH ${SCORED("posts")},
+h AS (SELECT sp.*, ph.hook FROM sp JOIN post_hooks ph ON ph.segment_id = sp.segment_id AND ph.post_id = sp.post_id),
+f AS (
+  SELECT hook, ${vs("brand = focal_brand()")} AS us, ${vs("brand <> focal_brand()")} AS competitors,
+         count(*) FILTER (WHERE brand = focal_brand() AND expected IS NOT NULL) AS n_us, count(*) FILTER (WHERE expected IS NOT NULL) AS n
+  FROM h GROUP BY 1
+)
+SELECT hook, CASE WHEN n_us >= 5 THEN ${r2("us")} END AS us, ${r2("competitors")} AS competitors FROM f WHERE n >= 5 ORDER BY n DESC LIMIT 10`,
+    x: "hook", format: "decimal", horizontal: true,
+    rationale: "Whether a tutorial, a review or a routine earns more than its platform normally does.",
+  };
+  const hooksWeUnderUse: StarterSection["widgets"][number] = {
+    type: "stacked_bar", w: 12, h: 5,
+    title: "Hooks we under-use",
+    subtitle: "Share of posts by how they are told: us against the tracked competitors. A post can use more than one hook.",
+    when: N_HOOKS,
+    sql: `SELECT CASE WHEN brand = focal_brand() THEN 'Us' ELSE 'Competitors' END AS who, hook, count(*)::int AS value
+FROM post_hooks GROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC`,
+    x: "who", y: "value", series: "hook", normalize: true,
+    rationale: "A way of telling the story that works for rivals and that we rarely use.",
+  };
+  // Theme elements need classified posts; an industry without them gets a note, not an empty table.
+  const needsThemes = new Set(["Themes: growth and performance", "Content gap", "Who drives each theme"]);
+  return all.map((sec) => {
+    let widgets = sec.widgets.map((w) => (needsThemes.has(w.title) && !w.when ? { ...w, when: N_THEMED } : w));
+    if (sec.title.startsWith("1.")) {
+      const at = widgets.findIndex((w) => w.title === "Formats that win");
+      widgets = [...widgets.slice(0, at + 1), hooksThatWin, ...widgets.slice(at + 1)];
+    }
+    if (sec.title.startsWith("2.")) widgets = [...widgets, hooksWeUnderUse];
+    return { ...sec, widgets };
+  });
+}
+
+/** Tom's Default Template: themes are caption hashtags. */
+export const TOM_SECTIONS: StarterSection[] = sections("hashtags");
+/** Toms No Hash: the same template with a theme for every post from its caption, plus hooks. */
+export const TOM_NOHASH_SECTIONS: StarterSection[] = sections("labels");

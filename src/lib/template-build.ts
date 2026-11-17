@@ -1,6 +1,6 @@
 import { runWidgetQuery } from "./query";
 import { STARTER_SECTIONS, type StarterCondition, type StarterSection } from "./starter";
-import { TOM_SECTIONS } from "./tom";
+import { TOM_NOHASH_SECTIONS, TOM_SECTIONS } from "./tom";
 import { buildTemplate, ERAN_SECTIONS, layoutSections, type TemplateId, type TemplateSection } from "./templates";
 import type { WidgetSpec } from "./widgets";
 
@@ -25,6 +25,7 @@ export async function buildTemplateForWorkspace(id: TemplateId, opts: { focal?: 
   if (id === "eran") return buildWithoutComments(ERAN_SECTIONS, opts.focal);
   if (id === "starter") return buildConditional(STARTER_SECTIONS, opts.focal);
   if (id === "tom") return buildConditional(TOM_SECTIONS, opts.focal);
+  if (id === "tomnohash") return buildConditional(TOM_NOHASH_SECTIONS, opts.focal);
   return { widgets: buildTemplate(id), skipped: [] };
 }
 

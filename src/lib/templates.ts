@@ -1,12 +1,12 @@
 import { STARTER_SECTIONS } from "./starter";
-import { TOM_SECTIONS } from "./tom";
+import { TOM_NOHASH_SECTIONS, TOM_SECTIONS } from "./tom";
 import { newId, type WidgetSpec } from "./widgets";
 
 /**
  * Dashboard templates. A template is a list of sections; each section is a header followed by
  * widgets placed left to right on the 12 column grid (wrapping to a new row when full).
  */
-export type TemplateId = "starter" | "eran" | "tom" | "blank";
+export type TemplateId = "starter" | "eran" | "tom" | "tomnohash" | "blank";
 
 export interface DashboardTemplate {
   id: TemplateId;
@@ -509,6 +509,12 @@ export const TEMPLATES: DashboardTemplate[] = [
     name: "Tom's Default Template",
     description: "Eight measures calculated the same way every month, then five questions: which conversations are winning, where is the white space, what do people say about us and our rivals, which creators win, and what should we build or fix. Parts that need data you do not have yet are left out.",
     build: () => layoutSections(TOM_SECTIONS.map((sec) => ({ title: sec.title, widgets: sec.widgets.map(({ when, ...el }) => { void when; return el; }) }))),
+  },
+  {
+    id: "tomnohash",
+    name: "Toms No Hash",
+    description: "Tom's template without hashtags. Every post gets its themes from the words of its caption, from a fixed list for the industry, so posts with no hashtag count too. Adds hooks: whether tutorials, reviews or routines win, and which we under-use.",
+    build: () => layoutSections(TOM_NOHASH_SECTIONS.map((sec) => ({ title: sec.title, widgets: sec.widgets.map(({ when, ...el }) => { void when; return el; }) }))),
   },
   {
     id: "blank",
