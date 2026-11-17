@@ -236,6 +236,18 @@
    {
     "name": "Local business promotion",
     "pattern": "shop online|visit us|order now|book now|reservations?|walk-ins|boutique|salon|env[ií]os|our store|we are open|menu"
+   },
+   {
+    "name": "Trip moments and memories",
+    "pattern": "birthday trip|\\mmiss (it|my island|you|this)|back home|travel day|getaway|vacation mode|\\mvaca\\M|first time in|day \\d in|trip recap|\\mvlog|throwback|\\mtbt\\M"
+   },
+   {
+    "name": "Vacation outfits and looks",
+    "pattern": "\\mootd\\M|outfit|bikini|swimsuit|swimwear|\\mgrwm\\M|vacation (hair|look|style|wardrobe)|fit ?check|makeup|\\mwig\\M"
+   },
+   {
+    "name": "Conferences and business events",
+    "pattern": "conference|congress|summit|symposium|convention|\\mexpo\\M|keynote|speaker|retreat"
    }
   ],
   "premium-fashion": [
@@ -360,6 +372,10 @@
    {
     "name": "Technology history and culture",
     "pattern": "history|in 19\\d\\d|decades|first computer|vintage|nostalg|legacy|pioneer"
+   },
+   {
+    "name": "Owners, politics and controversy",
+    "pattern": "ellison|bill gates|billionaire|trump|boycott|censor|shadowban|protest|epstein|surveillance|antisemit|lobby"
    }
   ],
   "sleep-tech": [

@@ -75,6 +75,9 @@ T["caribbean-tourism"] = [
   ("National pride and diaspora", r"independence|diaspora|proud to be|orgullo|miss (universe|grand|world)|heritage month|national (day|team|anthem|hero)|patria"),
   ("Local news and community", r"\mnews\M|police|government|minister|election|school|college|community|championship|athlete|dies at|charity|fundrais"),
   ("Local business promotion", r"shop online|visit us|order now|book now|reservations?|walk-ins|boutique|salon|env[ií]os|our store|we are open|menu"),
+  ("Trip moments and memories", r"birthday trip|\mmiss (it|my island|you|this)|back home|travel day|getaway|vacation mode|\mvaca\M|first time in|day \d in|trip recap|\mvlog|throwback|\mtbt\M"),
+  ("Vacation outfits and looks", r"\mootd\M|outfit|bikini|swimsuit|swimwear|\mgrwm\M|vacation (hair|look|style|wardrobe)|fit ?check|makeup|\mwig\M"),
+  ("Conferences and business events", r"conference|congress|summit|symposium|convention|\mexpo\M|keynote|speaker|retreat"),
 ]
 T["premium-fashion"] = [
   ("Outfit of the day and styling", r"outfit|\mootd\M|look of|styling|styled|lookbook|what i wore|wearing|tenue|fit check|\mlook\M"),
@@ -109,6 +112,7 @@ T["enterprise-tech"] = [
   ("Consumer devices and gaming", r"xbox|gaming|\mgame|surface|windows pc|laptop|console|playstation"),
   ("Sponsorships and brand presence", r"sponsor|us ?open|wimbledon|masters|partner(ship)?|presented by|campus|hackathon"),
   ("Technology history and culture", r"history|in 19\d\d|decades|first computer|vintage|nostalg|legacy|pioneer"),
+  ("Owners, politics and controversy", r"ellison|bill gates|billionaire|trump|boycott|censor|shadowban|protest|epstein|surveillance|antisemit|lobby"),
 ]
 T["sleep-tech"] = [
   ("Product review and setup", r"review|setting up|set ?up|unboxing|worth (it|the hype)|first impressions|honest|my experience|months? (with|later)"),
