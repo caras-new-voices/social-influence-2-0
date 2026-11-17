@@ -1,6 +1,6 @@
 # Plan: Tom's Default Template without hashtags
 
-Status: a first version is built as the template "Toms No Hash", with word rules in place of the model classifier. Section 11 says what was built and what is still to do.
+Status: built as the template "Toms No Hash". The model classifier has run on every post (section 12). Section 11 says what was built and what is still to do.
 
 ## 1. What we are solving
 
@@ -162,16 +162,28 @@ Coverage, as the share of posts that get at least one theme, against the share t
 
 The gain is not mainly coverage. It is that a theme is now a readable conversation shared across languages ("Range, battery and charging") and not a tag ("#elektroauto"), and that there are 15 of them per industry and not thousands.
 
-The model classifier is written and wired in, but has not run:
+The model classifier has run (section 12). Every post in all ten industries now has a model label, and the app uses those labels instead of the word rules.
 
 - `scripts/classify_posts.py` sends batches of 20 captions with the industry's theme list and gets back, per post, a primary theme, up to two secondary themes, a hook and whether the post is about the brand. It is resumable and writes `data/seed/labels/<industry>.json.gz`.
-- When that file exists for an industry, the app loads it in place of the word rules (`src/lib/themes.ts`). The rules then only cover posts the model has not seen, such as posts from a later import. Loading was tested with a stand-in file.
+- When that file exists for an industry, the app loads it in place of the word rules (`src/lib/themes.ts`). The rules then only cover posts the model has not seen, such as posts from a later import.
 - With model labels, theme shares are counted on the primary theme, posts judged "not about the brand" leave the theme elements, and a new element shows, per brand, how much of its tracked conversation is really about it.
-- The run is blocked on credit: the OpenAI key available to the build has none. With credit it is `python3 -I scripts/classify_posts.py <work folder>` followed by `--compile`.
 
 Still to do, in the order that matters:
 
-1. **Tom reviews the theme lists.** They are a draft from reading samples.
-2. **Measure how right the rules are.** Label 150 posts per industry by hand and compare. Nothing has been measured yet beyond coverage.
-3. **Run the model classifier** once the key has credit. It adds a primary theme, the "about the brand" flag and languages other than English.
+1. **Tom reviews the theme lists.** They are a draft from reading samples. Changing a list means running the classifier again for that industry.
+2. **A person checks a sample.** Accuracy so far is measured against a stronger model, not a person (section 12).
+3. **Label new posts on import.** Posts from a later import fall back to the word rules until the classifier runs on them.
 4. **Reload full captions** for the nine new industries.
+
+## 12. As built: the model run (November 2026)
+
+- **Run:** all 77,546 posts, model gpt-5.4-mini, 20 posts per request. About 10.9 million input and 4.4 million output tokens, roughly $25 at the price we assumed for that model (not checked against a bill). It took about 75 minutes. Ten requests failed when the connection dropped; a second pass labelled those posts. The script now retries a dropped connection.
+- **Output:** `data/seed/labels/`, 828 KB for all ten industries.
+
+**How right it is.** `scripts/review_labels.py` takes 150 random posts with a caption per industry (1,500 in all). A stronger model (gpt-5.5) reads each one without seeing either answer and names the best theme, any other themes it would also accept, and whether the post is about the brand. "Other" and "Unknown" count as the same answer. Results:
+
+- Model, primary theme accepted: 80% overall (1,198 of 1,500). By industry: spirits 87, Caribbean tourism 83, electric vehicles 83, hair care 82, Israel conversation 82, premium fashion 79, hair removal 78, enterprise technology 76, sleep technology 76, NFL New York 73.
+- Model, "about the brand" agrees (counting "yes" and "passing" as one side): 93% overall. Lowest are the Israel conversation (88) and spirits (89).
+- Word rules, for comparison: they give 70% of posts any theme, and only 48% of the themes they attach are accepted. Rules attach every theme whose words match, so one post often gets several.
+
+This is agreement with a stronger model, not a human check. Most disagreements are about posts that fit two themes, or captions too thin to judge. The review answers are kept in the work folder, not the repository; rerun the script to reproduce them.

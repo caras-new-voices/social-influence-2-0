@@ -9,7 +9,7 @@ Social Influence is a Next.js proof of concept. Brand teams chat with an AI anal
 - Repository: `caras-new-voices/social-influence-2-0`
 - Production branch (Vercel deploys it): `claude/focused-wright-5lrrcp`
 - Development branch used so far: `claude/confident-archimedes-b24knu`. A new session is given its own branch name; use that one.
-- Everything described below is merged to production (pull requests 1 to 9, the last one being this file).
+- Everything described below is merged to production (pull requests 1 to 10; 10 added the model labels).
 
 ## 2. How the owner wants to work
 
@@ -34,9 +34,9 @@ Built and live:
 
 Not done, in order of importance:
 
-1. **Model classification of posts has not run** (section 5). This is the next task.
-2. **Accuracy of the word rules is unmeasured.** Only coverage is known.
-3. **Tom has not reviewed** his template's numbers or the draft theme lists.
+1. **Tom has not reviewed** his template's numbers or the draft theme lists.
+2. **No person has checked the model labels.** They agree with a stronger model 80% of the time on the theme (section 5).
+3. **New imports are not classified by the model.** Posts from a later import fall back to the word rules.
 4. **The live site's AI key is unconfirmed.** The app reads `OPEN_AI_2` first. It must be set in Vercel's environment variables, not only in the Claude environment.
 5. **Captions for the nine new industries are cut at 600 characters.**
 
@@ -49,37 +49,31 @@ Not done, in order of importance:
 - **The raw exports are not in the repository.** They came from a Google Drive folder the owner shared (nine `.tar.gz` files, one per industry, with `<month>/<Brand>.csv` inside). They are only needed to rebuild the packs, for example with longer captions. Ask the owner for the folder link again if needed; download with `curl` from `drive.usercontent.google.com/download?id=<file id>&export=download&confirm=t`.
 - Some tracked posts are off-topic (a car post filed under a tourism destination). This comes from how the exports matched posts to brands.
 
-## 5. Next task: run the model classifier
+## 5. Model labels for posts (done)
 
-"Toms No Hash" gives every post themes and hooks. Today they come from word rules (`data/seed/themes.json`, applied by `src/lib/themes.ts`). The better version, already written, asks a language model.
+Every post in all ten industries has a model label: a primary theme, up to two secondary themes, a hook and whether the post is really about the brand. The labels are in `data/seed/labels/<industry>.json.gz` and the app loads them in place of the word rules on start. "Toms No Hash" counts theme shares on the primary theme, leaves out posts judged not about the brand, and shows how much of each brand's conversation is really about it.
 
-Steps:
+- Run in November 2026 with gpt-5.4-mini: about 10.9 million input and 4.4 million output tokens, roughly $25 at the price we assumed.
+- Accuracy, judged by gpt-5.5 on 150 random posts per industry: the primary theme is accepted 80% of the time (73% to 87% by industry), and "about the brand" agrees 93% of the time. Only 48% of the themes the old word rules attach are accepted. Details in `docs/toms-template-themes-plan.md`, section 12.
+- In a Claude cloud session the OpenAI key may be supplied by the environment for every call to api.openai.com, even when `OPEN_AI_2` is not set. Test with one small request before concluding there is no key.
 
-1. Confirm the key is visible: `env | grep -c OPEN_AI_2` should print 1. An earlier key (`OPENAI_API_KEY`) is valid but has no credit.
-2. Pilot on a small sample and read the answers:
-
-```bash
-python3 -I scripts/classify_posts.py /tmp/labels-work --industry hair-care --limit 200 --workers 5
-```
-
-3. Check the token counts the script prints, estimate the full run (about 77,000 posts, 20 per request), and tell the owner before spending on the full run if it is large.
-4. Run everything, then compile:
+To label again, for example after Tom edits a theme list (delete that industry's `.jsonl` in the work folder first, or use a new folder):
 
 ```bash
-python3 -I scripts/classify_posts.py /tmp/labels-work --workers 8
+python3 -I scripts/classify_posts.py /tmp/labels-work --industry spirits --workers 8
 ```
 
 ```bash
 python3 -I scripts/classify_posts.py /tmp/labels-work --compile
 ```
 
-5. The compile step writes `data/seed/labels/<industry>.json.gz`. The app loads these in place of the word rules on the next start. With them, "Toms No Hash" counts theme shares on the primary theme, leaves out posts judged not about the brand, and shows a new element on how much of each brand's conversation is really about it.
-6. Verify: restart the app, run `npm run check:scope`, run the rotation for `tomnohash` (section 7), look at a dashboard in a browser, then build and merge.
-7. Measure accuracy: label about 150 posts per industry by hand (or review the model's answers) and report how often the theme is right. This has never been done.
+Compile only writes an industry when at least 98% of its posts are labelled. Run the first command a second time to fill gaps left by failed requests. To measure accuracy:
 
-The script uses the model `gpt-5.4-mini` by default (`--model` changes it). It was written but never run against a live key, so expect to fix small things in the request format.
+```bash
+python3 -I scripts/review_labels.py /tmp/labels-work --per 150
+```
 
-Background: `docs/toms-template-themes-plan.md` (the plan and what was built) and `docs/theme-lists-draft.md` (the theme lists, for Tom to edit).
+Background: `docs/toms-template-themes-plan.md` (the plan, what was built and the results) and `docs/theme-lists-draft.md` (the theme lists, for Tom to edit).
 
 ## 6. How the code is organised
 

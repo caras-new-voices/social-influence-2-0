@@ -103,7 +103,7 @@ def ask(system, batch):
             if e.code in (429, 500, 502, 503, 529) and attempt < 5:
                 time.sleep(2 ** attempt + 1); continue
             raise RuntimeError(f"HTTP {e.code}: {msg}")
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError) as e:
+        except (urllib.error.URLError, OSError, json.JSONDecodeError, KeyError) as e:
             if attempt < 5: time.sleep(2 ** attempt + 1); continue
             raise
     return []
