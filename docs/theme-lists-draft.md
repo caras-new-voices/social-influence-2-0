@@ -89,6 +89,11 @@ A theme says what a post is about. It does not say how it is told (that is the h
 13. National pride and diaspora: heritage, pageants, identity
 14. Local news and community: local sport, politics, charities (about the place, not about visiting it)
 15. Local business promotion: shops, salons and restaurants advertising locally
+16. Trip moments and memories: birthday trips, travel days, "I miss it", vacation selfies and vlogs with no specific activity
+17. Vacation outfits and looks: holiday outfits, swimwear, hair and make-up in the destination
+18. Conferences and business events: conferences, congresses, summits and retreats held in the destination
+
+Changed in November 2026 after the first model run left 10% of on-topic posts in Other: added 16 to 18.
 
 ## Premium fashion and accessories
 
@@ -125,6 +130,9 @@ A theme says what a post is about. It does not say how it is told (that is the h
 13. Consumer devices and gaming
 14. Sponsorships and brand presence: sport, campus, events
 15. Technology history and culture
+16. Owners, politics and controversy: owners and executives in politics, boycotts, censorship claims, protests against the company
+
+Changed in November 2026: added 16. Most of this industry's Other is posts not about the brand at all (53% of its posts); the list itself covered on-topic posts well, apart from this conversation.
 
 ## Sleep technology and wearables
 
