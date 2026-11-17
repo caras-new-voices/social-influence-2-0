@@ -129,7 +129,7 @@ export function WidgetEditor({ initial, dashboardId, onSave, onClose }: { initia
                 </label>
                 <label><span className="im-label">Number format</span>
                   <select className="im-select" value={spec.format ?? ""} onChange={(e) => set("format", e.target.value as WidgetSpec["format"])}>
-                    <option value="">auto</option>{["number", "compact", "percent", "currency", "decimal"].map((c) => <option key={c} value={c}>{c}</option>)}
+                    <option value="">auto</option>{["number", "compact", "percent", "currency", "decimal", "ratio", "points"].map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </label>
                 <div className="row" style={{ alignItems: "flex-end", gap: "1rem", paddingBottom: "0.4rem" }}>

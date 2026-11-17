@@ -175,13 +175,13 @@ gap_c AS MATERIALIZED (
   FROM gap, tot, mn WHERE gap.n >= mn.n AND ${SHARED("gap.brands")} ORDER BY 2 DESC NULLS LAST LIMIT 40
 ), top_gap AS (SELECT theme, pts FROM gap_c WHERE ${THEME_OK("theme")} ORDER BY pts DESC NULLS LAST LIMIT 1)
 SELECT 'Share of voice' AS label, us.cur / NULLIF(tot.cur, 0) AS value, us.prev / NULLIF(tot.prev, 0) AS compare, 'percent' AS fmt FROM us, tot
-UNION ALL SELECT 'Vs norm', us.vs_cur, us.vs_prev, 'decimal' FROM us
+UNION ALL SELECT 'Vs norm', us.vs_cur, us.vs_prev, 'ratio' FROM us
 UNION ALL SELECT 'Momentum', CASE WHEN us.prev >= 3 THEN us.cur / us.prev - 1 END, NULL, 'percent' FROM us
 UNION ALL SELECT 'Organic share', us.organic / NULLIF(us.cur, 0), us.organic_prev / NULLIF(us.prev, 0), 'percent' FROM us
 UNION ALL SELECT 'Intent per 1K', 1000 * cm.intent / NULLIF(cm.n, 0), 1000 * cm.intent_prev / NULLIF(cm.n_prev, 0), 'decimal' FROM cm WHERE cm.n + cm.n_prev > 0
 UNION ALL SELECT 'Praise per 1K', 1000 * cm.praise / NULLIF(cm.n, 0), 1000 * cm.praise_prev / NULLIF(cm.n_prev, 0), 'decimal' FROM cm WHERE cm.n + cm.n_prev > 0
 UNION ALL SELECT 'Objections per 1K', 1000 * cm.obj / NULLIF(cm.n, 0), 1000 * cm.obj_prev / NULLIF(cm.n_prev, 0), 'decimal' FROM cm WHERE cm.n + cm.n_prev > 0
-UNION ALL SELECT 'Content gap', top_gap.pts, NULL, 'decimal' FROM top_gap WHERE top_gap.pts > 0.05`,
+UNION ALL SELECT 'Content gap', top_gap.pts, NULL, 'points' FROM top_gap WHERE top_gap.pts > 0.05`,
         rationale: "The same eight numbers every month, so a change is a change and not a new definition.",
       },
       {
@@ -608,7 +608,7 @@ g AS (
          count(*) FILTER (WHERE sentiment = 'negative')::int AS negative
   FROM hit GROUP BY 1 HAVING count(*) >= 5
 ), med AS MATERIALIZED (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mentions) AS m FROM g)
-SELECT g.name AS attribute, g.mentions::int AS mentions, ${r1("1000.0 * g.mentions / base.n")} AS "per 1K comments", ${r0("100 * g.net")} AS "net sentiment", ${r0("100 * (g.net - base.net)")} AS "against our average", g.negative,
+SELECT g.name AS attribute, g.mentions::int AS mentions, ${r1("1000.0 * g.mentions / base.n")} AS "per 1K comments", ${r0("100 * g.net")} AS "net sentiment", ${r0("100 * (g.net - base.net)")} AS "vs our average pts", g.negative,
        CASE WHEN g.mentions >= med.m AND g.net < base.net THEN 'Fix first' WHEN g.mentions >= med.m THEN 'Protect'
             WHEN g.net >= base.net THEN 'Start talking about' ELSE 'Watch' END AS priority
 FROM g, base, med ORDER BY CASE WHEN g.mentions >= med.m AND g.net < base.net THEN 0 WHEN g.mentions >= med.m THEN 1 WHEN g.net >= base.net THEN 2 ELSE 3 END, g.mentions DESC`,

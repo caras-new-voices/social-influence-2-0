@@ -28,7 +28,7 @@ import { selfCompares,
   type CompareTableRow,
   type Row,
 } from "@/lib/chart-data";
-import { formatNumber, prettyKey, type NumberFormat } from "@/lib/format";
+import { formatNumber, prettyKey, columnKind, kpiKind, formatByKind, describeChange, kindHelp, KIND_LABEL, type NumberFormat, type MeasureKind } from "@/lib/format";
 import type { WidgetSpec } from "@/lib/widgets";
 
 const AXIS_TICK = { fontSize: 11, fill: "#8490ad" };
@@ -241,18 +241,26 @@ export function KpiRow({ rows, spec, compareLabel }: { rows: Row[]; spec: Widget
         const fmt = ((r.fmt as string) || spec.format || "compact") as NumberFormat;
         const value = r.value ?? Object.values(r).find((v) => typeof v === "number");
         const compare = typeof r.compare === "number" ? r.compare : undefined;
-        const delta = compare !== undefined && compare !== 0 && typeof value === "number" ? (value - compare) / Math.abs(compare) : undefined;
-        const dir = delta === undefined ? "flat" : delta > 0.005 ? "up" : delta < -0.005 ? "down" : "flat";
+        const label = String(r.label ?? prettyKey(Object.keys(r)[0]));
+        const kind = kpiKind(label, fmt);
+        // Counts change by a percent; shares by points; ratios and rates in their own unit.
+        const change = compare !== undefined && typeof value === "number" ? describeChange(value, compare, kind, fmt === "percent") : null;
+        const rel = compare !== undefined && typeof value === "number" ? value - compare : 0;
+        const dir = change === null ? "flat" : Math.abs(rel) <= Math.abs(compare ?? 0) * 0.005 ? "flat" : rel > 0 ? "up" : "down";
+        const shown = typeof value === "number" && kind === "change" ? `${value > 0 ? "+" : ""}${formatNumber(value, fmt)}` : formatNumber(value, fmt);
         return (
           <div className="kpi" key={i}>
-            <div className="kpi__label" title={String(r.label ?? "")}>{String(r.label ?? prettyKey(Object.keys(r)[0]))}</div>
-            <div className="kpi__value">{formatNumber(value, fmt)}</div>
-            {delta !== undefined && (
+            <div className="kpi__label" title={`${label}. ${kindHelp(kind)}`}>{label}</div>
+            <div className="kpi__value">
+              {shown}
+              <span className={`kpi__kind kpi__kind--${kind}`} title={kindHelp(kind)}>{KIND_LABEL[kind]}</span>
+            </div>
+            {change !== null && (
               <div
                 className={`kpi__delta kpi__delta--${dir}`}
                 title={r.__cmpFilled && compareLabel ? `Versus ${compareLabel}: ${formatNumber(compare, fmt)}` : `${ownPeriod ? "Previous period" : "Benchmark"} ${formatNumber(compare, fmt)}`}
               >
-                {dir === "up" ? "▲" : dir === "down" ? "▼" : "•"} {Math.abs(delta * 100).toFixed(0)}% vs {r.__cmpFilled && compareLabel ? compareLabel : ownPeriod ? "previous period" : "benchmark"}
+                {dir === "up" ? "▲" : dir === "down" ? "▼" : "•"} {change.replace(/^[+−±]/, "")} vs {r.__cmpFilled && compareLabel ? compareLabel : ownPeriod ? "previous period" : "benchmark"}
               </div>
             )}
           </div>
@@ -297,7 +305,7 @@ function cellContent(r: Row, c: string, fmt?: NumberFormat): ReactNode {
   return isLink ? <a href={v} target="_blank" rel="noreferrer">Open ↗</a>
     : isCreator ? <Link href={creatorHref(r, v)} className="tbl__creator" title={`Open ${v}'s creator page`}>{v}</Link>
     : isIsoDate ? v.slice(0, 10)
-    : typeof v === "number" ? formatNumber(v, fmt ?? (Number.isInteger(v) ? "number" : "decimal"))
+    : typeof v === "number" ? (fmt ? formatNumber(v, fmt) : formatByKind(v, columnKind(c)))
     : v === null || v === undefined ? "–"
     : Array.isArray(v) ? v.join(", ")
     : typeof v === "object" ? JSON.stringify(v)
@@ -331,7 +339,7 @@ export function DataTable({ rows, fmt }: { rows: Row[]; fmt?: NumberFormat }) {
               const active = sort?.col === c;
               return (
                 <th key={c} className={`${numeric.includes(c) ? "num" : ""} tbl__sortable ${active ? "is-sorted" : ""}`} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                  <button type="button" className="tbl__sort" onClick={() => toggle(c)} title={`Sort by ${prettyKey(c)}`}>
+                  <button type="button" className="tbl__sort" onClick={() => toggle(c)} title={numeric.includes(c) ? `${prettyKey(c)}. ${kindHelp(columnKind(c))} Click to sort.` : `Sort by ${prettyKey(c)}`}>
                     {prettyKey(c)}
                     <span className="tbl__arrow" aria-hidden="true">{active ? (sort.dir === "asc" ? "▲" : "▼") : "⇅"}</span>
                   </button>
@@ -436,7 +444,7 @@ function CompareTip({ active, label, payload, series, colors, fmt, labels, title
               <b>{formatNumber(cur, fmt)}</b>
               <span>{formatNumber(prev, fmt)}</span>
               <span className={`tip__delta ${deltaClass(d.abs)}`}>
-                {d.abs === null ? "–" : `${signedNumber(d.abs, fmt)}${d.pct !== null ? ` (${signedPct(d.pct)})` : ""}`}
+                {d.abs === null ? "–" : fmt === "percent" || fmt === "points" ? (typeof prev === "number" ? describeChange(prev + d.abs, prev, "share", fmt === "percent") : "–") : fmt === "decimal" || fmt === "ratio" ? signedNumber(d.abs, fmt) : `${signedNumber(d.abs, fmt)}${d.pct !== null ? ` (${signedPct(d.pct)})` : ""}`}
               </span>
             </Fragment>
           );
@@ -631,6 +639,11 @@ export function CompareTable({ rows, compareRows, fmt, labels }: { rows: Row[]; 
   };
   const numFmt = (v: number) => fmt ?? (Number.isInteger(v) ? "number" : "decimal");
   const vs = `${labels.current} vs ${labels.compare}`;
+  // A relative change is only shown for counts and money; a share or a rate changes by points or units.
+  const kindOf = (c: string): MeasureKind => (fmt === "percent" ? "share" : columnKind(c));
+  const relative = (c: string) => kindOf(c) === "count" || kindOf(c) === "money";
+  const absChange = (c: string, cur: number, prev: number) =>
+    relative(c) ? signedNumber(cur - prev, numFmt(cur - prev)) : describeChange(cur, prev, kindOf(c), fmt === "percent") ?? "–";
   return (
     <>
       <div className="cmp-caption">
@@ -644,9 +657,16 @@ export function CompareTable({ rows, compareRows, fmt, labels }: { rows: Row[]; 
               {columns.flatMap((c) =>
                 numeric.includes(c)
                   ? [
-                      head(c, prettyKey(c), `Sort by ${prettyKey(c)} (${labels.current})`),
-                      head(`${c}::abs`, "Δ", `Change in ${prettyKey(c)}, ${vs}`, "tbl__dhead"),
-                      head(`${c}::pct`, "Δ%", `Relative change in ${prettyKey(c)}, ${vs}`, "tbl__dhead"),
+                      head(c, prettyKey(c), `${prettyKey(c)} (${labels.current}). ${kindHelp(kindOf(c))} Click to sort.`),
+                      head(
+                        `${c}::abs`,
+                        relative(c) ? "Δ" : kindOf(c) === "share" || kindOf(c) === "change" ? "Δ pts" : "Δ",
+                        relative(c)
+                          ? `Change in ${prettyKey(c)}, ${vs}`
+                          : `Change in ${prettyKey(c)}, ${vs}, in ${kindOf(c) === "share" || kindOf(c) === "change" ? "percentage points" : "its own unit"}. ${KIND_LABEL[kindOf(c)]}s are compared by subtracting, not as a percent of a percent.`,
+                        "tbl__dhead",
+                      ),
+                      ...(relative(c) ? [head(`${c}::pct`, "Δ%", `Relative change in ${prettyKey(c)}, ${vs}`, "tbl__dhead")] : []),
                     ]
                   : [head(c, prettyKey(c), `Sort by ${prettyKey(c)}`)],
               )}
@@ -672,11 +692,15 @@ export function CompareTable({ rows, compareRows, fmt, labels }: { rows: Row[]; 
                   return [
                     <td key={c} className="num" title={r.status === "gone" ? `${labels.compare} value` : prevTitle}>{cellContent(r.row, c, fmt)}</td>,
                     <td key={`${c}::abs`} className={`num tbl__delta ${deltaClass(d.abs)}`} title={prevTitle}>
-                      {d.abs === null ? "–" : signedNumber(d.abs, numFmt(d.abs))}
+                      {d.abs === null || d.prev === null ? "–" : absChange(c, d.prev + d.abs, d.prev)}
                     </td>,
-                    <td key={`${c}::pct`} className={`num tbl__delta ${deltaClass(d.pct)}`}>
-                      {d.pct === null ? "–" : signedPct(d.pct)}
-                    </td>,
+                    ...(relative(c)
+                      ? [
+                          <td key={`${c}::pct`} className={`num tbl__delta ${deltaClass(d.pct)}`}>
+                            {d.pct === null ? "–" : signedPct(d.pct)}
+                          </td>,
+                        ]
+                      : []),
                   ];
                 })}
               </tr>

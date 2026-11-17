@@ -30,7 +30,7 @@ export const WidgetSpecSchema = z.object({
   /** Column whose distinct values become series (long format). When omitted every numeric column except x is a series. */
   series: z.string().optional(),
   colorBy: z.enum(["brand", "platform", "sentiment", "tier", "auto"]).optional(),
-  format: z.enum(["number", "compact", "percent", "currency", "decimal"]).optional(),
+  format: z.enum(["number", "compact", "percent", "currency", "decimal", "ratio", "points"]).optional(),
   horizontal: z.boolean().optional(),
   /** Normalise each category to 100 percent (stacked bars). */
   normalize: z.boolean().optional(),
