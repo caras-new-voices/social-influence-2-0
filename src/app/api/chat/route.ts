@@ -11,6 +11,11 @@ export const maxDuration = 300;
 
 const BodySchema = z.object({
   dashboardId: z.string().min(1),
+  /** The open chat session; without one the turn starts a new session. */
+  sessionId: z.string().max(80).optional(),
+  /** For a new session: an element chat from the full-screen view, and its element. */
+  sessionKind: z.enum(["chat", "element"]).optional(),
+  sessionWidgetId: z.string().max(80).optional(),
   message: z.string().min(1).max(4000),
   instruction: z.string().max(6000).optional(),
   widgets: z.array(z.object({ id: z.string(), type: z.string(), title: z.string() })).default([]),
@@ -23,7 +28,7 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new Response(JSON.stringify({ error: parsed.error.message }), { status: 400 });
-  const { dashboardId, message, instruction, widgets, period, kind } = parsed.data;
+  const { dashboardId, sessionId, sessionKind, sessionWidgetId, message, instruction, widgets, period, kind } = parsed.data;
   const dashboard = await getDashboard(dashboardId);
   if (!dashboard) return new Response(JSON.stringify({ error: "Dashboard not found" }), { status: 404 });
 
@@ -32,7 +37,7 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (e: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        const turn = () => runChatTurn({ dashboardId, userText: message, instruction, widgets, period: period ?? dashboard.period ?? undefined, kind: kind ?? "chat" }, dashboard.widgets);
+        const turn = () => runChatTurn({ dashboardId, sessionId, sessionKind, sessionWidgetId, userText: message, instruction, widgets, period: period ?? dashboard.period ?? undefined, kind: kind ?? "chat" }, dashboard.widgets);
         // Every query the analyst runs sees only this dashboard's brands.
         for await (const ev of iterateInScope(scopeOrDefault(dashboard.scope), turn)) send(ev);
       } catch (e) {

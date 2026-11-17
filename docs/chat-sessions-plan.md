@@ -1,6 +1,6 @@
 # Chat sessions: new chat and chat history
 
-Status: plan, not built.
+Status: built. Section 9 says what was built and how it was checked.
 
 ## 1. What we are solving
 
@@ -106,3 +106,31 @@ Token usage: each message already records its usage, so the history view can sho
 - **Migration on live data.** Production has existing conversations. The migration must be idempotent and keep every message. Test on a copy in real Postgres first.
 - **A streamed answer that arrives after the person has switched chats** must land in the chat it belongs to, not the one on screen. Key the stream to its session id.
 - **Two browser tabs on one dashboard** can each start a chat. That is fine: sessions are independent.
+
+## 9. As built
+
+Built as planned, with these details:
+
+- **Server:** `src/lib/chat-sessions.ts` (create, list, rename, delete, the guided-setup chat). `runChatTurn` opens the given session or creates one and sends a `session` event first. History for the model is the open session's last 30 messages. An unknown or foreign session id starts a new chat instead of failing.
+- **Migration:** `migrateChatSessions` in `schema.ts` runs on start. Each dashboard's earlier messages become one chat, titled from the first question, or "Dashboard setup" when there is none. It is idempotent: the session id comes from the dashboard id. Tested on real Postgres 16: run twice, three dashboards became three chats, all six messages kept. Locally, 24 earlier messages moved.
+- **Guided setup** writes all its steps into one "Guided setup" chat, not one chat per step.
+- **Element chats** from the full-screen view are saved as "About: <element title>" and tagged "Element" in the list.
+- **Routes:** `GET /api/dashboards/[id]/sessions`, `GET/PATCH/DELETE /api/sessions/[sid]`. `GET /api/dashboards/[id]/messages` now returns the most recent chat and its messages.
+- **Panel:** `src/components/ChatPanel.tsx` and `ChatHistory.tsx`.
+  - The header has the chat title (click to open the list), New chat, History, Wider/Narrower and Hide.
+  - The list slides over the conversation in the same column. It shows chats grouped by day, with questions and tokens per chat, search above 8 chats, and Rename and Delete per chat.
+  - Hide leaves a 56px strip of icons. Width and pinning are remembered per browser.
+  - On screens 1,600px and wider the list can be pinned (240px).
+  - While an answer is streaming, New chat and switching chats are disabled, so an answer always lands in its own chat.
+  - "Clear" is gone. The token figure moved to the bottom of the list.
+- **Check:** `npm run check:sessions` (13 checks against a running app).
+
+Checked with the live model: a follow-up in the same chat sees the earlier messages, and a new chat does not ("there isn't any earlier user message available to me in this chat").
+
+Checked in a browser at 1,400px, 1,800px and phone width (iPhone 13): new chat, history, reopen, rename, wider, hide, reload (remembers the width and opens the most recent chat), pin, "Ask AI" on an element going into the open chat, no sideways scroll on the phone, no page errors.
+
+Not done:
+
+- A list across all dashboards.
+- AI-written titles.
+- Opening a chat does not move it to the top. Only asking in it does.

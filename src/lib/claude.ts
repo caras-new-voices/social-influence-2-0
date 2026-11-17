@@ -1,3 +1,4 @@
+import { createSession, getSession, touchSession, type SessionKind } from "./chat-sessions";
 import { openAiKey } from "./openai-key";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
@@ -26,6 +27,8 @@ export type ChatEvent =
   | { type: "period"; period: PeriodState }
   | { type: "usage"; usage: UsageLine }
   | { type: "done"; messageId: number | null }
+  /** Sent first when the turn started a new chat session. */
+  | { type: "session"; session: { id: string; title: string; kind: SessionKind; widgetId: string | null } }
   | { type: "error"; message: string; code?: string };
 
 export interface WidgetSummary {
@@ -36,6 +39,11 @@ export interface WidgetSummary {
 
 export interface ChatTurnInput {
   dashboardId: string;
+  /** The chat session; a new one is created (and announced) when missing. */
+  sessionId?: string;
+  /** For a new session: what kind it is, and the element it is about. */
+  sessionKind?: SessionKind;
+  sessionWidgetId?: string | null;
   /** What the person sees as their message. */
   userText: string;
   /** Optional fuller instruction sent to the model instead of userText (for guided actions). */
@@ -290,13 +298,13 @@ export function parseFollowups(text: string): string[] {
   }
 }
 
-async function loadHistory(dashboardId: string): Promise<MsgParam[]> {
+async function loadHistory(sessionId: string): Promise<MsgParam[]> {
   const db = await getDb();
   const rows = await db.query<{ role: string; api_content: unknown }>(
     `SELECT role, api_content FROM (
-       SELECT id, role, api_content FROM chat_messages WHERE dashboard_id = $1 AND api_content IS NOT NULL ORDER BY id DESC LIMIT ${HISTORY_ROWS}
+       SELECT id, role, api_content FROM chat_messages WHERE session_id = $1 AND api_content IS NOT NULL ORDER BY id DESC LIMIT ${HISTORY_ROWS}
      ) t ORDER BY id ASC`,
-    [dashboardId],
+    [sessionId],
   );
   const msgs: MsgParam[] = rows
     .map((r) => ({ role: r.role, api: typeof r.api_content === "string" ? JSON.parse(r.api_content) : r.api_content }))
@@ -313,11 +321,11 @@ async function loadHistory(dashboardId: string): Promise<MsgParam[]> {
   return msgs;
 }
 
-async function storeMessage(dashboardId: string, m: StoredMessage): Promise<number> {
+async function storeMessage(dashboardId: string, sessionId: string | null, m: StoredMessage): Promise<number> {
   const db = await getDb();
   const rows = await db.query<{ id: number }>(
-    `INSERT INTO chat_messages (dashboard_id, role, content, proposals, api_content, followups) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING id`,
-    [dashboardId, m.role, m.content, m.proposals ? JSON.stringify(m.proposals) : null, JSON.stringify(m.api_content), m.followups?.length ? JSON.stringify(m.followups) : null],
+    `INSERT INTO chat_messages (dashboard_id, session_id, role, content, proposals, api_content, followups) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb) RETURNING id`,
+    [dashboardId, sessionId, m.role, m.content, m.proposals ? JSON.stringify(m.proposals) : null, JSON.stringify(m.api_content), m.followups?.length ? JSON.stringify(m.followups) : null],
   );
   return Number(rows[0].id);
 }
@@ -333,12 +341,21 @@ export interface DisplayMessage {
   created_at: string;
 }
 
+/** The messages of the dashboard's most recently used chat session (empty when it has none). */
 export async function listMessages(dashboardId: string): Promise<DisplayMessage[]> {
   await ensureReady();
   const db = await getDb();
+  const latest = await db.query<{ id: string }>(`SELECT id FROM chat_sessions WHERE dashboard_id = $1 ORDER BY updated_at DESC, created_at DESC LIMIT 1`, [dashboardId]);
+  return latest[0] ? listSessionMessages(latest[0].id) : [];
+}
+
+/** The messages of one chat session, oldest first. */
+export async function listSessionMessages(sessionId: string): Promise<DisplayMessage[]> {
+  await ensureReady();
+  const db = await getDb();
   const rows = await db.query<{ id: number; role: string; content: string; proposals: unknown; followups: unknown; usage: unknown; created_at: string }>(
-    `SELECT id, role, content, proposals, followups, usage, created_at FROM chat_messages WHERE dashboard_id = $1 ORDER BY id ASC`,
-    [dashboardId],
+    `SELECT id, role, content, proposals, followups, usage, created_at FROM chat_messages WHERE session_id = $1 ORDER BY id ASC`,
+    [sessionId],
   );
   const parse = <T,>(v: unknown): T | null => (v === null || v === undefined ? null : ((typeof v === "string" ? JSON.parse(v) : v) as T));
   return rows
@@ -354,10 +371,12 @@ export async function listMessages(dashboardId: string): Promise<DisplayMessage[
     }));
 }
 
+/** Deletes every chat session of a dashboard. */
 export async function clearMessages(dashboardId: string) {
   await ensureReady();
   const db = await getDb();
   await db.query(`DELETE FROM chat_messages WHERE dashboard_id = $1`, [dashboardId]);
+  await db.query(`DELETE FROM chat_sessions WHERE dashboard_id = $1`, [dashboardId]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -508,6 +527,18 @@ export async function* runChatTurn(input: ChatTurnInput, existingWidgets: Widget
     yield { type: "done", messageId: null };
     return;
   }
+  // Every turn belongs to a session of this dashboard; a turn without one starts a new session.
+  const known = input.sessionId ? await getSession(input.sessionId) : null;
+  if (known && known.dashboardId === input.dashboardId) {
+    await touchSession(known.id);
+  } else {
+    // An element chat from the full-screen view is named after its element.
+    const element = input.sessionKind === "element" ? existingWidgets.find((w) => w.id === input.sessionWidgetId) : undefined;
+    const title = element ? `About: ${element.title}` : input.userText;
+    const created = await createSession(input.dashboardId, { title, kind: input.sessionKind ?? "chat", widgetId: input.sessionWidgetId ?? null });
+    input = { ...input, sessionId: created.id };
+    yield { type: "session", session: { id: created.id, title: created.title, kind: created.kind, widgetId: created.widgetId } };
+  }
   const mode = llmMode();
   const meter: Meter = { input: 0, output: 0, cached: 0, rounds: 0, tools: 0 };
   const started = Date.now();
@@ -577,11 +608,11 @@ async function* providerTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]
     timeout: 180_000,
     ...(workspaceId ? { defaultHeaders: { "anthropic-workspace-id": workspaceId } } : {}),
   });
-  const history = await loadHistory(input.dashboardId);
+  const history = await loadHistory(input.sessionId ?? "");
   const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
   const window = resolveWindow(input.period);
   const messages: MsgParam[] = [...history, { role: "user", content: [{ type: "text", text: userApiText }] }];
-  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: userApiText }] });
+  await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: userApiText }] });
 
   const pending: StoredMessage[] = [];
   const proposals: Array<{ widget: WidgetSpec; replaces?: string }> = [];
@@ -675,7 +706,7 @@ async function* providerTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]
     yield { type: "error", message: msg };
   }
 
-  for (const m of pending) lastId = await storeMessage(input.dashboardId, m);
+  for (const m of pending) lastId = await storeMessage(input.dashboardId, input.sessionId ?? null, m);
   yield { type: "done", messageId: lastId };
 }
 
@@ -797,7 +828,7 @@ const MOCK_FOLLOWUPS: Record<string, string[]> = {
 /** Demo-mode guided setup: streams the scripted sentences and proposes the step's personalised recipes. */
 async function* mockWizardTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGenerator<ChatEvent> {
   const wiz = input.wizard!;
-  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
+  await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
   const proposals: Array<{ widget: WidgetSpec }> = [];
   for (const w of wiz.text.split(/(\s+)/)) {
     yield { type: "text", delta: w };
@@ -813,7 +844,7 @@ async function* mockWizardTurn(input: ChatTurnInput, existing: WidgetSpec[]): As
     proposals.push({ widget });
     yield { type: "widget", widget, data: rows };
   }
-  const id = await storeMessage(input.dashboardId, { role: "assistant", content: wiz.text, proposals, api_content: [{ type: "text", text: wiz.text }] });
+  const id = await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "assistant", content: wiz.text, proposals, api_content: [{ type: "text", text: wiz.text }] });
   yield { type: "done", messageId: id };
 }
 
@@ -822,7 +853,7 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
     yield* mockWizardTurn(input, existing);
     return;
   }
-  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
+  await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: input.instruction ?? input.userText }] });
   const isScan = (input.instruction ?? input.userText).startsWith(START_SCAN_LABEL);
   const recipes = isScan
     ? [MOCK_RECIPES[0], MOCK_RECIPES[1], MOCK_RECIPES[3]].filter(usable)
@@ -851,7 +882,7 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
   const followups = MOCK_FOLLOWUPS.default;
   yield { type: "followups", items: followups };
   const content = parts.join("\n\n") + note;
-  const id = await storeMessage(input.dashboardId, {
+  const id = await storeMessage(input.dashboardId, input.sessionId ?? null, {
     role: "assistant",
     content,
     proposals,
@@ -884,13 +915,13 @@ function friendlyOpenAiError(err: InstanceType<typeof OpenAI.APIError>): string 
   return `OpenAI API error ${err.status}: ${msg}`;
 }
 
-async function loadOpenAiHistory(dashboardId: string): Promise<OaiMessage[]> {
+async function loadOpenAiHistory(sessionId: string): Promise<OaiMessage[]> {
   const db = await getDb();
   const rows = await db.query<{ role: string; api_content: unknown }>(
     `SELECT role, api_content FROM (
-       SELECT id, role, api_content FROM chat_messages WHERE dashboard_id = $1 AND api_content IS NOT NULL ORDER BY id DESC LIMIT ${HISTORY_ROWS}
+       SELECT id, role, api_content FROM chat_messages WHERE session_id = $1 AND api_content IS NOT NULL ORDER BY id DESC LIMIT ${HISTORY_ROWS}
      ) t ORDER BY id ASC`,
-    [dashboardId],
+    [sessionId],
   );
   const msgs: OaiMessage[] = [];
   for (const r of rows) {
@@ -932,12 +963,12 @@ interface ToolCallAcc {
 
 async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[], meter: Meter): AsyncGenerator<ChatEvent> {
   const client = new OpenAI({ apiKey: openAiKey(), maxRetries: 2, timeout: 180_000 });
-  const history = await loadOpenAiHistory(input.dashboardId);
+  const history = await loadOpenAiHistory(input.sessionId ?? "");
   const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
   const window = resolveWindow(input.period);
   const userMsg: OaiMessage = { role: "user", content: userApiText };
   const messages: OaiMessage[] = [{ role: "system", content: systemPrompt() }, ...history, userMsg];
-  await storeMessage(input.dashboardId, { role: "user", content: input.userText, proposals: null, api_content: { provider: "openai", message: userMsg } });
+  await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "user", content: input.userText, proposals: null, api_content: { provider: "openai", message: userMsg } });
 
   const pending: StoredMessage[] = [];
   const proposals: Array<{ widget: WidgetSpec; replaces?: string }> = [];
@@ -1032,6 +1063,6 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[], 
     yield { type: "error", message: msg };
   }
 
-  for (const m of pending) lastId = await storeMessage(input.dashboardId, m);
+  for (const m of pending) lastId = await storeMessage(input.dashboardId, input.sessionId ?? null, m);
   yield { type: "done", messageId: lastId };
 }

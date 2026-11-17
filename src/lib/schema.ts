@@ -96,6 +96,16 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS chat_messages_dash_idx ON chat_messages (dashboard_id, id);
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id text PRIMARY KEY,
+  dashboard_id text NOT NULL,
+  title text NOT NULL DEFAULT 'New chat',
+  kind text NOT NULL DEFAULT 'chat',
+  widget_id text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS chat_sessions_dash_idx ON chat_sessions (dashboard_id, updated_at DESC);
 CREATE TABLE IF NOT EXISTS app_meta (key text PRIMARY KEY, value text);
 CREATE TABLE IF NOT EXISTS imports (
   id bigserial PRIMARY KEY,
@@ -213,7 +223,30 @@ ALTER TABLE imports ADD COLUMN IF NOT EXISTS segments_upserted integer NOT NULL 
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS finished_at timestamptz;
 CREATE INDEX IF NOT EXISTS period_events_kind_idx ON period_events (kind, period_start);
 CREATE INDEX IF NOT EXISTS imports_received_idx ON imports (received_at DESC);
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS session_id text;
+CREATE INDEX IF NOT EXISTS chat_messages_session_idx ON chat_messages (session_id, id);
 `;
+
+/**
+ * Chats written before sessions existed: each dashboard's messages become one session, titled
+ * from its first question ("Dashboard setup" when it only holds the template's note). Idempotent:
+ * the session id is derived from the dashboard id, and only messages without a session move.
+ */
+async function migrateChatSessions(db: Db) {
+  const pending = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM chat_messages WHERE session_id IS NULL`);
+  if (!pending[0]?.n) return;
+  await db.query(
+    `INSERT INTO chat_sessions (id, dashboard_id, title, kind, created_at, updated_at)
+     SELECT 's_' || left(md5(m.dashboard_id || ':legacy'), 16), m.dashboard_id,
+            coalesce(left((SELECT u.content FROM chat_messages u WHERE u.dashboard_id = m.dashboard_id AND u.role = 'user' AND u.session_id IS NULL ORDER BY u.id LIMIT 1), 60), 'Dashboard setup'),
+            CASE WHEN bool_or(m.role = 'user') THEN 'chat' ELSE 'setup' END,
+            min(m.created_at), max(m.created_at)
+       FROM chat_messages m WHERE m.session_id IS NULL GROUP BY m.dashboard_id
+     ON CONFLICT (id) DO NOTHING`,
+  );
+  await db.query(`UPDATE chat_messages SET session_id = 's_' || left(md5(dashboard_id || ':legacy'), 16) WHERE session_id IS NULL`);
+  console.log(`[chat] moved ${pending[0].n} earlier messages into chat sessions`);
+}
 
 async function relkind(db: Db, name: string): Promise<string | null> {
   const rows = await db.query<{ relkind: string }>(
@@ -357,6 +390,7 @@ async function prepare() {
   await db.exec(DDL);
   await migrateToScopedViews(db);
   await db.exec(MIGRATIONS);
+  await migrateChatSessions(db);
   const rows = await db.query<{ value: string }>(`SELECT value FROM app_meta WHERE key = 'seed_version'`);
   if (rows[0]?.value !== SEED_VERSION) {
     await seedDatabase(db, (m) => console.log("[seed]", m));
