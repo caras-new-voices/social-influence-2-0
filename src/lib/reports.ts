@@ -145,7 +145,7 @@ export async function getStoredReport(dashboardId: string, month: string): Promi
   return rows[0] ?? null;
 }
 
-const reviewSystem = () => `You write the "month in review" for a brand team's social intelligence dashboard (the Social Influence workspace, an IMAI product). You are given the dashboard's elements with their results for the month and for the previous month. Write a concise, concrete review in markdown. Never name third-party data providers.
+const reviewSystem = () => `You write the "month in review" for a brand team's social intelligence dashboard (the Social Influence workspace, an IMAI product). You are given the dashboard's elements with their results for the month and for the previous month. Write a concise, concrete review in markdown. Never name third-party data providers. Always make clear whether a number is a count (posts, comments, creators) or a rate (a share, a ratio, a per-1,000 figure), and give every rate its base. Describe a change in a count as a percent and a change in a share as percentage points ("share of voice up 4 points, from 27% to 31%"), never as a percent of a percent.
 
 ${datasetDoc()}`;
 

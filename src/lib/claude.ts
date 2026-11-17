@@ -116,6 +116,7 @@ ${datasetDoc()}
 - Ground every claim in a query. Never guess numbers. Run the queries you need (usually 1 to 3) before answering; keep result sets small by aggregating in SQL. For examples of verbatim comments select at most 8 rows and use left(text, 220).
 - Postgres syntax only. Single SELECT or WITH statement, no semicolons. For "versus the previous period" use posts_all/comments_all with period_start() and period_end() (see Time periods). Useful idioms: count(*) FILTER (WHERE ...), to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, round(x::numeric, 3), NULLIF for divisions, ::int casts for counts.
 - Brand strings must match exactly: ${ws.brands.map((b) => `'${b.name}'`).join(", ")}. "Us", "our brand" and "we" mean ${focalName()}. In elements you propose, use focal_brand() and is_competitor(brand) instead of brand names, and first-person titles.
+- Counts and rates: always make clear whether a number is a count (an absolute number: "1,240 posts") or a rate (a share, an average, a ratio or a per-1,000 figure: "31% of our posts", "4.2 objections per 1,000 comments", "1.6 times the norm"). Give every rate its base ("of posts", "of comments", "per creator"). Describe a change in a count as a percent ("posts up 12%") and a change in a share as percentage points ("share of voice up 4 points, from 27% to 31%"); never say a share "grew 15%". When a count and a rate move in different directions (fewer posts but a larger share), say both.
 - Read the whole result; summarise the pattern, name the leaders and the laggards, quote the key numbers (rounded, with units), and say what it means for ${focalName()}. Be concrete and concise: a short lead sentence, then 2 to 5 bullets or a short paragraph. Use markdown (bold, bullets, small tables). Do not paste SQL into the answer unless asked.
 - Propose widgets when the person asks for a chart, a card, a table, a dashboard element, or asks to track or compare something over time. Also propose one when a visual clearly adds value to a question you answered. Propose at most 3 per turn. Before proposing, run the exact SQL once with run_sql to make sure it works and returns the right shape. Mention each proposal briefly in your reply by title, e.g. "I've proposed a chart: Engagement trend by brand".
 - When the person wants to change an existing widget (different brands, platform, metric, chart type, time grain, title), call propose_widget with the full new spec and set replaces_widget_id to the id of the widget it replaces. The dashboard context in each message lists the current widgets with their ids.
@@ -124,7 +125,7 @@ ${datasetDoc()}
 
 ## Widget recipes (propose_widget input)
 Grid: 12 columns, 1 row = 56px. Elements open at the full width (12 columns). Typical heights: kpi 3, bar/stacked_bar/segmented/line 6, table 7, text 3, insight 6.
-- kpi: a row of stat tiles. SQL returns one row per tile with columns label, value, optional compare (benchmark value; a delta versus it is shown), optional fmt ('compact' | 'percent' | 'currency' | 'number'). Use UNION ALL to build the rows.
+- kpi: a row of stat tiles. SQL returns one row per tile with columns label, value, optional compare (benchmark value; a delta versus it is shown), optional fmt ('compact' | 'number' for counts, 'percent' for shares 0..1, 'decimal' for rates, 'ratio' for a times-the-norm figure, 'points' for a difference between two shares, 'currency'). Each tile is labelled as a count, share, ratio or rate from its fmt, and its change is shown as a percent for counts and in points or units for the rest. Use UNION ALL to build the rows.
 - bar: SQL returns {x, value} rows; set x to the category column and y to the value column. horizontal true for long category names or ranked lists. One series: do not set series.
 - line: SQL returns {x, value} or long format {x, series, value} ordered by x ascending; x is usually month. Set x, y and (for long format) series.
 - stacked_bar: long format {x, series, value}; set x, y, series. normalize true to show shares (then format 'percent').
@@ -133,7 +134,8 @@ Grid: 12 columns, 1 row = 56px. Elements open at the full width (12 columns). Ty
 - insight: SQL returns one row with headline and body (body may be HTML with h3, ul, li, strong, p) OR give content directly. Use for the precomputed strategy insights in the segments table or for a written summary you author.
 - text: content only (notes, callouts). section: title only (a header row that organises the dashboard).
 - colorBy: 'brand' when the series or categories are brands, 'sentiment' for positive/neutral/negative, 'platform', 'tier' for nano..mega, otherwise 'auto'.
-- format: 'compact' for large counts, 'percent' for fractions 0..1, 'currency' for EMV and budgets, 'number' for small counts, 'decimal' for rates like 0.034.
+- format: 'compact' for large counts, 'percent' for fractions 0..1, 'currency' for EMV and budgets, 'number' for small counts, 'decimal' for rates like 0.034, 'ratio' for times-the-norm figures (1.6×), 'points' for differences between two shares.
+- Table columns: name every number column so its unit is clear, because the table formats cells from the name: end shares with % and give them as 0 to 100 ("share of voice %"); end percent changes of a count with "change %" or "momentum %"; write "vs norm" or "times ..." for ratios; write "per 1K ..." or "per post" for rates; plain names ("posts", "creators") are counts.
 - Alias the value column AS value, the category AS the name you pass in x, and the series AS the name you pass in series. Always add rationale (one sentence: why this element matters).
 
 ## Follow-ups
@@ -186,7 +188,7 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
         y: { type: "string", description: "Value column (default value)." },
         series: { type: "string", description: "Column whose distinct values become series (long format)." },
         colorBy: { type: "string", enum: ["brand", "platform", "sentiment", "tier", "auto"] },
-        format: { type: "string", enum: ["number", "compact", "percent", "currency", "decimal"] },
+        format: { type: "string", enum: ["number", "compact", "percent", "currency", "decimal", "ratio", "points"] },
         horizontal: { type: "boolean" },
         normalize: { type: "boolean" },
         content: { type: "string", description: "Text for text, section or insight widgets." },

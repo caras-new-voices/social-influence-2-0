@@ -1,4 +1,5 @@
-export type NumberFormat = "number" | "compact" | "percent" | "currency" | "decimal";
+export type NumberFormat = "number" | "compact" | "percent" | "currency" | "decimal" | "ratio" | "points";
+export const NUMBER_FORMATS: NumberFormat[] = ["number", "compact", "percent", "currency", "decimal", "ratio", "points"];
 
 export function formatNumber(v: unknown, fmt: NumberFormat = "number"): string {
   if (v === null || v === undefined || v === "") return "–";
@@ -12,10 +13,112 @@ export function formatNumber(v: unknown, fmt: NumberFormat = "number"): string {
     case "compact":
       return compact(n);
     case "decimal":
-      return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      return n.toLocaleString("en-US", { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2 });
+    case "ratio":
+      return `${n.toFixed(2)}×`;
+    case "points":
+      return `${n.toFixed(Math.abs(n) < 10 ? 1 : 0)} pts`;
     default:
       return Math.abs(n) >= 10000 ? compact(n) : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
   }
+}
+
+/**
+ * What a number measures, so a count is never read as a rate or the other way round.
+ * - count: an absolute number (posts, creators, views).
+ * - share: a percentage of a whole, 0 to 100 in tables ("share of voice %"), 0 to 1 in KPI tiles.
+ * - change: a percent change of a count ("momentum %").
+ * - ratio: one number against another, 1.0 meaning equal ("vs norm", "times the usual").
+ * - rate: an average or a per-unit figure ("per 1K comments", "per post").
+ * - points: a difference between two shares or scores, in points ("vs our average pts").
+ * - money: a currency amount.
+ */
+export type MeasureKind = "count" | "share" | "change" | "points" | "ratio" | "rate" | "money";
+
+export const KIND_LABEL: Record<MeasureKind, string> = {
+  count: "Count",
+  share: "Share",
+  change: "Change",
+  points: "Difference",
+  ratio: "Ratio",
+  rate: "Rate",
+  money: "Amount",
+};
+
+const KIND_HELP: Record<MeasureKind, string> = {
+  count: "an absolute number",
+  share: "a percentage of a whole",
+  change: "a percent change against the period before",
+  points: "a difference between two shares or scores, in points",
+  ratio: "one number against another; 1.0 means equal",
+  rate: "an average or a per-unit figure, not a total",
+  money: "a currency amount",
+};
+
+/** A short sentence for a tooltip: "Share: a percentage of a whole." */
+export function kindHelp(kind: MeasureKind): string {
+  return `${KIND_LABEL[kind]}: ${KIND_HELP[kind]}.`;
+}
+
+const PCT = /%|\bpct\b|percent/;
+
+/** The kind of a table column, from its name. Template and analyst columns follow these naming rules. */
+export function columnKind(name: string): MeasureKind {
+  const n = name.toLowerCase().replace(/_/g, " ");
+  if (PCT.test(n)) return /momentum|change|growth/.test(n) ? "change" : "share";
+  if (/\bpts\b|\bpoints\b/.test(n)) return "points";
+  if (/vs norm|\btimes\b|\bratio\b|multiple/.test(n)) return "ratio";
+  if (/\bfee\b|\bcost\b|\bemv\b|budget|spend|\$/.test(n)) return "money";
+  if (/\bper\b|\brate\b|average|\bavg\b|\bmedian\b|\bscore\b|net sentiment/.test(n)) return "rate";
+  return "count";
+}
+
+/** The kind of a KPI tile, from its format and label. */
+export function kpiKind(label: string, fmt: NumberFormat): MeasureKind {
+  const l = label.toLowerCase();
+  if (fmt === "percent") return /momentum|change|growth/.test(l) ? "change" : "share";
+  if (fmt === "points") return "points";
+  if (fmt === "ratio") return "ratio";
+  if (fmt === "currency") return "money";
+  if (fmt === "decimal") return columnKind(l) === "ratio" ? "ratio" : "rate";
+  return columnKind(l);
+}
+
+/** A table cell in its unit: shares as "30.7%", changes as "+12%", ratios as "1.62×". */
+export function formatByKind(v: number, kind: MeasureKind): string {
+  switch (kind) {
+    case "share":
+      return `${v.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+    case "change":
+      return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+    case "points":
+      return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 1 })} pts`;
+    case "ratio":
+      return `${v.toFixed(2)}×`;
+    case "money":
+      return `$${compact(v)}`;
+    default:
+      return formatNumber(v, Number.isInteger(v) ? "number" : "decimal");
+  }
+}
+
+/**
+ * The change between two values of a measure, said the way that measure is read: counts and
+ * money as a percent ("+12%"), shares as percentage points ("+4.2 pts"), ratios and rates in
+ * their own unit ("+0.12×", "+1.3"). `fractions` is true when shares are 0 to 1 (KPI tiles).
+ */
+export function describeChange(cur: number, prev: number, kind: MeasureKind, fractions = false): string | null {
+  const sign = (d: number) => (d > 0 ? "+" : d < 0 ? "−" : "±");
+  if (kind === "count" || kind === "money") {
+    if (prev === 0) return null;
+    const p = ((cur - prev) / Math.abs(prev)) * 100;
+    return `${sign(p)}${Math.abs(p).toFixed(Math.abs(p) < 10 ? 1 : 0)}%`;
+  }
+  const d = (cur - prev) * (fractions && (kind === "share" || kind === "change") ? 100 : 1);
+  const abs = Math.abs(d);
+  if (kind === "share" || kind === "change" || kind === "points") return `${sign(d)}${abs.toFixed(abs < 10 ? 1 : 0)} pts`;
+  if (kind === "ratio") return `${sign(d)}${abs.toFixed(2)}×`;
+  return `${sign(d)}${abs.toLocaleString("en-US", { maximumFractionDigits: abs < 10 ? 2 : 1 })}`;
 }
 
 export function compact(n: number): string {

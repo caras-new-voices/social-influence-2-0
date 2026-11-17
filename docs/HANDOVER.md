@@ -166,6 +166,8 @@ Remove the `.next` folder before starting the dev server again after a build.
 - **Table cells format whole numbers and decimals only.** Express percentages as numbers from 0 to 100 with a column name that says so.
 - **Shell safety check:** a command that mixes a heredoc with odd text can be blocked as a possible file removal. Write patch scripts to the scratchpad with the file-writing tool, then run them.
 - **A new secret is only visible in a new session.** That is why `OPEN_AI_2` could not be used in the session that wrote this.
+- **To test the live analyst in a Claude cloud session**, start the app with `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. Without them Node calls OpenAI directly with the old `OPENAI_API_KEY`, which has no credit, and every question fails with "rate limiting (429)". `curl` and Python go through the environment's proxy, which supplies a working key.
+- **Counts and rates:** name number columns so their unit is clear ("share of voice %", "vs norm", "per 1K comments"); tables format cells from the name. See `docs/counts-and-rates-plan.md`.
 - **Commit finished work only.** Do not commit a background agent's half-written files. The stop hook asks for commits; commit to the development branch, never straight to production.
 
 ## 9. Open questions for the owner
