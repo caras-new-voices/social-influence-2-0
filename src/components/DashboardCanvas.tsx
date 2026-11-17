@@ -15,6 +15,7 @@ export function DashboardCanvas({
   onEdit,
   onRemove,
   onAsk,
+  onChange,
   onExpand,
   onVoice,
   onAddClick,
@@ -26,6 +27,8 @@ export function DashboardCanvas({
   onEdit: (id: string) => void;
   onRemove: (id: string) => void;
   onAsk: (id: string) => void;
+  /** Starts a chat to change one element. */
+  onChange?: (id: string) => void;
   onExpand: (id: string) => void;
   onVoice: (id: string, rows: Row[]) => void;
   onAddClick: () => void;
@@ -62,7 +65,7 @@ export function DashboardCanvas({
           >
             {widgets.map((w) => (
               <div key={w.id}>
-                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={(p) => onSetPeriod(w.id, p)} />
+                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onChange={onChange ? () => onChange(w.id) : undefined} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={(p) => onSetPeriod(w.id, p)} />
               </div>
             ))}
           </GridLayout>

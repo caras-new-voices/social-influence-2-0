@@ -9,6 +9,7 @@ import { isDataWidget, type WidgetSpec } from "@/lib/widgets";
 import { usePeriod } from "./PeriodContext";
 import { useToast } from "./Toast";
 import { WidgetBody } from "./WidgetBody";
+import { WidgetInfo } from "./WidgetInfo";
 
 export interface WidgetData {
   rows: Row[];
@@ -122,6 +123,7 @@ export function WidgetCard({
   onEdit,
   onRemove,
   onAsk,
+  onChange,
   onExpand,
   onVoice,
   onSetPeriod,
@@ -132,6 +134,8 @@ export function WidgetCard({
   onEdit: () => void;
   onRemove: () => void;
   onAsk: () => void;
+  /** Starts a chat to change this element. */
+  onChange?: () => void;
   onExpand: () => void;
   onVoice: (rows: Row[]) => void;
 }) {
@@ -175,7 +179,10 @@ export function WidgetCard({
       <VoiceButton title={spec.title} onClick={() => onVoice(rows)} />
       <div className="widget__head drag-handle">
         <div className="grow">
-          <div className="widget__title">{spec.title} <PeriodBadge spec={spec} /></div>
+          <div className="widget__title">
+            {spec.title}{" "}
+            <WidgetInfo spec={spec} rows={rows} periodLabel={formatWindow(win)} onAsk={onAsk} onChange={onChange ?? onAsk} /> <PeriodBadge spec={spec} />
+          </div>
           {spec.subtitle && <div className="widget__sub">{spec.subtitle}</div>}
         </div>
         <div className="widget__toolbar no-drag">

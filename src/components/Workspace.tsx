@@ -347,6 +347,11 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
                 setAsk({ ...askAboutWidget(w, ctx), nonce: Date.now(), kind: ctx ? "explain_change" : "ask_element" });
               });
             }}
+            onChange={(id) => {
+              const w = widgets.find((x) => x.id === id);
+              // The chat input is filled with the element's name; the person says what to change.
+              if (w) setPrefill(`Change "${w.title}": `);
+            }}
             onExpand={(id) => setFocusId(id)}
             onVoice={(id, rows) => {
               const w = widgets.find((x) => x.id === id);

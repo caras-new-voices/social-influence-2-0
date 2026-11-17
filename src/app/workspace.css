@@ -336,3 +336,18 @@
 .chat__spent { font-size: 11px; color: var(--Base-05); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chat__head h2 { white-space: nowrap; min-width: 0; }
 .chat__head h2 .im-badge { white-space: nowrap; }
+
+/* The "i" on each element: what it shows, why it matters, the kind of numbers, and two chat buttons. */
+.winfo__btn { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 0.15rem; padding: 0; border-radius: 999px; border: 1px solid var(--Base-04, #c5ccd8); background: var(--Base-00); color: var(--Base-06); font: italic 700 10px/1 Georgia, "Times New Roman", serif; vertical-align: 1px; cursor: pointer; }
+.winfo__btn:hover, .winfo__btn.is-open { border-color: var(--Primary-400); color: var(--Primary-700); background: var(--Primary-50); }
+.winfo__btn:focus-visible { outline: 2px solid var(--Primary-400); outline-offset: 1px; }
+.winfo__pop { position: fixed; z-index: 1000; width: 320px; max-width: calc(100vw - 24px); max-height: min(70vh, 520px); overflow-y: auto; padding: 0.85rem 0.95rem 0.8rem; background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.75rem; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16); font-size: 12.5px; line-height: 1.45; color: var(--Base-07); cursor: default; }
+.winfo__head { font-size: 13.5px; font-weight: 600; margin-bottom: 0.45rem; }
+.winfo__pop section { margin-bottom: 0.55rem; }
+.winfo__pop h4 { margin: 0 0 0.15rem; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--Base-05); }
+.winfo__pop p { margin: 0; }
+.winfo__pop ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.25rem; }
+.winfo__pop li { display: grid; grid-template-columns: 4.4rem 1fr; column-gap: 0.3rem; align-items: baseline; }
+.winfo__kind { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--Primary-700); }
+.winfo__muted { color: var(--Base-06); }
+.winfo__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }

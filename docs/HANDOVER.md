@@ -30,6 +30,7 @@ Built and live:
 - **Token usage:** every AI call is metered, with a balance, a demo top-up and a usage page.
 - **Brand selection:** each dashboard looks at one industry, one "your company" brand and chosen competitors. Ten industries, 93 brands.
 - **Four templates:** Starter, Eran's, Tom's Default Template, and "Toms No Hash".
+- **An "i" on every element** (`src/components/WidgetInfo.tsx`): what it shows (its subtitle), why it matters (its rationale), the kind of each number (count, share, rate), the period, and buttons to ask the analyst or change the element in the chat. Template elements and AI proposals all carry a subtitle and rationale; keep it that way for new ones.
 - **Elements open at full width**, with charts and tables one row taller than their template size.
 
 Not done, in order of importance:
