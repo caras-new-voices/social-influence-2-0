@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatEvent, DisplayMessage, WidgetSummary } from "@/lib/claude";
 import { FOCUS_QUESTIONS, INTENTS, questionAboutWidget, START_SCAN_INSTRUCTION, START_SCAN_LABEL, STARTER_QUESTIONS, type WidgetSpec } from "@/lib/widgets";
 import type { PeriodState } from "@/lib/period";
-import { useConfirm } from "./Confirm";
 import { usePeriod } from "./PeriodContext";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ProposalCard, type Proposal } from "./ProposalCard";
@@ -12,6 +11,48 @@ import { Markdown } from "./WidgetBody";
 import { formatMonth } from "@/lib/period";
 import { announceUsage, formatTokens, OUT_OF_TOKENS, type UsageKind, type UsageLine } from "@/lib/usage-shared";
 import { LowTokensNotice, OutOfTokensCard, UsageNote, useBalance } from "./Tokens";
+import type { ChatSession } from "@/lib/chat-sessions";
+import { ChatHistory, ChatIcons } from "./ChatHistory";
+
+type PanelWidth = "collapsed" | "normal" | "wide";
+const WIDTH_KEY = "si.chat.width";
+const PIN_KEY = "si.chat.historyPinned";
+const PIN_MIN_WIDTH = 1600;
+
+function readStored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable (private windows); the setting then lasts for this page only.
+  }
+}
+
+function toUi(m: DisplayMessage): UiMessage {
+  return {
+    id: String(m.id),
+    role: m.role,
+    content: m.content,
+    proposals: (m.proposals ?? []).map((p) => ({ widget: p.widget, replaces: p.replaces })),
+    queries: [],
+    followups: m.followups ?? [],
+    usage: m.usage ?? undefined,
+  };
+}
+
+const PanelIcons = {
+  wide: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>,
+  narrow: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h7M21 12h-7M7 8l4 4-4 4M17 8l-4 4 4 4" /></svg>,
+  collapse: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M15 10l-2 2 2 2" /></svg>,
+  expand: <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M13 10l2 2-2 2" /></svg>,
+  chevron: <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>,
+};
 
 interface QueryLog { sql: string; ok: boolean; rows?: number; error?: string }
 interface UiMessage {
@@ -61,37 +102,86 @@ export function ChatPanel({
   const [busy, setBusy] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [intent, setIntent] = useState<string | null>(null);
-  const confirmDialog = useConfirm();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // The open chat session. null means a new chat: the first message creates the session.
+  const [session, setSession] = useState<{ id: string; title: string } | null>(null);
+  const sessionRef = useRef<string | null>(null);
+  sessionRef.current = session?.id ?? null;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyKey, setHistoryKey] = useState("0");
+  const [width, setWidthState] = useState<PanelWidth>("normal");
+  const [pinned, setPinnedState] = useState(false);
+  const [wideScreen, setWideScreen] = useState(false);
+  useEffect(() => {
+    if (scope) return;
+    const w = readStored(WIDTH_KEY);
+    if (w === "collapsed" || w === "wide" || w === "normal") setWidthState(w);
+    setPinnedState(readStored(PIN_KEY) === "1");
+    const mq = window.matchMedia(`(min-width: ${PIN_MIN_WIDTH}px)`);
+    const on = () => setWideScreen(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [scope]);
+  const setWidth = (w: PanelWidth) => {
+    setWidthState(w);
+    writeStored(WIDTH_KEY, w);
+  };
+  const setPinned = (p: boolean) => {
+    setPinnedState(p);
+    writeStored(PIN_KEY, p ? "1" : "0");
+    if (p) setHistoryOpen(false);
+  };
+  const showPinned = !scope && pinned && wideScreen && width !== "collapsed";
+
+  // A dashboard opens on its most recently used chat.
   useEffect(() => {
     if (scope) return;
     fetch(`/api/dashboards/${dashboardId}/messages`)
       .then((r) => r.json())
-      .then((j: { messages: DisplayMessage[] }) =>
-        setMessages(
-          j.messages.map((m) => ({
-            id: String(m.id),
-            role: m.role,
-            content: m.content,
-            proposals: (m.proposals ?? []).map((p) => ({ widget: p.widget, replaces: p.replaces })),
-            queries: [],
-            followups: m.followups ?? [],
-            usage: m.usage ?? undefined,
-          })),
-        ),
-      )
+      .then((j: { session?: ChatSession | null; messages: DisplayMessage[] }) => {
+        setSession(j.session ? { id: j.session.id, title: j.session.title } : null);
+        seenCount.current = 0;
+        setMessages(j.messages.map(toUi));
+      })
       .catch(() => {});
   }, [dashboardId, scope]);
 
+  const openSession = async (s: ChatSession) => {
+    setHistoryOpen(false);
+    if (s.id === sessionRef.current) return;
+    setSession({ id: s.id, title: s.title });
+    setDismissed(new Set());
+    seenCount.current = 0;
+    setMessages([]);
+    const r = await fetch(`/api/sessions/${s.id}`);
+    const j = (await r.json().catch(() => ({}))) as { messages?: DisplayMessage[] };
+    if (sessionRef.current === s.id) setMessages((j.messages ?? []).map(toUi));
+  };
+  const newChat = () => {
+    if (busy) return;
+    setSession(null);
+    setMessages([]);
+    setDismissed(new Set());
+    setIntent(null);
+    setHistoryOpen(false);
+    seenCount.current = 0;
+    if (width === "collapsed") setWidth("normal");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   useEffect(() => {
     if (prefill) {
+      setHistoryOpen(false);
+      if (width === "collapsed") setWidth("normal");
       setInput(prefill);
       inputRef.current?.focus();
       onPrefillConsumed();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill, onPrefillConsumed]);
 
   // Scroll behaviour: on history load jump to the end; when a new question is sent, anchor that
@@ -123,6 +213,8 @@ export function ChatPanel({
   const sendRef = useRef<(text: string, instruction?: string, kind?: UsageKind) => Promise<void>>(async () => {});
   useEffect(() => {
     if (!ask) return;
+    setHistoryOpen(false);
+    setWidthState((w) => (w === "collapsed" ? "normal" : w));
     const t = setTimeout(() => void sendRef.current(ask.text, ask.instruction, ask.kind ?? "ask_element"), 0);
     return () => clearTimeout(t);
   }, [ask]);
@@ -133,6 +225,7 @@ export function ChatPanel({
       if (!trimmed || busy) return;
       setInput("");
       setBusy(true);
+      setHistoryOpen(false);
       const userId = `u_${Date.now()}`;
       const asstId = `a_${Date.now()}`;
       setMessages((m) => [
@@ -149,6 +242,9 @@ export function ChatPanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             dashboardId,
+            sessionId: sessionRef.current ?? undefined,
+            // Questions asked in the full-screen view of an element are kept as that element's chat.
+            ...(scope ? { sessionKind: "element", sessionWidgetId: scope.widget.id } : {}),
             message: trimmed,
             instruction: instruction ?? (scope ? questionAboutWidget(scope.widget, trimmed) : undefined),
             widgets: widgets.map((w): WidgetSummary => ({ id: w.id, type: w.type, title: w.title })),
@@ -176,7 +272,11 @@ export function ChatPanel({
             if (!line) continue;
             let ev: ChatEvent;
             try { ev = JSON.parse(line) as ChatEvent; } catch { continue; }
-            if (ev.type === "text") patch((m) => ({ ...m, content: m.content + ev.delta, status: undefined }));
+            if (ev.type === "session") {
+              sessionRef.current = ev.session.id;
+              setSession({ id: ev.session.id, title: ev.session.title });
+              setHistoryKey(`${ev.session.id}:${Date.now()}`);
+            } else if (ev.type === "text") patch((m) => ({ ...m, content: m.content + ev.delta, status: undefined }));
             else if (ev.type === "status") patch((m) => ({ ...m, status: ev.text }));
             else if (ev.type === "query") patch((m) => ({ ...m, queries: [...m.queries, { sql: ev.sql, ok: ev.ok, rows: ev.rows, error: ev.error }] }));
             else if (ev.type === "widget") patch((m) => ({ ...m, proposals: [...m.proposals, { widget: ev.widget, data: ev.data, replaces: ev.replaces }] }));
@@ -199,6 +299,8 @@ export function ChatPanel({
         patch((m) => ({ ...m, streaming: false, status: undefined }));
         setBusy(false);
         abortRef.current = null;
+        // The chat moves to the top of the list.
+        setHistoryKey(`${sessionRef.current ?? ""}:${Date.now()}`);
       }
     },
     [busy, dashboardId, widgets, scope, period.state, onSetPeriod],
@@ -213,17 +315,6 @@ export function ChatPanel({
     }
   };
 
-  const clearChat = async () => {
-    const ok = await confirmDialog({
-      title: "Clear this conversation?",
-      message: "The messages and proposals in this chat will be removed. Elements already on the dashboard stay.",
-      confirmLabel: "Clear conversation",
-      danger: true,
-    });
-    if (!ok) return;
-    await fetch(`/api/dashboards/${dashboardId}/messages`, { method: "DELETE" });
-    setMessages([]);
-  };
 
   // Nudge when a new month lands: same source as the dashboard banner, dismissed per dashboard.
   const dataEvents = usePeriodEvents();
@@ -255,18 +346,71 @@ export function ChatPanel({
   const isAdded = (p: Proposal) => widgets.some((w) => w.id === p.widget.id);
 
   return (
-    <section className="ws__chat" aria-label="Assistant">
-      <div className="chat__head">
-        <h2>
-          <span className="sidebar__mark" style={{ width: 24, height: 24, fontSize: 11, borderRadius: 7 }}>AI</span>
-          {scope ? "Ask about this element" : "Analyst"}
-          {demoMode && <span className="im-badge im-badge-warning" title="Set an LLM key to use the analyst">Demo mode</span>}
-        </h2>
-        <div className="chat__headright">
-          {!scope && tokens?.dashboardMonth ? <span className="chat__spent" title={`This dashboard has used ${tokens.dashboardMonth.toLocaleString("en-US")} tokens this month`}>{formatTokens(tokens.dashboardMonth)} tokens used</span> : null}
-          {!scope && messages.length > 0 && <button className="im-btn im-btn-ghost im-btn-sm" onClick={clearChat}>Clear</button>}
+    <section
+      className={`ws__chat ${!scope ? `is-${width}` : ""} ${showPinned ? "is-pinned" : ""}`}
+      aria-label="Assistant"
+    >
+      {!scope && width === "collapsed" ? (
+        <div className="chat__rail">
+          <button className="chat__railbtn chat__railmark" onClick={() => setWidth("normal")} aria-label="Open the analyst" title="Open the analyst">
+            <span className="sidebar__mark" style={{ width: 28, height: 28, fontSize: 11, borderRadius: 8 }}>AI</span>
+          </button>
+          <button className="chat__railbtn" onClick={newChat} disabled={busy} aria-label="New chat" title={busy ? "Wait for the answer to finish" : "New chat"}>{ChatIcons.newChat}</button>
+          <button className="chat__railbtn" onClick={() => { setWidth("normal"); setHistoryOpen(true); }} aria-label="Chat history" title="Chat history">{ChatIcons.history}</button>
+          <button className="chat__railbtn" onClick={() => setWidth("normal")} aria-label="Expand the chat" title="Expand the chat">{PanelIcons.expand}</button>
         </div>
+      ) : (
+      <div className="chat__main">
+      <div className="chat__head">
+        {scope ? (
+          <h2>
+            <span className="sidebar__mark" style={{ width: 24, height: 24, fontSize: 11, borderRadius: 7 }}>AI</span>
+            Ask about this element
+            {demoMode && <span className="im-badge im-badge-warning" title="Set an LLM key to use the analyst">Demo mode</span>}
+          </h2>
+        ) : (
+          <button
+            className="chat__titlebtn"
+            onClick={() => setHistoryOpen((o) => !o)}
+            aria-expanded={historyOpen}
+            title={historyOpen ? "Back to the chat" : "Show your chats"}
+          >
+            <span className="sidebar__mark" style={{ width: 24, height: 24, fontSize: 11, borderRadius: 7, flex: "none" }}>AI</span>
+            <span className="chat__titletext">{session?.title ?? "New chat"}</span>
+            <span className={`chat__chev ${historyOpen ? "is-open" : ""}`}>{PanelIcons.chevron}</span>
+          </button>
+        )}
+        {!scope && (
+          <div className="chat__headright">
+            {demoMode && <span className="im-badge im-badge-warning" title="Set an LLM key to use the analyst">Demo</span>}
+            <button className="im-btn im-btn-ghost im-btn-icon" onClick={newChat} disabled={busy} aria-label="New chat" title={busy ? "Wait for the answer to finish" : "New chat"}>{ChatIcons.newChat}</button>
+            {!showPinned && (
+              <button className={`im-btn im-btn-ghost im-btn-icon ${historyOpen ? "is-on" : ""}`} onClick={() => setHistoryOpen((o) => !o)} aria-pressed={historyOpen} aria-label="Chat history" title="Chat history">{ChatIcons.history}</button>
+            )}
+            <button className="im-btn im-btn-ghost im-btn-icon chat__widthbtn" onClick={() => setWidth(width === "wide" ? "normal" : "wide")} aria-label={width === "wide" ? "Make the chat narrower" : "Make the chat wider"} title={width === "wide" ? "Narrower" : "Wider, for long answers"}>{width === "wide" ? PanelIcons.narrow : PanelIcons.wide}</button>
+            <button className="im-btn im-btn-ghost im-btn-icon chat__collapsebtn" onClick={() => setWidth("collapsed")} aria-label="Hide the chat" title="Hide the chat (the dashboard gets the full width)">{PanelIcons.collapse}</button>
+          </div>
+        )}
       </div>
+      {!scope && historyOpen && !showPinned && (
+        <div className="chat__overlay">
+          <ChatHistory
+            dashboardId={dashboardId}
+            currentId={session?.id ?? null}
+            refreshKey={historyKey}
+            busy={busy}
+            pinned={false}
+            canPin={wideScreen}
+            onOpen={(s) => void openSession(s)}
+            onDeleted={(id) => { if (id === session?.id) newChat(); }}
+            onRenamed={(s) => { if (s.id === session?.id) setSession({ id: s.id, title: s.title }); }}
+            onClose={() => setHistoryOpen(false)}
+            onTogglePin={() => setPinned(true)}
+            onNewChat={newChat}
+          />
+          {tokens?.dashboardMonth ? <div className="hist__foot">This dashboard has used {formatTokens(tokens.dashboardMonth)} tokens this month.</div> : null}
+        </div>
+      )}
       <div className="chat__scroll" ref={scrollRef}>
         {messages.length === 0 && scope && (
           <>
@@ -397,6 +541,23 @@ export function ChatPanel({
         </div>
         <div className="chat__hint">Enter to send · Shift+Enter for a new line · Ask for “a chart of…” to get a proposal</div>
       </div>
+      </div>
+      )}
+      {showPinned && (
+        <ChatHistory
+          dashboardId={dashboardId}
+          currentId={session?.id ?? null}
+          refreshKey={historyKey}
+          busy={busy}
+          pinned
+          canPin
+          onOpen={(s) => void openSession(s)}
+          onDeleted={(id) => { if (id === session?.id) newChat(); }}
+          onRenamed={(s) => { if (s.id === session?.id) setSession({ id: s.id, title: s.title }); }}
+          onTogglePin={() => setPinned(false)}
+          onNewChat={newChat}
+        />
+      )}
     </section>
   );
 }

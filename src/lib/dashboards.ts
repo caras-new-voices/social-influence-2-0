@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { createSession, deleteDashboardSessions } from "./chat-sessions";
 import { ensureReady } from "./schema";
 import { PeriodStateSchema, type PeriodState } from "./period";
 import { OnboardingStateSchema, type OnboardingState } from "./wizard";
@@ -64,7 +65,8 @@ export async function createDashboard(input: { name: string; description?: strin
   const note = skippedNote(built.skipped);
   if (note) {
     // Tell the person, in the dashboard's own chat, what the starter left out and why.
-    await db.query(`INSERT INTO chat_messages (dashboard_id, role, content, api_content) VALUES ($1, 'assistant', $2, $3::jsonb)`, [id, note, JSON.stringify([{ type: "text", text: note }])]);
+    const session = await createSession(id, { title: "Dashboard setup", kind: "setup" });
+    await db.query(`INSERT INTO chat_messages (dashboard_id, session_id, role, content, api_content) VALUES ($1, $2, 'assistant', $3, $4::jsonb)`, [id, session.id, note, JSON.stringify([{ type: "text", text: note }])]);
   }
   return rowToRecord(rows[0]);
 }
@@ -113,7 +115,7 @@ export async function updateDashboard(
 export async function deleteDashboard(id: string): Promise<void> {
   await ensureReady();
   const db = await getDb();
-  await db.query(`DELETE FROM chat_messages WHERE dashboard_id = $1`, [id]);
+  await deleteDashboardSessions(id);
   await db.query(`DELETE FROM dashboards WHERE id = $1`, [id]);
 }
 

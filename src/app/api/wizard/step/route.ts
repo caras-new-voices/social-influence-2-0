@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runChatTurn, type ChatEvent } from "@/lib/claude";
+import { setupSession } from "@/lib/chat-sessions";
 import { getDashboard } from "@/lib/dashboards";
 import { PeriodStateSchema, resolveWindow } from "@/lib/period";
 import { runWidgetQuery } from "@/lib/query";
@@ -62,7 +63,8 @@ async function respond(data: z.infer<typeof BodySchema>, dashboard: NonNullable<
     async start(controller) {
       const send = (e: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
       try {
-        const turn = () => runChatTurn({ dashboardId, userText, instruction, widgets: [], period: period ?? dashboard.period ?? undefined, wizard, kind: mode === "discuss" ? "wizard_discuss" : "wizard_step" }, dashboard.widgets);
+        const sessionId = (await setupSession(dashboardId, "Guided setup")).id;
+        const turn = () => runChatTurn({ dashboardId, sessionId, userText, instruction, widgets: [], period: period ?? dashboard.period ?? undefined, wizard, kind: mode === "discuss" ? "wizard_discuss" : "wizard_step" }, dashboard.widgets);
         for await (const ev of iterateInScope(scope, turn)) send(ev);
       } catch (e) {
         send({ type: "error", message: (e as Error).message });
