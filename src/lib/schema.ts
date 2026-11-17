@@ -373,6 +373,21 @@ async function prepare() {
 }
 
 /**
+ * Planner statistics for the dataset tables. Bulk loads leave them stale (and the embedded
+ * database never gathers them by itself), which can turn a join into a scan per row. Refreshed
+ * whenever the amount of data changed since the last time.
+ */
+async function refreshStatistics(db: Db) {
+  const [n] = await db.query<{ k: string }>(
+    `SELECT (SELECT count(*) FROM posts_raw) || ':' || (SELECT count(*) FROM comments_raw) || ':' || (SELECT count(*) FROM post_labels_raw) AS k`,
+  );
+  const rows = await db.query<{ value: string }>(`SELECT value FROM app_meta WHERE key = 'stats_for'`);
+  if (rows[0]?.value === n.k) return;
+  for (const t of ["posts_raw", "comments_raw", "influencers_raw", "segments_raw", "post_labels_raw"]) await db.exec(`ANALYZE ${t}`);
+  await db.query(`INSERT INTO app_meta (key, value) VALUES ('stats_for', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [n.k]);
+}
+
+/**
  * The industry packs load after the base dataset, a few seconds at a time, so the first requests
  * after a deploy are not held for the whole load. Each call continues where the last one stopped.
  */
@@ -385,7 +400,10 @@ function ensurePacks(): Promise<void> {
       if (loaded) await loadCatalog(db);
       // Themes and hooks are assigned once the posts are in, in the same resumable way.
       const labels = pending ? { pending: 1 } : await classifyPosts(db, Number(process.env.PACK_LOAD_BUDGET_MS ?? 6000) || 6000, (m) => console.log("[themes]", m));
-      if (!pending && !labels.pending) g.__siPacksDone = true;
+      if (!pending && !labels.pending) {
+        await refreshStatistics(db);
+        g.__siPacksDone = true;
+      }
     })()
       .catch((err) => console.error("[packs] load failed:", (err as Error).message))
       .finally(() => {
