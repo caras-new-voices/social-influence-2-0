@@ -140,7 +140,7 @@ What is different from the plan, and why:
 
 - **Word rules, not a model.** The build environment has no model key, so each theme and hook is assigned by a regular expression on the words of the caption (`src/lib/themes.ts`). The rules run inside the database when data is loaded or imported, cost nothing, and give the same answer every time. They are cruder than a model: they match words, not meaning, and they are strongest in English.
 - **Several themes per post, no primary theme.** A rule either matches or not, so a post has every theme whose rule matches. Theme shares therefore add up to more than 100%.
-- **No "about the brand" flag.** Rules cannot judge that. Off-topic posts are still counted.
+- **No "about the brand" flag from the rules.** Rules cannot judge that, so off-topic posts are still counted until the model has run.
 - **Captions were not reloaded.** The nine new industries still have captions cut at 600 characters.
 
 Coverage, as the share of posts that get at least one theme, against the share that have a hashtag:
@@ -162,9 +162,16 @@ Coverage, as the share of posts that get at least one theme, against the share t
 
 The gain is not mainly coverage. It is that a theme is now a readable conversation shared across languages ("Range, battery and charging") and not a tag ("#elektroauto"), and that there are 15 of them per industry and not thousands.
 
+The model classifier is written and wired in, but has not run:
+
+- `scripts/classify_posts.py` sends batches of 20 captions with the industry's theme list and gets back, per post, a primary theme, up to two secondary themes, a hook and whether the post is about the brand. It is resumable and writes `data/seed/labels/<industry>.json.gz`.
+- When that file exists for an industry, the app loads it in place of the word rules (`src/lib/themes.ts`). The rules then only cover posts the model has not seen, such as posts from a later import. Loading was tested with a stand-in file.
+- With model labels, theme shares are counted on the primary theme, posts judged "not about the brand" leave the theme elements, and a new element shows, per brand, how much of its tracked conversation is really about it.
+- The run is blocked on credit: the OpenAI key available to the build has none. With credit it is `python3 -I scripts/classify_posts.py <work folder>` followed by `--compile`.
+
 Still to do, in the order that matters:
 
 1. **Tom reviews the theme lists.** They are a draft from reading samples.
 2. **Measure how right the rules are.** Label 150 posts per industry by hand and compare. Nothing has been measured yet beyond coverage.
-3. **Replace the rules with the model classifier** (sections 3 and 6), which adds a primary theme, the "about the brand" flag and languages other than English. It writes to the same table, so the template does not change.
+3. **Run the model classifier** once the key has credit. It adds a primary theme, the "about the brand" flag and languages other than English.
 4. **Reload full captions** for the nine new industries.

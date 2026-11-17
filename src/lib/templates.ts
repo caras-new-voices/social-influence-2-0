@@ -1,10 +1,10 @@
 import { STARTER_SECTIONS } from "./starter";
 import { TOM_NOHASH_SECTIONS, TOM_SECTIONS } from "./tom";
-import { newId, type WidgetSpec } from "./widgets";
+import { FULL_WIDTH, isChartOrTable, newId, type WidgetSpec } from "./widgets";
 
 /**
  * Dashboard templates. A template is a list of sections; each section is a header followed by
- * widgets placed left to right on the 12 column grid (wrapping to a new row when full).
+ * its elements, one per row at the full width of the 12 column grid.
  */
 export type TemplateId = "starter" | "eran" | "tom" | "tomnohash" | "blank";
 
@@ -31,7 +31,12 @@ export function layoutSections(sections: TemplateSection[]): WidgetSpec[] {
     let x = 0;
     let rowH = 0;
     for (const t of s.widgets) {
-      const { w, h, ...spec } = t;
+      // Templates give each element a width and height; the layout opens them at full width and
+      // makes charts and tables one row taller, so every element is easy to read without resizing.
+      const { w: _w, h: baseH, ...spec } = t;
+      void _w;
+      const w = FULL_WIDTH;
+      const h = isChartOrTable(spec.type) ? baseH + 1 : baseH;
       if (x + w > 12) {
         x = 0;
         y += rowH;

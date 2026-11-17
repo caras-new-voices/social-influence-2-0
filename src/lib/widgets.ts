@@ -63,16 +63,24 @@ export function isDataWidget(type: WidgetType) {
   return DATA_WIDGET_TYPES.includes(type);
 }
 
+/** The grid is 12 columns wide. Elements take the full width by default; people can resize them. */
+export const FULL_WIDTH = 12;
+
+/** Default size of a new element: full width, with charts and tables a row taller than they used to be. */
 export function defaultSize(type: WidgetType): { w: number; h: number } {
   switch (type) {
-    case "kpi": return { w: 12, h: 3 };
-    case "section": return { w: 12, h: 1 };
-    case "text": return { w: 4, h: 3 };
-    case "insight": return { w: 6, h: 6 };
-    case "table": return { w: 12, h: 6 };
-    case "line": return { w: 8, h: 5 };
-    default: return { w: 6, h: 5 };
+    case "kpi": return { w: FULL_WIDTH, h: 3 };
+    case "section": return { w: FULL_WIDTH, h: 1 };
+    case "text": return { w: FULL_WIDTH, h: 3 };
+    case "insight": return { w: FULL_WIDTH, h: 6 };
+    case "table": return { w: FULL_WIDTH, h: 7 };
+    default: return { w: FULL_WIDTH, h: 6 };
   }
+}
+
+/** Charts and tables: the element types that gain a row of height in templates. */
+export function isChartOrTable(type: WidgetType): boolean {
+  return type === "bar" || type === "stacked_bar" || type === "segmented" || type === "line" || type === "table";
 }
 
 export function newId(prefix = "w") {
@@ -85,9 +93,10 @@ export function nextY(widgets: WidgetSpec[]): number {
 }
 
 export function materialize(p: ProposedWidget, existing: WidgetSpec[]): WidgetSpec {
+  // Proposals open at full width and at least the default height, whatever size was suggested.
   const size = defaultSize(p.type);
-  const w = p.width ?? size.w;
-  const h = p.height ?? size.h;
+  const w = size.w;
+  const h = Math.max(p.height ?? 0, size.h);
   const { width: _w, height: _h, ...rest } = p;
   void _w; void _h;
   return { ...rest, id: newId(), layout: { x: 0, y: nextY(existing), w, h } };

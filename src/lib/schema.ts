@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS theme_rules (
 );
 CREATE TABLE IF NOT EXISTS post_labels_raw (
   segment_id integer NOT NULL, post_id bigint NOT NULL, brand text, kind text NOT NULL, label text NOT NULL,
+  rank smallint, source text,
   PRIMARY KEY (segment_id, post_id, kind, label)
 );
 CREATE INDEX IF NOT EXISTS post_labels_brand_idx ON post_labels_raw (brand, kind);
@@ -176,15 +177,16 @@ CREATE OR REPLACE FUNCTION period_end() RETURNS timestamptz LANGUAGE sql STABLE 
 CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand);
 CREATE VIEW comments_all AS SELECT * FROM comments_raw WHERE in_scope(brand);
 CREATE VIEW influencers AS SELECT * FROM influencers_raw WHERE in_scope(brand);
-CREATE VIEW post_themes AS SELECT segment_id, post_id, brand, label AS theme FROM post_labels_raw WHERE kind = 'theme' AND in_scope(brand);
+CREATE VIEW post_themes AS SELECT segment_id, post_id, brand, label AS theme, coalesce(rank, 1) = 1 AS is_primary FROM post_labels_raw WHERE kind = 'theme' AND in_scope(brand);
 CREATE VIEW post_hooks AS SELECT segment_id, post_id, brand, label AS hook FROM post_labels_raw WHERE kind = 'hook' AND in_scope(brand);
+CREATE VIEW post_about AS SELECT segment_id, post_id, brand, label AS about FROM post_labels_raw WHERE kind = 'about' AND in_scope(brand);
 CREATE VIEW segments AS SELECT ${SEGMENT_COLUMNS}, CASE WHEN brand = focal_brand() THEN 'focal' ELSE 'competitor' END AS role FROM segments_raw WHERE in_scope(brand);
 CREATE OR REPLACE FUNCTION is_competitor(b text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT b IS DISTINCT FROM focal_brand() AND EXISTS (SELECT 1 FROM segments s WHERE s.brand = b) $f$;
 CREATE OR REPLACE FUNCTION is_self_mention(t text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT t ILIKE '%' || focal_brand() || '%' OR EXISTS (SELECT 1 FROM segments_raw s, jsonb_array_elements_text(coalesce(s.aliases, '[]'::jsonb)) a WHERE s.brand = focal_brand() AND t ILIKE '%' || a || '%') $f$;
 CREATE VIEW posts AS ${PERIOD_FILTER("posts_all")};
 CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 `;
-const VIEWS_VERSION = "scoped-2";
+const VIEWS_VERSION = "scoped-3";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -195,6 +197,8 @@ ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS owner text;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS kind text;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS aliases jsonb;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS source_posts integer;
+ALTER TABLE post_labels_raw ADD COLUMN IF NOT EXISTS rank smallint;
+ALTER TABLE post_labels_raw ADD COLUMN IF NOT EXISTS source text;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */
@@ -226,7 +230,7 @@ const RAW_TABLES: Array<[raw: string, earlier: string[]]> = [
   ["segments_raw", ["segments"]],
   ["influencers_raw", ["influencers"]],
 ];
-const VIEW_NAMES = ["posts", "comments", "posts_all", "comments_all", "segments", "influencers", "post_themes", "post_hooks"];
+const VIEW_NAMES = ["posts", "comments", "posts_all", "comments_all", "segments", "influencers", "post_themes", "post_hooks", "post_about"];
 
 /**
  * Brings the dataset tables to the current layout and (re)builds the views. Databases created by
