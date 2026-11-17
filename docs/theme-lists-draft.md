@@ -134,15 +134,19 @@ A theme says what a post is about. It does not say how it is told (that is the h
 4. Recovery, training and performance
 5. Health and longevity science: experts, research, biohacking
 6. Device comparison: ring against band against watch, alternatives
-7. Subscription, price and value
-8. Deals and seasonal sales
-9. New products and features
-10. Accessories and add-ons: bands, chargers, covers
-11. Night routine and bedroom setup
-12. Mattress and comfort: firmness, materials, aches
-13. Women's health
-14. Sponsor reads in unrelated content: a host-read advert inside a podcast or video about something else
-15. Giveaways and partnerships
+7. Price, subscription and deals: what it costs, the membership, sales and discount codes
+8. New products and features
+9. Accessories and add-ons: bands, chargers, covers
+10. Night routine and bedroom setup
+11. Mattress and comfort: firmness, materials, aches
+12. Women's health
+13. Sponsor reads in unrelated content: a host-read advert inside a podcast or video about something else
+14. Giveaways and partnerships
+15. Tagged in daily life and outfits: the device or brand tagged in a vlog, a get-ready-with-me, an outfit post or a favourites list, without being the subject
+16. Company news and business: funding, the stock market, revenue, lawsuits, awards, interviews with founders and leaders
+17. Opinions on tracking: loving, quitting or questioning wearing a tracker, and the debate about living by the numbers
+
+Changed in November 2026 after the first model run left 17% of on-topic posts in Other: added 15 to 17, and merged "Subscription, price and value" with "Deals and seasonal sales".
 
 ## Hair care, North America
 
