@@ -1,3 +1,4 @@
+import { openAiKey } from "./openai-key";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { z } from "zod";
@@ -63,9 +64,6 @@ export function llmMode(): LlmMode {
   return process.env.ANTHROPIC_API_KEY ? "claude" : "mock";
 }
 
-function openAiKey(): string | undefined {
-  return process.env.OPEN_AI_KEY?.trim() || process.env.OPENAI_API_KEY?.trim() || undefined;
-}
 
 export function llmModel(): string {
   const mode = llmMode();
@@ -862,7 +860,7 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
 }
 
 /* ------------------------------------------------------------------ */
-/* OpenAI provider (used when OPEN_AI_KEY is set)                         */
+/* OpenAI provider (used when an OpenAI key is set)                       */
 /* ------------------------------------------------------------------ */
 
 type OaiMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -876,7 +874,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = TOOLS.filter(
 
 function friendlyOpenAiError(err: InstanceType<typeof OpenAI.APIError>): string {
   const msg = err.message ?? "";
-  if (err.status === 401) return "The OpenAI API key was rejected (401). Check OPEN_AI_KEY in the deployment's environment variables and redeploy.";
+  if (err.status === 401) return "The OpenAI API key was rejected (401). Check OPEN_AI_2 in the deployment's environment variables and redeploy.";
   if (err.status === 404 || /model_not_found|does not exist/i.test(msg)) {
     return `The OpenAI model "${OPENAI_MODEL}" is not available to this key. Set OPENAI_MODEL in the deployment's environment variables to a model you can use (for example gpt-5.2 or gpt-4.1) and redeploy.`;
   }

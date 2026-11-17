@@ -1,3 +1,4 @@
+import { openAiKey } from "./openai-key";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { llmMode, llmModel } from "./claude";
@@ -31,7 +32,7 @@ export async function complete(system: string, user: string, maxTokens: number, 
   let text = "";
   let input = 0, output = 0, cached = 0;
   if (mode === "openai") {
-    const client = new OpenAI({ apiKey: process.env.OPEN_AI_KEY?.trim() || process.env.OPENAI_API_KEY?.trim(), maxRetries: 2, timeout: 120_000 });
+    const client = new OpenAI({ apiKey: openAiKey(), maxRetries: 2, timeout: 120_000 });
     const res = await client.chat.completions.create({
       model: process.env.OPENAI_MODEL ?? "gpt-5.2",
       messages: [

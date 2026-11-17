@@ -41,6 +41,7 @@ Serverless functions have a 300 second limit configured for the chat route (`max
 
 | Variable | Purpose |
 |---|---|
+| `OPEN_AI_2` | The OpenAI key. Read first; `OPEN_AI_KEY` and `OPENAI_API_KEY` are used when it is not set. |
 | `OPEN_AI_KEY` | Enables the OpenAI provider (default model `gpt-5.2`, override with `OPENAI_MODEL`; optional `OPENAI_REASONING_EFFORT`). Takes precedence over Claude. |
 | `LLM_PROVIDER` | `openai` or `claude` to force a provider when both keys are set. |
 | `ANTHROPIC_API_KEY` | Enables Claude. Without any key the app runs in demo mode with scripted answers. |

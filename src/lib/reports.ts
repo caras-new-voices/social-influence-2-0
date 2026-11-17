@@ -1,3 +1,4 @@
+import { openAiKey } from "./openai-key";
 import { focalName } from "./brands";
 import { getCoverage } from "./coverage";
 import { getDashboard } from "./dashboards";
@@ -234,7 +235,7 @@ async function writeReview(dashboardId: string, month: string, { force = false, 
     const res = await complete(reviewSystem(), user, 1800, meta);
     summary = res.text.trim();
     usage = res.usage;
-    model = process.env.OPEN_AI_KEY || process.env.OPENAI_API_KEY ? process.env.OPENAI_MODEL ?? "gpt-5.2" : process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
+    model = openAiKey() ? process.env.OPENAI_MODEL ?? "gpt-5.2" : process.env.CLAUDE_MODEL ?? "claude-opus-5-5";
   }
 
   const db = await getDb();

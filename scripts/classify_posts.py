@@ -1,7 +1,7 @@
 """Classify posts with a language model: a primary theme, up to two secondary themes, a hook and
 whether the post is really about the brand it is filed under.
 
-  OPENAI_API_KEY=... python3 -I scripts/classify_posts.py <work-dir> [--industry id] [--limit N] [--model m] [--workers 8]
+  python3 -I scripts/classify_posts.py <work-dir> [--industry id] [--limit N] [--model m] [--workers 8]
   python3 -I scripts/classify_posts.py <work-dir> --compile
 
 It reads the posts from the seed (data/seed/posts.json.gz and data/seed/packs/*.json.gz), the theme
@@ -26,6 +26,8 @@ LIMIT = int(arg("--limit", "0"))
 ONLY = arg("--industry")
 WORKERS = int(arg("--workers", "8"))
 BATCH = 20
+# The key comes from the first of these that is set, like the app: OPEN_AI_2, OPEN_AI_KEY, OPENAI_API_KEY.
+KEY = next((os.environ[k].strip() for k in ("OPEN_AI_2", "OPEN_AI_KEY", "OPENAI_API_KEY") if os.environ.get(k, "").strip()), "")
 os.makedirs(WORK, exist_ok=True)
 
 catalog = json.load(open(os.path.join(SEED, "catalog.json"), encoding="utf-8"))
@@ -88,7 +90,7 @@ def ask(system, batch):
     data = json.dumps(body).encode()
     for attempt in range(6):
         req = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=data,
-                                     headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"], "Content-Type": "application/json"})
+                                     headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"})
         try:
             r = json.load(urllib.request.urlopen(req, timeout=180, context=CTX))
             u = r.get("usage", {})
