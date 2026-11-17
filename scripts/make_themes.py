@@ -117,8 +117,7 @@ T["sleep-tech"] = [
   ("Recovery, training and performance", r"recovery|training|workout|athlete|marathon|running|\mstrain|lifting|gym|performance|\mfitness"),
   ("Health and longevity science", r"longevity|neuroscien|huberman|biohack|science|study|research|doctor|\mdr\.|health|peptide|glp-1|metabol"),
   ("Device comparison", r"\mvs\M|versus|compar|alternative|better than|which (one|is)|screenless"),
-  ("Subscription, price and value", r"subscription|\$\d|per month|/month|price|expensive|worth the money|membership|paying"),
-  ("Deals and seasonal sales", r"\msale\M|labor day|black friday|save up to|% off|discount|\mdeals?\M|promo|code\M"),
+  ("Price, subscription and deals", r"subscription|\$\d|per month|/month|price|expensive|worth the money|membership|paying|\msale\M|labor day|black friday|save up to|% off|discount|\mdeals?\M|promo|code\M"),
   ("New products and features", r"launch|announc|introducing|next evolution|\m2\.0\M|unveil|just dropped|new (feature|model|version|product|generation)|is here\M"),
   ("Accessories and add-ons", r"\mband|strap|charger|charging|\mcase\M|accessor|watch ?face|dock"),
   ("Night routine and bedroom setup", r"night ?(time)? routine|bedtime|bedroom|bed ?sheets|bedding|pillow|wind down|morning routine|reset"),
@@ -126,6 +125,9 @@ T["sleep-tech"] = [
   ("Women's health", r"women'?s health|female|\mcycle\M|menopause|pregnan|hormon|period\M"),
   ("Sponsor reads in unrelated content", r"sponsor|my partner|use code|thanks to .* for sponsoring|brought to you|\*sponsor|partnered"),
   ("Giveaways and partnerships", r"giveaway|\mwin\M|enter|teaming up|entries|take home a free|sweepstake"),
+  ("Tagged in daily life and outfits", r"\mgrwm\M|get ready with me|day in (my|the) life|\mdiml\M|\mvlog|\mootd\M|outfit|fit ?check|what i wore|favou?rites|spend the day with me"),
+  ("Company news and business", r"\mipo\M|funding|valuation|investor|revenue|lawsuit|patent|verdict|\mceo\M|founder|acquisi|layoffs|earnings|award"),
+  ("Opinions on tracking", r"obsess(ed|ion) with (my )?(data|numbers|score)|don'?t need (an?|the) |stopped wearing|got rid of|took (it|my \w+) off|unpopular opinion|orthosomnia|too dependent"),
 ]
 T["hair-care"] = [
   ("Wash routine and how-to", r"wash ?day|hair ?care ?routine|routine|how (to|i) wash|shampoo(ing)? (routine|tips)|rutina|rotina|step by step|tips"),

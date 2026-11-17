@@ -388,12 +388,8 @@
     "pattern": "\\mvs\\M|versus|compar|alternative|better than|which (one|is)|screenless"
    },
    {
-    "name": "Subscription, price and value",
-    "pattern": "subscription|\\$\\d|per month|/month|price|expensive|worth the money|membership|paying"
-   },
-   {
-    "name": "Deals and seasonal sales",
-    "pattern": "\\msale\\M|labor day|black friday|save up to|% off|discount|\\mdeals?\\M|promo|code\\M"
+    "name": "Price, subscription and deals",
+    "pattern": "subscription|\\$\\d|per month|/month|price|expensive|worth the money|membership|paying|\\msale\\M|labor day|black friday|save up to|% off|discount|\\mdeals?\\M|promo|code\\M"
    },
    {
     "name": "New products and features",
@@ -422,6 +418,18 @@
    {
     "name": "Giveaways and partnerships",
     "pattern": "giveaway|\\mwin\\M|enter|teaming up|entries|take home a free|sweepstake"
+   },
+   {
+    "name": "Tagged in daily life and outfits",
+    "pattern": "\\mgrwm\\M|get ready with me|day in (my|the) life|\\mdiml\\M|\\mvlog|\\mootd\\M|outfit|fit ?check|what i wore|favou?rites|spend the day with me"
+   },
+   {
+    "name": "Company news and business",
+    "pattern": "\\mipo\\M|funding|valuation|investor|revenue|lawsuit|patent|verdict|\\mceo\\M|founder|acquisi|layoffs|earnings|award"
+   },
+   {
+    "name": "Opinions on tracking",
+    "pattern": "obsess(ed|ion) with (my )?(data|numbers|score)|don'?t need (an?|the) |stopped wearing|got rid of|took (it|my \\w+) off|unpopular opinion|orthosomnia|too dependent"
    }
   ],
   "hair-care": [

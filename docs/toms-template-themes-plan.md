@@ -186,4 +186,8 @@ Still to do, in the order that matters:
 - Model, "about the brand" agrees (counting "yes" and "passing" as one side): 93% overall. Lowest are the Israel conversation (88) and spirits (89).
 - Word rules, for comparison: they give 70% of posts any theme, and only 48% of the themes they attach are accepted. Rules attach every theme whose words match, so one post often gets several.
 
+**Sleep technology list, second version.** The first run left 17% of on-topic sleep technology posts in Other, far more than any other industry (2% to 10%). Reading them showed three missing themes: the device tagged in vlogs and outfit posts, company news (funding, the stock market, lawsuits, founder interviews) and personal opinions about wearing a tracker. These were added, and the two small price themes were merged into "Price, subscription and deals". After labelling sleep technology again, Other among on-topic posts fell to 5%, and "Tagged in daily life and outfits" became the largest theme (14% of on-topic posts). Theme accuracy on the same 150 posts stayed level (75%, against 76%). "About the brand" agreement moved from 90% to 85%, within the reviewer's own noise: it changed its answer on 13 of the 150 posts between two runs.
+
+Note that most of what remains in Other for sleep technology is posts not about the brand at all (40% of the industry's posts), which the theme elements already leave out.
+
 This is agreement with a stronger model, not a human check. Most disagreements are about posts that fit two themes, or captions too thin to judge. The review answers are kept in the work folder, not the repository; rerun the script to reproduce them.
