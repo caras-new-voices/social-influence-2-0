@@ -1,3 +1,4 @@
+import { openAiKey } from "./openai-key";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { z } from "zod";
@@ -63,9 +64,6 @@ export function llmMode(): LlmMode {
   return process.env.ANTHROPIC_API_KEY ? "claude" : "mock";
 }
 
-function openAiKey(): string | undefined {
-  return process.env.OPEN_AI_KEY?.trim() || process.env.OPENAI_API_KEY?.trim() || undefined;
-}
 
 export function llmModel(): string {
   const mode = llmMode();
@@ -125,7 +123,7 @@ ${datasetDoc()}
 - Never name third-party data providers, listening platforms or collection tooling. If asked where the data comes from, say it was collected by IMAI's social listening and enriched by IMAI.
 
 ## Widget recipes (propose_widget input)
-Grid: 12 columns, 1 row = 56px. Typical sizes: kpi width 12 height 2, bar/stacked_bar/segmented width 6 height 5, line width 8 height 5, table width 12 height 6, insight width 6 height 5, text width 4 height 3, section width 12 height 1.
+Grid: 12 columns, 1 row = 56px. Elements open at the full width (12 columns). Typical heights: kpi 3, bar/stacked_bar/segmented/line 6, table 7, text 3, insight 6.
 - kpi: a row of stat tiles. SQL returns one row per tile with columns label, value, optional compare (benchmark value; a delta versus it is shown), optional fmt ('compact' | 'percent' | 'currency' | 'number'). Use UNION ALL to build the rows.
 - bar: SQL returns {x, value} rows; set x to the category column and y to the value column. horizontal true for long category names or ranked lists. One series: do not set series.
 - line: SQL returns {x, value} or long format {x, series, value} ordered by x ascending; x is usually month. Set x, y and (for long format) series.
@@ -862,7 +860,7 @@ async function* mockTurn(input: ChatTurnInput, existing: WidgetSpec[]): AsyncGen
 }
 
 /* ------------------------------------------------------------------ */
-/* OpenAI provider (used when OPEN_AI_KEY is set)                         */
+/* OpenAI provider (used when an OpenAI key is set)                       */
 /* ------------------------------------------------------------------ */
 
 type OaiMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
@@ -876,7 +874,7 @@ const OPENAI_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = TOOLS.filter(
 
 function friendlyOpenAiError(err: InstanceType<typeof OpenAI.APIError>): string {
   const msg = err.message ?? "";
-  if (err.status === 401) return "The OpenAI API key was rejected (401). Check OPEN_AI_KEY in the deployment's environment variables and redeploy.";
+  if (err.status === 401) return "The OpenAI API key was rejected (401). Check OPEN_AI_2 in the deployment's environment variables and redeploy.";
   if (err.status === 404 || /model_not_found|does not exist/i.test(msg)) {
     return `The OpenAI model "${OPENAI_MODEL}" is not available to this key. Set OPENAI_MODEL in the deployment's environment variables to a model you can use (for example gpt-5.2 or gpt-4.1) and redeploy.`;
   }

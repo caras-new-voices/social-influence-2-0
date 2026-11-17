@@ -1,12 +1,12 @@
 import { STARTER_SECTIONS } from "./starter";
-import { TOM_SECTIONS } from "./tom";
-import { newId, type WidgetSpec } from "./widgets";
+import { TOM_NOHASH_SECTIONS, TOM_SECTIONS } from "./tom";
+import { FULL_WIDTH, isChartOrTable, newId, type WidgetSpec } from "./widgets";
 
 /**
  * Dashboard templates. A template is a list of sections; each section is a header followed by
- * widgets placed left to right on the 12 column grid (wrapping to a new row when full).
+ * its elements, one per row at the full width of the 12 column grid.
  */
-export type TemplateId = "starter" | "eran" | "tom" | "blank";
+export type TemplateId = "starter" | "eran" | "tom" | "tomnohash" | "blank";
 
 export interface DashboardTemplate {
   id: TemplateId;
@@ -31,7 +31,12 @@ export function layoutSections(sections: TemplateSection[]): WidgetSpec[] {
     let x = 0;
     let rowH = 0;
     for (const t of s.widgets) {
-      const { w, h, ...spec } = t;
+      // Templates give each element a width and height; the layout opens them at full width and
+      // makes charts and tables one row taller, so every element is easy to read without resizing.
+      const { w: _w, h: baseH, ...spec } = t;
+      void _w;
+      const w = FULL_WIDTH;
+      const h = isChartOrTable(spec.type) ? baseH + 1 : baseH;
       if (x + w > 12) {
         x = 0;
         y += rowH;
@@ -509,6 +514,12 @@ export const TEMPLATES: DashboardTemplate[] = [
     name: "Tom's Default Template",
     description: "Eight measures calculated the same way every month, then five questions: which conversations are winning, where is the white space, what do people say about us and our rivals, which creators win, and what should we build or fix. Parts that need data you do not have yet are left out.",
     build: () => layoutSections(TOM_SECTIONS.map((sec) => ({ title: sec.title, widgets: sec.widgets.map(({ when, ...el }) => { void when; return el; }) }))),
+  },
+  {
+    id: "tomnohash",
+    name: "Toms No Hash",
+    description: "Tom's template without hashtags. Every post gets its themes from the words of its caption, from a fixed list for the industry, so posts with no hashtag count too. Adds hooks: whether tutorials, reviews or routines win, and which we under-use.",
+    build: () => layoutSections(TOM_NOHASH_SECTIONS.map((sec) => ({ title: sec.title, widgets: sec.widgets.map(({ when, ...el }) => { void when; return el; }) }))),
   },
   {
     id: "blank",

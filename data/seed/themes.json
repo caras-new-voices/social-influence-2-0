@@ -1,0 +1,688 @@
+{
+ "version": 1,
+ "note": "Themes and hooks assigned from the words of a post's caption. Each rule is a name and a regular expression matched against the lower-cased caption. A post can have several themes.",
+ "hooks": [
+  {
+   "name": "Tutorial or how-to",
+   "pattern": "how to|how i |tutorial|step by step|tips|guide\\M|learn how|cómo |como hacer|comment faire|anleitung|so geht|schritt für schritt|consejos|astuce|tipps|truco|explained|walkthrough"
+  },
+  {
+   "name": "Review or first impressions",
+   "pattern": "review|first impressions|honest|my thoughts|worth it|worth the hype|reseña|opini[oó]n|\\mavis\\M|getestet|erfahrung|bewertung|recensione|recenzj|j'ai testé|produkttest|verdict|pros and cons"
+  },
+  {
+   "name": "Routine or day in the life",
+   "pattern": "routine|day in (the|my) life|\\mvlog|get ready with me|grwm|with me\\M|rutina|alltag|morning|night ?time"
+  },
+  {
+   "name": "Haul or unboxing",
+   "pattern": "haul|unboxing|unbox|what i got|empties|restock|new in\\M|package|paket"
+  },
+  {
+   "name": "Comparison",
+   "pattern": "\\mvs\\M|versus|compar|better than|alternative|vergleich|which is better|battle"
+  },
+  {
+   "name": "Deal or promotion",
+   "pattern": "discount|% off|\\msale\\M|\\mdeals?\\M|\\moffer|coupon|promo|\\mcode\\M|rabatt|angebot|oferta|rebaja|descuento|sconto|promoção|soldes|bon plan|tiktok ?shop|link in bio|save up to|happy hour|special"
+  },
+  {
+   "name": "News or announcement",
+   "pattern": "announc|breaking|\\mnews\\M|launch|unveil|released|just dropped|introducing|novedad|nouveau|nuovo|lançamento|coming soon|is back|now available"
+  },
+  {
+   "name": "Event coverage",
+   "pattern": "\\mevent|festival|live from|conference|fashion week|\\mexpo\\M|meetup|concert|tailgate|party|gala|awards|opening"
+  },
+  {
+   "name": "Humour or entertainment",
+   "pattern": "funny|comedy|meme|joke|prank|\\mlol\\M|😂|🤣|humor|comedia|parody|skit"
+  },
+  {
+   "name": "Opinion or commentary",
+   "pattern": "opinion|i think|unpopular|hot take|\\mrant\\M|debate|analysis|reaction|\\mreact|thoughts on|why i |here.?s why"
+  },
+  {
+   "name": "Listing or sale advert",
+   "pattern": "for sale|price:|preț|цена|ціна|продаж|в продаже|vând|se vende|disponibil|whatsapp|dm to order|lot no|prodavac|kontakt|book now|order now|call us|shop online|in stock"
+  },
+  {
+   "name": "Giveaway or competition",
+   "pattern": "giveaway|\\mwin\\M|gewinnspiel|verlosung|sorteo|concours|participa|enter to win|competition|sweepstake"
+  }
+ ],
+ "industries": {
+  "hair-removal": [
+   {
+    "name": "Shaving routine and how-to",
+    "pattern": "shaving routine|how (to|i) shave|shave with me|rasier(routine|tipps)|rasiertipps|rutina de (afeitado|depilaci)|routine (de )?rasage|how to shave|shaving tips|shavingroutine|smooth shave|close shave|glatte rasur|mi rutina"
+   },
+   {
+    "name": "Everything shower and body care ritual",
+    "pattern": "everything ?shower|shower ?routine|body ?care|self ?care|pamper|körperpflege|rutina de ducha|soin du corps|glow ?up|ritual|rutina de cuidado|cuidado personal"
+   },
+   {
+    "name": "Product review and first impressions",
+    "pattern": "review|honest|first impressions|worth it|reseña|\\mavis\\M|getestet|produkttest|erfahrung|opini[oó]n|devolver|recenzj|recension|obsessed|verdict|fan de"
+   },
+   {
+    "name": "Intimate and sensitive areas",
+    "pattern": "intim|bikini|maillot|zona íntima|zonas íntimas|sensitive area|empfindliche stellen|partes íntimas"
+   },
+   {
+    "name": "Skin concerns",
+    "pattern": "irritat|razor burn|ingrown|rasurbrand|hautirritation|sensitive skin|empfindliche haut|piel sensible|peau sensible|rougeur|eingewachsen|\\mbumps\\M|strawberry legs|picor|\\mitch|cuts?\\M|schneiden|ziepen"
+   },
+   {
+    "name": "Smooth skin for summer and travel",
+    "pattern": "summer|sommer|verano|\\mété\\M|estate\\M|verão|holiday|vacation|urlaub|vacaciones|travel|beach|strand\\M|playa|plage|\\mtrip\\M"
+   },
+   {
+    "name": "Deals and shop offers",
+    "pattern": "tiktok ?shop|tiktokmademebuy|\\mdeals?\\M|dealsfürdich|angebot|oferta|rebaja|discount|rabatt|\\msale\\M|% off|sconto|promo|ausverkauft|sold out|precio|\\mpreis|bundle"
+   },
+   {
+    "name": "Hauls, gift sets and empties",
+    "pattern": "haul|gift ?set|geschenk|christmas|weihnacht|navidad|noël|empties|productos terminados|aufgebraucht|unboxing|advent|present"
+   },
+   {
+    "name": "Design and look",
+    "pattern": "aesthetic|ästhet|colou?rs?\\M|farbe|design|pretty|\\mcute\\M|pastel|\\mpink\\M|\\mrosa\\M|estétic|pleasing"
+   },
+   {
+    "name": "Method comparison",
+    "pattern": "\\mwax|epilat|hair removal cream|ontharingscr|enthaarungscreme|crema depilatoria|crème dépilatoire|laser|sugaring|\\mvs\\M|versus|método de depil|méthode|ipl\\M"
+   },
+   {
+    "name": "Value and longevity",
+    "pattern": "refill|subscription|\\mabo\\M|ersatzkling|recambio|recharge|\\mlasts?\\M|years with|money.?s worth|replacement blade|long.?lasting|durable"
+   },
+   {
+    "name": "Testing panels and gifted products",
+    "pattern": "hometester|tester ?club|produkttest|gifted|pr package|\\*gift|testen dürfen|probar gratis|\\msample|muestra|kostenlos"
+   },
+   {
+    "name": "Brand campaigns and ambassadors",
+    "pattern": "ambassad|embajador|botschafter|campaign|kampagne|campaña|partnership|sponsor|\\mad\\M|anzeige|werbung|publicidad|\\mpub\\M|collaboration commerciale|współpraca|giveaway|gewinnspiel|sorteo|myskinmyway"
+   },
+   {
+    "name": "Body hair attitudes",
+    "pattern": "body hair|körperbehaarung|vello corporal|body positiv|my choice|normali[sz]e|hairy|have to shave|\\mpoils\\M|unshaven"
+   },
+   {
+    "name": "Men's and unisex grooming",
+    "pattern": "\\mmen'?s\\M|for men|beard|\\mbart\\M|\\mbarba\\M|unisex|männer|\\mhombres?\\M|\\mhommes?\\M|barbear"
+   }
+  ],
+  "ev-europe": [
+   {
+    "name": "New model launch and first look",
+    "pattern": "all.?new|new model|world premiere|unveil|reveal|first look|debut|launch|neue[rn]? |nouveau|nouvelle|nuevo|novo |conheça|facelift|\\m2026\\M|\\m2027\\M"
+   },
+   {
+    "name": "Test drive and full review",
+    "pattern": "test ?drive|review|we drive|driven|probefahrt|\\messai\\M|prueba|\\mtest\\M|first drive|im test|walkaround|pov drive"
+   },
+   {
+    "name": "Price and value",
+    "pattern": "price|\\mpreis|\\mprix\\M|precio|preț|€|\\$|cheaper|affordable|günstig|leasing|lease|discount|\\meuros?\\M|costs? "
+   },
+   {
+    "name": "Range, battery and charging",
+    "pattern": "\\mrange\\M|reichweite|autonomie|autonomía|batter|akku|charg|laden\\M|ladesäule|\\mkwh\\M|supercharger|recharge|bater[ií]a"
+   },
+   {
+    "name": "Software and driver assistance",
+    "pattern": "software|\\mupdate|autopilot|self.?driving|\\mfsd\\M|adas|driver assist|infotainment|carplay|android auto|\\mota\\M|autonom|robotaxi"
+   },
+   {
+    "name": "Chinese brands in Europe",
+    "pattern": "chinese|china|chinois|chinesisch|chinas?\\M|tariff|surtaxe|zoll|aranceles|китай"
+   },
+   {
+    "name": "Reliability and faults",
+    "pattern": "problem|issue|recall|rückruf|fault|defect|broke|rust|rugin|coroziun|reliab|panne|avería|fail|complaint"
+   },
+   {
+    "name": "Ownership stories and running costs",
+    "pattern": "owner|ownership|months? with|year with|\\mkm\\M later|running costs?|my car|living with|long.?term|daily driver|unterhalt"
+   },
+   {
+    "name": "Design, interior and comfort",
+    "pattern": "design|interior|innenraum|intérieur|luxury|luxus|comfort|seats|panoramic|ambient|styling"
+   },
+   {
+    "name": "Performance, tuning and motorsport",
+    "pattern": "\\mamg\\M|\\mm ?power|horsepower|\\mps\\M|\\mcv\\M|tuning|rally|racing|formula ?1|\\mf1\\M|motorsport|drag race|0.?-?100|turbo|exhaust|airride|\\mvrs\\M|nürburgring"
+   },
+   {
+    "name": "Model comparison",
+    "pattern": "\\mvs\\M|versus|compar|vergleich|better than|rival|alternative to|greift .* an"
+   },
+   {
+    "name": "Used cars, listings and parts",
+    "pattern": "for sale|в продаже|продаж|vând|se vende|розб[оі]р|запчаст|\\mkm\\M|mileage|year:|двигатель|коробка|disponibil|used car|gebraucht|second.?hand|авто из|автоподбор|в пути"
+   },
+   {
+    "name": "Industry and policy news",
+    "pattern": "sales (figures|rose|fell)|market share|regulat|\\meu\\M|union européenne|government|subsid|factory|plant|layoff|elon|musk|ceo|shares|stock|invest|quarter"
+   },
+   {
+    "name": "Events and meets",
+    "pattern": "\\mmeet|treffen|car show|motor show|\\miaa\\M|salon|congress|kongres|sraz|festival|expo"
+   },
+   {
+    "name": "Car culture and spotting",
+    "pattern": "car ?spott|carsof|cartok|classic|oldtimer|youngtimer|photograph|📸|collection|garage|dream car"
+   }
+  ],
+  "caribbean-tourism": [
+   {
+    "name": "Resorts and where to stay",
+    "pattern": "resort|hotel|all.?inclusive|villa|airbnb|where to stay|\\msuite|spa\\M"
+   },
+   {
+    "name": "Beaches and scenery",
+    "pattern": "beach|playa|plage|\\mview|sunset|turquoise|paradise|island life|ocean|waterfall|scenery|tropical"
+   },
+   {
+    "name": "Itineraries and things to do",
+    "pattern": "things to do|itinerary|\\mday \\d|excursion|\\mtour\\M|must.?(see|visit|do)|guide|bucket ?list|places to|qué hacer|dia \\d"
+   },
+   {
+    "name": "Food and drink",
+    "pattern": "\\mfood|restaurant|street food|coffee|\\mrum\\M|cocktail|\\mdish|cuisine|comida|taste|\\meat\\M|brunch|dinner"
+   },
+   {
+    "name": "Cruises and port stops",
+    "pattern": "cruise|\\mport\\M|carnival (liberty|magic|elation|cruise)|royal caribbean|shore excursion|crucero"
+   },
+   {
+    "name": "Honeymoons, weddings and couples",
+    "pattern": "honeymoon|wedding|anniversar|couples?|proposal|romantic|luna de miel|boda"
+   },
+   {
+    "name": "Family and group trips",
+    "pattern": "family|kids|girls.? trip|group trip|friends trip|bachelorette|birthday trip|familia"
+   },
+   {
+    "name": "Adventure and nature",
+    "pattern": "snorkel|diving|\\mdive\\M|hik(e|ing)|rainforest|wildlife|zip.?line|surf|reef|volcan|national park|\\meco|adventure|whale|turtle"
+   },
+   {
+    "name": "Culture, music and festivals",
+    "pattern": "carnival|festival|\\msoca\\M|dancehall|reggae|dembow|music|culture|heritage|tradition|\\mart\\M|museum|danc"
+   },
+   {
+    "name": "Trip planning and cost",
+    "pattern": "flight|\\mbudget|\\mcost\\M|how much|travel tips|passport|visa\\M|best time to|planning|packing|book(ing)? (your|now|a trip)|deal"
+   },
+   {
+    "name": "Safety and advisories",
+    "pattern": "\\msafe|safety|advisory|crime|hurricane|storm|warning|danger|scam"
+   },
+   {
+    "name": "Living there",
+    "pattern": "moving to|move to|expat|living in|relocat|real estate|property|retire|digital nomad|residency"
+   },
+   {
+    "name": "National pride and diaspora",
+    "pattern": "independence|diaspora|proud to be|orgullo|miss (universe|grand|world)|heritage month|national (day|team|anthem|hero)|patria"
+   },
+   {
+    "name": "Local news and community",
+    "pattern": "\\mnews\\M|police|government|minister|election|school|college|community|championship|athlete|dies at|charity|fundrais"
+   },
+   {
+    "name": "Local business promotion",
+    "pattern": "shop online|visit us|order now|book now|reservations?|walk-ins|boutique|salon|env[ií]os|our store|we are open|menu"
+   }
+  ],
+  "premium-fashion": [
+   {
+    "name": "Outfit of the day and styling",
+    "pattern": "outfit|\\mootd\\M|look of|styling|styled|lookbook|what i wore|wearing|tenue|fit check|\\mlook\\M"
+   },
+   {
+    "name": "Hauls, unboxing and new purchases",
+    "pattern": "haul|unboxing|unbox|new in\\M|just bought|purchase|\\mbought\\M|shopping"
+   },
+   {
+    "name": "Bags and leather goods",
+    "pattern": "\\mbags?\\M|handbag|tote|\\msac\\M|borsa|bolso|backpack|рюкзак|сумк|leather|wallet|purse|pliage|crossbody"
+   },
+   {
+    "name": "New collection and campaign",
+    "pattern": "new collection|collection|campaign|drop(s|ping|ped)?\\M|capsule|fall.?winter|spring.?summer|\\mfw\\d|\\mss\\d|lookbook|nouvelle collection|coleç|colección"
+   },
+   {
+    "name": "Fashion week and shows",
+    "pattern": "fashion week|\\mnyfw|\\mpfw|\\mlfw|\\mmfw|runway|catwalk|défilé|\\mshow\\M|front row"
+   },
+   {
+    "name": "Celebrity, ambassadors and red carpet",
+    "pattern": "ambassador|red carpet|celebrity|\\mstars?\\M|actress|actor|wears|wearing .* at|premiere|met gala|house ambassador"
+   },
+   {
+    "name": "Fragrance and beauty lines",
+    "pattern": "fragrance|perfume|parfum|profumo|eau de|scent|kvepal|beauty|makeup|lipstick"
+   },
+   {
+    "name": "Sales, outlet and discounts",
+    "pattern": "\\msale\\M|outlet|discount|% off|soldes|rebajas|saldi|promo|best price|лучшая цена|€"
+   },
+   {
+    "name": "Resale, vintage and second-hand",
+    "pattern": "vintage|second.?hand|pre.?loved|vinted|thrift|charity ?shop|resale|auction|rare find|depop"
+   },
+   {
+    "name": "Reseller and wholesale listings",
+    "pattern": "lot no|\\mstock\\M|wholesale|mix stock|new arrival|prodavac|dostupn|dm to order|whatsapp|available sizes|размер|цвет"
+   },
+   {
+    "name": "Personalisation and gifting",
+    "pattern": "personali[sz]|monogram|engrav|gift|cadeau|regalo|geschenk"
+   },
+   {
+    "name": "Brand heritage and the designer's story",
+    "pattern": "heritage|legacy|iconic|history|founder|archive|since \\d{4}|tribute|a laissé|designer"
+   },
+   {
+    "name": "Stores, events and brand experiences",
+    "pattern": "boutique|store opening|flagship|pop.?up|\\mevent|dinner|dîner|invited|invitée|prize|exhibition|festival"
+   },
+   {
+    "name": "Menswear and tailoring",
+    "pattern": "menswear|men'?s (fashion|style)|\\msuit\\M|tailor|\\mblazer|tie\\M|homme|uomo"
+   },
+   {
+    "name": "Quality and authenticity",
+    "pattern": "authentic|\\mfake|\\mreal vs|counterfeit|quality|original\\M|100% ?(cotton|bomuld)|made in"
+   }
+  ],
+  "enterprise-tech": [
+   {
+    "name": "AI and agents",
+    "pattern": "\\mai\\M|artificial intelligence|\\magents?\\M|generative|genai|\\mllm|chatgpt|copilot|gemini|watsonx|machine learning|\\mml\\M"
+   },
+   {
+    "name": "Cloud and infrastructure",
+    "pattern": "\\mcloud\\M|data ?cent(er|re)|infrastructure|\\maws\\M|azure|kubernetes|server|compute|\\mgpu|hybrid cloud"
+   },
+   {
+    "name": "Cybersecurity",
+    "pattern": "security|cyber|hack|breach|malware|ransomware|phishing|\\msoc\\M|\\miam\\M|zero trust|vulnerab"
+   },
+   {
+    "name": "Data and analytics",
+    "pattern": "big ?data|analytics|data science|database|\\msql\\M|warehouse|bigquery|vertex|tensorflow|data engineer"
+   },
+   {
+    "name": "Developer tools and coding",
+    "pattern": "github|open ?source|developer|coding|programming|python|\\mapi\\M|\\msdk\\M|devops|\\mcode\\M|build tool|frontend"
+   },
+   {
+    "name": "Everyday software how-tos",
+    "pattern": "how to|tutorial|\\mword\\M|excel|powerpoint|google (forms|docs|sheets|tasks|drive)|outlook|\\mteams\\M|windows (10|11)|step.?by.?step"
+   },
+   {
+    "name": "Courses, certifications and careers",
+    "pattern": "certificat|\\mcourse|training|career|interview|resume|\\mjob|internship|hiring|bootcamp|students?|learn"
+   },
+   {
+    "name": "Company news and finance",
+    "pattern": "earnings|revenue|stock|shares|valuation|most valuable|acqui|layoff|\\mdeal\\M|billion|market cap|investor|files"
+   },
+   {
+    "name": "Product launches and conferences",
+    "pattern": "launch|announc|keynote|conference|summit|re:invent|\\mignite\\M|\\mbuild\\M 20|unveil|new feature|release"
+   },
+   {
+    "name": "Leadership and customer stories",
+    "pattern": "\\mceo\\M|leadership|executive|global head|customer (story|voice)|case study|podcast|episode|sits down|interview with"
+   },
+   {
+    "name": "Regulation and legal",
+    "pattern": "antitrust|regulat|lawsuit|\\mcourt|\\mftc\\M|\\mdoj\\M|breakup|ruling|compliance|privacy law"
+   },
+   {
+    "name": "Research and emerging technology",
+    "pattern": "quantum|\\mchips?\\M|semiconductor|research|breakthrough|\\mlab\\M|qubit"
+   },
+   {
+    "name": "Consumer devices and gaming",
+    "pattern": "xbox|gaming|\\mgame|surface|windows pc|laptop|console|playstation"
+   },
+   {
+    "name": "Sponsorships and brand presence",
+    "pattern": "sponsor|us ?open|wimbledon|masters|partner(ship)?|presented by|campus|hackathon"
+   },
+   {
+    "name": "Technology history and culture",
+    "pattern": "history|in 19\\d\\d|decades|first computer|vintage|nostalg|legacy|pioneer"
+   }
+  ],
+  "sleep-tech": [
+   {
+    "name": "Product review and setup",
+    "pattern": "review|setting up|set ?up|unboxing|worth (it|the hype)|first impressions|honest|my experience|months? (with|later)"
+   },
+   {
+    "name": "Sleep temperature and cooling",
+    "pattern": "cool(ing|er)?\\M|temperature|sleep(ing)? hot|hot sleeper|\\mheat|thermo|chil|night sweats"
+   },
+   {
+    "name": "Sleep tracking and scores",
+    "pattern": "sleep (score|tracking|data|stages)|\\mhrv\\M|heart rate|readiness|\\mrem\\M|deep sleep|tracker|metrics|sleep apnea"
+   },
+   {
+    "name": "Recovery, training and performance",
+    "pattern": "recovery|training|workout|athlete|marathon|running|\\mstrain|lifting|gym|performance|\\mfitness"
+   },
+   {
+    "name": "Health and longevity science",
+    "pattern": "longevity|neuroscien|huberman|biohack|science|study|research|doctor|\\mdr\\.|health|peptide|glp-1|metabol"
+   },
+   {
+    "name": "Device comparison",
+    "pattern": "\\mvs\\M|versus|compar|alternative|better than|which (one|is)|screenless"
+   },
+   {
+    "name": "Subscription, price and value",
+    "pattern": "subscription|\\$\\d|per month|/month|price|expensive|worth the money|membership|paying"
+   },
+   {
+    "name": "Deals and seasonal sales",
+    "pattern": "\\msale\\M|labor day|black friday|save up to|% off|discount|\\mdeals?\\M|promo|code\\M"
+   },
+   {
+    "name": "New products and features",
+    "pattern": "launch|announc|introducing|next evolution|\\m2\\.0\\M|unveil|just dropped|new (feature|model|version|product|generation)|is here\\M"
+   },
+   {
+    "name": "Accessories and add-ons",
+    "pattern": "\\mband|strap|charger|charging|\\mcase\\M|accessor|watch ?face|dock"
+   },
+   {
+    "name": "Night routine and bedroom setup",
+    "pattern": "night ?(time)? routine|bedtime|bedroom|bed ?sheets|bedding|pillow|wind down|morning routine|reset"
+   },
+   {
+    "name": "Mattress and comfort",
+    "pattern": "mattress|firm|memory foam|back pain|comfort|topper|adjustable|pressure"
+   },
+   {
+    "name": "Women's health",
+    "pattern": "women'?s health|female|\\mcycle\\M|menopause|pregnan|hormon|period\\M"
+   },
+   {
+    "name": "Sponsor reads in unrelated content",
+    "pattern": "sponsor|my partner|use code|thanks to .* for sponsoring|brought to you|\\*sponsor|partnered"
+   },
+   {
+    "name": "Giveaways and partnerships",
+    "pattern": "giveaway|\\mwin\\M|enter|teaming up|entries|take home a free|sweepstake"
+   }
+  ],
+  "hair-care": [
+   {
+    "name": "Wash routine and how-to",
+    "pattern": "wash ?day|hair ?care ?routine|routine|how (to|i) wash|shampoo(ing)? (routine|tips)|rutina|rotina|step by step|tips"
+   },
+   {
+    "name": "Dandruff and scalp care",
+    "pattern": "dandruff|scalp|flak|itch|caspa|seborr|oil control|anti.?dandruff"
+   },
+   {
+    "name": "Damage repair and bond building",
+    "pattern": "repair|bond|damage|breakage|strength|restor|reparaci|k18results|heat damage|bleach damage"
+   },
+   {
+    "name": "Salon colour and stylist work",
+    "pattern": "balayage|highlight|blonde|brunette|bronde|toner|toned|colou?r(ist)?|grey blending|foil|lightener|stylist|salon"
+   },
+   {
+    "name": "Before and after results",
+    "pattern": "before (and|&) after|antes y después|antes e depois|transformation|results|reaction"
+   },
+   {
+    "name": "Product review and first impressions",
+    "pattern": "review|first impressions|honest|worth it|tried|trying|opini|thoughts|did not like|obsessed|amazing"
+   },
+   {
+    "name": "Deals, bundles and restocks",
+    "pattern": "bundle|restock|tiktok ?shop|\\mdeals?\\M|\\msale\\M|% off|discount|grab (this|it)|before it.?s gone"
+   },
+   {
+    "name": "PR packages and gifted hauls",
+    "pattern": "\\mpr\\M|gifted|package|haul|unboxing|thank you .* for sending|sent me"
+   },
+   {
+    "name": "Hair growth and hair loss",
+    "pattern": "hair growth|growth|hair loss|thinning|ca[ií]da|anti.?ca[ií]da|shedding|fall out|bald|calvo"
+   },
+   {
+    "name": "Ingredients and science",
+    "pattern": "ingredient|formula|niacinamide|pro.?v|vitamin|peptide|sulfate|silicone|protein|science|chemist"
+   },
+   {
+    "name": "Styling and heat",
+    "pattern": "styling|blow ?out|blow ?dry|curling|waves|ondas|heat protect|hairstyle|peinado|updo|straighten"
+   },
+   {
+    "name": "Curly and textured hair",
+    "pattern": "curly|curls|coily|wavy|textured|natural hair|\\m4c\\M|\\m3[abc]\\M|rizos|cachos"
+   },
+   {
+    "name": "Scent and feel",
+    "pattern": "smell|scent|fragrance|residue|lightweight|greasy|soft|shiny|olor|cheiro|cooling sensation|mint"
+   },
+   {
+    "name": "Stylist education and the salon business",
+    "pattern": "academy|education|class\\M|educator|behind the chair|book now|clients?|salon owner|cutting skills"
+   },
+   {
+    "name": "DIY and hacks",
+    "pattern": "\\mdiy\\M|hack|homemade|casero|trick|mix(ed|ing)? (it|with)|agregué|rosemary|romero"
+   },
+   {
+    "name": "Ambassadors and campaigns",
+    "pattern": "ambassador|campaign|partner|#ad\\M|\\mad\\M|sponsored|associat|actress|celebrity"
+   }
+  ],
+  "spirits": [
+   {
+    "name": "Bottle review and tasting notes",
+    "pattern": "review|tasting notes?|\\mnose\\M|palate|finish|\\mproof\\M|pour|sipp|neat\\M|rating|first taste"
+   },
+   {
+    "name": "Bottle hunting and rare releases",
+    "pattern": "hunting|allocated|limited|rare|store pick|private selection|single barrel|\\d\\d year|release|is back|unicorn|secondary"
+   },
+   {
+    "name": "Cocktail recipes and how-to",
+    "pattern": "cocktail|recipe|old fashioned|margarita|manhattan|mixolog|how to make|\\moz\\M|shake|stir|garnish|highball"
+   },
+   {
+    "name": "Bar and restaurant specials",
+    "pattern": "happy hour|specials?\\M|\\$\\d|menu|\\mwings\\M|domestics|bucket|every (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|well drinks|taco"
+   },
+   {
+    "name": "Events, music and nightlife",
+    "pattern": "live music|\\mdj\\M|party|concert|festival|night ?club|\\mlive\\M|stage|tonight|costume|karaoke"
+   },
+   {
+    "name": "Sport and game day",
+    "pattern": "\\mnfl\\M|football|game ?day|tailgate|college games|watch party|\\mufc\\M|baseball|basketball"
+   },
+   {
+    "name": "Distillery visits and tourism",
+    "pattern": "distillery|tour\\M|tasting room|bourbon trail|kentucky|visitor|rickhouse|warehouse"
+   },
+   {
+    "name": "Food pairing and cooking",
+    "pattern": "pairing|burger|steak|\\mbbq\\M|recipe|glaze|dinner|cook|dessert|cigar"
+   },
+   {
+    "name": "Ready-to-drink and canned cocktails",
+    "pattern": "canned|seltzer|ready.?to.?drink|\\mrtd\\M|\\mcans?\\M|hard (tea|seltzer)|variety pack"
+   },
+   {
+    "name": "Collections and the home bar",
+    "pattern": "collection|home bar|shelf|shelfie|bottle ?kill|backbar|bunker|bar cart"
+   },
+   {
+    "name": "Seasonal and gifting",
+    "pattern": "\\mfall\\M|autumn|holiday|christmas|halloween|thanksgiving|gift|summer|labor day|season"
+   },
+   {
+    "name": "Brand heritage and how it is made",
+    "pattern": "heritage|history|since \\d{4}|mash ?bill|barrel|aged|distill(ed|er|ing)|master distiller|char|tradition"
+   },
+   {
+    "name": "Sponsorships and partnerships",
+    "pattern": "sponsor|partner|presented by|#ad\\M|\\mad\\M|collab|ambassador"
+   },
+   {
+    "name": "Price, value and where to buy",
+    "pattern": "price|msrp|costco|total wine|liquor store|worth the|value|budget|under \\$|shelf finds?|find"
+   },
+   {
+    "name": "Comparisons and blind tastings",
+    "pattern": "\\mvs\\M|versus|blind|compar|battle|head to head|ranking|ranked|tier list"
+   },
+   {
+    "name": "Moderation and sobriety",
+    "pattern": "sober|detox|drink responsibly|quit drinking|moderation|hangover|alcohol.?free|21\\+"
+   }
+  ],
+  "nfl-new-york": [
+   {
+    "name": "Game recap and highlights",
+    "pattern": "recap|highlights?|final score|winners (&|and) losers|defeat|beat the|postgame|reaction to|\\mwin\\M|\\mloss\\M"
+   },
+   {
+    "name": "Game preview and predictions",
+    "pattern": "preview|prediction|week \\d|matchup|keys to|what to watch|\\mvs\\.?\\M|odds|will .* this season"
+   },
+   {
+    "name": "Player performance and profiles",
+    "pattern": "rookie|touchdown|yards|catch|sack|interception|breakout|star\\M|highlight reel|teach tape|praise"
+   },
+   {
+    "name": "Quarterback and roster debate",
+    "pattern": "quarterback|\\mqb\\M|starter|depth chart|roster|53.?man|cuts?\\M|position battle|bench"
+   },
+   {
+    "name": "Injuries",
+    "pattern": "injur|\\macl\\M|hamstring|concussion|out for|questionable|\\mir\\M|sidelined|surgery"
+   },
+   {
+    "name": "Draft, trades and free agency",
+    "pattern": "draft|trade|free agen|sign(ed|ing|s)\\M|contract|extension|waive|released"
+   },
+   {
+    "name": "Coaching and front office",
+    "pattern": "coach|coordinator|general manager|\\mgm\\M|front office|owner|scheme|play.?call|fired|hired"
+   },
+   {
+    "name": "Training camp and preseason",
+    "pattern": "training camp|preseason|practice|camp\\M|joint practice|otas?\\M|minicamp"
+   },
+   {
+    "name": "Fantasy football and betting",
+    "pattern": "fantasy|best ball|\\mdfs\\M|rankings|sleepers?|prizepicks|bet(s|ting)?\\M|parlay|draftkings|start.?em|waiver"
+   },
+   {
+    "name": "Team history and classic moments",
+    "pattern": "history|super bowl|classic|throwback|legend|helmet catch|all.?time|greatest|\\b(19|20)\\d\\d season|retired"
+   },
+   {
+    "name": "Fan culture and game day",
+    "pattern": "\\mfans?\\M|tailgate|metlife|game ?day|season ticket|kickoff party|fanbase|chant"
+   },
+   {
+    "name": "Team business and franchise value",
+    "pattern": "franchise value|billion|ownership|stadium|ticket prices?|revenue|sponsor|valuation"
+   },
+   {
+    "name": "League-wide news that mentions the team",
+    "pattern": "around the (nfl|league)|every team|all 32|power rankings|league.?wide|nfl news|welcome to the team"
+   },
+   {
+    "name": "Video games and simulations",
+    "pattern": "madden|simulation|\\msim\\M|gameplay|franchise mode|ultimate team"
+   },
+   {
+    "name": "Merchandise and memorabilia",
+    "pattern": "jersey|memorabilia|autograph|trading cards?|collectible|signed (jersey|helmet|ball|football)|bobblehead|pro shop"
+   }
+  ],
+  "nation-brand": [
+   {
+    "name": "Conflict and security news",
+    "pattern": "\\marmy\\M|military|strike|missile|rocket|attack|\\midf\\M|soldier|troops|الجيش|عدوان|צה.?ל|war\\M|guerre|ceasefire|إنذار|غارة"
+   },
+   {
+    "name": "Gaza and the humanitarian situation",
+    "pattern": "gaza|غزة|עזה|humanitarian|\\maid\\M|famine|displac|refugee|hospital|civilians|children|شهيد"
+   },
+   {
+    "name": "Regional tensions",
+    "pattern": "\\miran|إيران|ایران|lebanon|لبنان|hezbollah|houthi|syria|yemen|حزب الله|الحوثي"
+   },
+   {
+    "name": "Diplomacy and international response",
+    "pattern": "united nations|\\mun\\M|الأمم المتحدة|sanction|عقوبات|ambassador|embassy|recogni[sz]|resolution|summit|foreign minister|diplomat|press conference"
+   },
+   {
+    "name": "Protest and solidarity",
+    "pattern": "protest|demonstrat|march\\M|rally|boycott|solidarity|free ?palestine|stand with|manifestation|took to the streets|flotilla"
+   },
+   {
+    "name": "Domestic politics and government",
+    "pattern": "knesset|netanyahu|نتنياهو|נתניהו|ben.?gvir|minister|government|coalition|election|הממשלה|ראש העירייה|cabinet"
+   },
+   {
+    "name": "Hostages, prisoners and detainees",
+    "pattern": "hostage|prisoner|detain|captiv|أسرى|חטופ|released from|prison"
+   },
+   {
+    "name": "Media coverage and commentary",
+    "pattern": "media|headline|coverage|journalis|propaganda|narrative|analysis|opinion|acceptable to say|debate"
+   },
+   {
+    "name": "Hate incidents and the debate about them",
+    "pattern": "antisemit|anti-semit|islamophob|hate (crime|speech)|racis|discriminat"
+   },
+   {
+    "name": "Religion and faith",
+    "pattern": "prayer|pray|bible|torah|quran|scripture|jerusalem|القدس|ירושלים|temple|mosque|synagogue|church|الكوتل|הכותל|holy|blessed|\\mgod\\M|الله"
+   },
+   {
+    "name": "History and commemoration",
+    "pattern": "history|anniversar|memorial|remember|holocaust|1948|1967|nakba|commemorat|disparition|in memory"
+   },
+   {
+    "name": "Culture, food and daily life",
+    "pattern": "food|recipe|kitchen|music|\\mart\\M|film|festival|daily life|street|market|culture|tel aviv|تطبيق|אפליקציה"
+   },
+   {
+    "name": "Travel and tourism",
+    "pattern": "travel|tourism|tourist|visit(ing)?\\M|trip|flight|hotel|vacation"
+   },
+   {
+    "name": "Technology, business and innovation",
+    "pattern": "startup|tech\\M|innovation|economy|invest|company|cyber|export|\\mhi.?tech"
+   },
+   {
+    "name": "Diaspora and community life",
+    "pattern": "diaspora|community|jewish community|congregation|students? (group|union)|campus|federation"
+   },
+   {
+    "name": "Public diplomacy",
+    "pattern": "more to israel.?s story|beyond the headlines|the truth about|learn the facts|hasbara|fact.?check|myth"
+   }
+  ]
+ }
+}

@@ -28,6 +28,8 @@ Standard measures. When asked for one of these, use this definition so numbers m
 - Theme: a hashtag in the post caption (regexp_matches(lower(text), '#([[:alnum:]_]{3,30})', 'g')), leaving out platform filler such as fyp and viral and hashtags that contain a tracked brand's name.
 - Content gap: a theme's share of audience comments (sum of posts.comments) minus its share of posts, in points.
 
+Classified posts: two more tables give every post the themes and hooks found in the words of its caption. post_themes(segment_id, post_id, brand, theme, is_primary) holds what a post is about, from a fixed list for the industry (count on is_primary so a post counts once; 'Other' and 'Unknown' are possible values); post_about(segment_id, post_id, brand, about) says whether the post is really about the brand ('yes', 'passing', 'no'), where that has been judged; post_hooks(segment_id, post_id, brand, hook) holds how it is told ('Tutorial or how-to', 'Review or first impressions', 'Routine or day in the life', 'Haul or unboxing', 'Comparison', 'Deal or promotion', 'News or announcement', 'Event coverage', 'Humour or entertainment', 'Opinion or commentary', 'Listing or sale advert', 'Giveaway or competition'). A post can have several of each, or none. Join to posts on (segment_id, post_id). Prefer these to hashtags when asked about themes or formats; list the themes with SELECT theme, count(*) FROM post_themes GROUP BY 1.
+
 ## Table posts (one row per creator post that mentions the brand)
 post_id bigint, segment_id int, brand text, influencer_id bigint, username text, platform text, post_type text ('video'|'image'),
 url text, title text (mostly null), text text (caption), published_at timestamptz,

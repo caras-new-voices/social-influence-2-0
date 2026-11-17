@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json(session);
   } catch (e) {
     const err = e as { status?: number; message?: string };
-    const msg = err.status === 401 ? "The OpenAI key was rejected (401). Check OPEN_AI_KEY and redeploy." : (err.message ?? "Could not start the voice session");
+    const msg = err.status === 401 ? "The OpenAI key was rejected (401). Check OPEN_AI_2 and redeploy." : (err.message ?? "Could not start the voice session");
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }

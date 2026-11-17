@@ -4,6 +4,7 @@ import zlib from "node:zlib";
 import type { Db, Row } from "./db";
 import { getDb } from "./db";
 import { loadCatalog, loadPacks, syncCatalog } from "./catalog";
+import { classifyPosts } from "./themes";
 
 /**
  * Tables holding the social-listening dataset plus app state. The dataset lives in *_raw tables;
@@ -23,6 +24,16 @@ CREATE TABLE IF NOT EXISTS industries (
   id text PRIMARY KEY, name text NOT NULL, category text, region text, summary text, suggested_focal text,
   pack text, sort integer NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS theme_rules (
+  industry text NOT NULL, kind text NOT NULL, label text NOT NULL, pattern text NOT NULL, sort integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (industry, kind, label)
+);
+CREATE TABLE IF NOT EXISTS post_labels_raw (
+  segment_id integer NOT NULL, post_id bigint NOT NULL, brand text, kind text NOT NULL, label text NOT NULL,
+  rank smallint, source text,
+  PRIMARY KEY (segment_id, post_id, kind, label)
+);
+CREATE INDEX IF NOT EXISTS post_labels_brand_idx ON post_labels_raw (brand, kind);
 CREATE TABLE IF NOT EXISTS posts_raw (
   post_id bigint, segment_id integer, brand text, influencer_id bigint, username text,
   platform text, post_type text, url text, title text, text text, published_at timestamptz,
@@ -145,8 +156,9 @@ CREATE TABLE IF NOT EXISTS period_events (
 /**
  * How queries see the dataset. Two transaction-local settings scope every read:
  *  - app.brands (brand names joined by chr(31)) and app.focal_brand: the dashboard's brands and
- *    which one is "us". posts_all, comments_all, influencers and segments are views over the raw
- *    tables filtered to those brands, so a saved query can never reach another dashboard's brands.
+ *    which one is "us". posts_all, comments_all, influencers, segments, post_themes and post_hooks
+ *    are views over the raw tables filtered to those brands, so a saved query can never reach
+ *    another dashboard's brands.
  *  - app.period_start / app.period_end: posts and comments are views over posts_all and
  *    comments_all filtered to that window. Queries that look outside the period use the _all views.
  * With no setting the views return everything. The views list columns at creation: after adding a
@@ -165,13 +177,16 @@ CREATE OR REPLACE FUNCTION period_end() RETURNS timestamptz LANGUAGE sql STABLE 
 CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand);
 CREATE VIEW comments_all AS SELECT * FROM comments_raw WHERE in_scope(brand);
 CREATE VIEW influencers AS SELECT * FROM influencers_raw WHERE in_scope(brand);
+CREATE VIEW post_themes AS SELECT segment_id, post_id, brand, label AS theme, coalesce(rank, 1) = 1 AS is_primary FROM post_labels_raw WHERE kind = 'theme' AND in_scope(brand);
+CREATE VIEW post_hooks AS SELECT segment_id, post_id, brand, label AS hook FROM post_labels_raw WHERE kind = 'hook' AND in_scope(brand);
+CREATE VIEW post_about AS SELECT segment_id, post_id, brand, label AS about FROM post_labels_raw WHERE kind = 'about' AND in_scope(brand);
 CREATE VIEW segments AS SELECT ${SEGMENT_COLUMNS}, CASE WHEN brand = focal_brand() THEN 'focal' ELSE 'competitor' END AS role FROM segments_raw WHERE in_scope(brand);
 CREATE OR REPLACE FUNCTION is_competitor(b text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT b IS DISTINCT FROM focal_brand() AND EXISTS (SELECT 1 FROM segments s WHERE s.brand = b) $f$;
 CREATE OR REPLACE FUNCTION is_self_mention(t text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT t ILIKE '%' || focal_brand() || '%' OR EXISTS (SELECT 1 FROM segments_raw s, jsonb_array_elements_text(coalesce(s.aliases, '[]'::jsonb)) a WHERE s.brand = focal_brand() AND t ILIKE '%' || a || '%') $f$;
 CREATE VIEW posts AS ${PERIOD_FILTER("posts_all")};
 CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 `;
-const VIEWS_VERSION = "scoped-1";
+const VIEWS_VERSION = "scoped-3";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -182,6 +197,8 @@ ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS owner text;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS kind text;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS aliases jsonb;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS source_posts integer;
+ALTER TABLE post_labels_raw ADD COLUMN IF NOT EXISTS rank smallint;
+ALTER TABLE post_labels_raw ADD COLUMN IF NOT EXISTS source text;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */
@@ -213,7 +230,7 @@ const RAW_TABLES: Array<[raw: string, earlier: string[]]> = [
   ["segments_raw", ["segments"]],
   ["influencers_raw", ["influencers"]],
 ];
-const VIEW_NAMES = ["posts", "comments", "posts_all", "comments_all", "segments", "influencers"];
+const VIEW_NAMES = ["posts", "comments", "posts_all", "comments_all", "segments", "influencers", "post_themes", "post_hooks", "post_about"];
 
 /**
  * Brings the dataset tables to the current layout and (re)builds the views. Databases created by
@@ -356,6 +373,21 @@ async function prepare() {
 }
 
 /**
+ * Planner statistics for the dataset tables. Bulk loads leave them stale (and the embedded
+ * database never gathers them by itself), which can turn a join into a scan per row. Refreshed
+ * whenever the amount of data changed since the last time.
+ */
+async function refreshStatistics(db: Db) {
+  const [n] = await db.query<{ k: string }>(
+    `SELECT (SELECT count(*) FROM posts_raw) || ':' || (SELECT count(*) FROM comments_raw) || ':' || (SELECT count(*) FROM post_labels_raw) AS k`,
+  );
+  const rows = await db.query<{ value: string }>(`SELECT value FROM app_meta WHERE key = 'stats_for'`);
+  if (rows[0]?.value === n.k) return;
+  for (const t of ["posts_raw", "comments_raw", "influencers_raw", "segments_raw", "post_labels_raw"]) await db.exec(`ANALYZE ${t}`);
+  await db.query(`INSERT INTO app_meta (key, value) VALUES ('stats_for', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [n.k]);
+}
+
+/**
  * The industry packs load after the base dataset, a few seconds at a time, so the first requests
  * after a deploy are not held for the whole load. Each call continues where the last one stopped.
  */
@@ -366,7 +398,12 @@ function ensurePacks(): Promise<void> {
       const db = await getDb();
       const { pending, loaded } = await loadPacks(db, Number(process.env.PACK_LOAD_BUDGET_MS ?? 6000) || 6000, (m) => console.log("[packs]", m));
       if (loaded) await loadCatalog(db);
-      if (!pending) g.__siPacksDone = true;
+      // Themes and hooks are assigned once the posts are in, in the same resumable way.
+      const labels = pending ? { pending: 1 } : await classifyPosts(db, Number(process.env.PACK_LOAD_BUDGET_MS ?? 6000) || 6000, (m) => console.log("[themes]", m));
+      if (!pending && !labels.pending) {
+        await refreshStatistics(db);
+        g.__siPacksDone = true;
+      }
     })()
       .catch((err) => console.error("[packs] load failed:", (err as Error).message))
       .finally(() => {

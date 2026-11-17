@@ -1,3 +1,4 @@
+import { openAiKey } from "./openai-key";
 import OpenAI from "openai";
 import { competitorNames, focalName, getWorkspace } from "./brands";
 import type { Row } from "./db";
@@ -7,9 +8,6 @@ import type { WidgetSpec } from "./widgets";
 export const VOICE_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime";
 export const VOICE_NAME = process.env.OPENAI_REALTIME_VOICE ?? "marin";
 
-function openAiKey(): string | undefined {
-  return process.env.OPEN_AI_KEY?.trim() || process.env.OPENAI_API_KEY?.trim() || undefined;
-}
 
 export function voiceAvailable(): boolean {
   return !!openAiKey();
@@ -60,7 +58,7 @@ export interface VoiceSession {
 
 export async function createVoiceSession(widget: WidgetSpec, rows: Row[]): Promise<VoiceSession> {
   const apiKey = openAiKey();
-  if (!apiKey) throw new Error("Voice needs an OpenAI key. Set OPEN_AI_KEY in the deployment's environment variables.");
+  if (!apiKey) throw new Error("Voice needs an OpenAI key. Set OPEN_AI_2 in the deployment's environment variables.");
   const client = new OpenAI({ apiKey, maxRetries: 1, timeout: 30_000 });
   const res = await client.realtime.clientSecrets.create({
     expires_after: { anchor: "created_at", seconds: 600 },
