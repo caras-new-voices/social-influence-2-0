@@ -69,6 +69,7 @@ const CHUNK = 4000;
 /* ------------------------------------------------------------------ */
 
 interface DisclosureFile { values: string[]; rows: Array<[number, number, number]> }
+interface ProductLabelsFile { products: string[]; attributes: string[]; posts: Array<[number, number, number, number]>; comments: Array<[number, number, number]> }
 interface CommentLabelsFile { about: string[]; attributes: string[]; rows: Array<[number, number, number, number, number?]> }
 
 function readGz<T>(folder: string, industry: string): { file: T; hash: string } | null {
@@ -116,8 +117,10 @@ const GIFTED_MARKERS = ["#gifted", "\\mgifted\\M", "#giftedby", "pr sample", "#p
  *  - is_owned: the post comes from one of the brand's own accounts (segments_raw.handles, from the catalog).
  *  - about: the post's "about the brand" label, so the views can leave out posts that are not.
  *  - comments: `about` and `attribute` from the comment classifier.
+ *  - product and claims: the product line a post or a brand comment is about, and the benefits a
+ *    caption claims (scripts/classify_products.py). Codes 0 and 1 in the file mean none and several.
  */
-async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile | null, comments: CommentLabelsFile | null) {
+async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile | null, comments: CommentLabelsFile | null, products: ProductLabelsFile | null) {
   const seg = `segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`;
   await db.query(`UPDATE posts_raw SET is_paid_source = coalesce(is_paid, false) WHERE is_paid_source IS NULL AND ${seg}`, [industry]);
   await db.query(`UPDATE posts_raw SET disclosure = NULL, is_gifted = false, is_owned = false, is_affiliate = false, paid_basis = NULL, about = NULL WHERE ${seg}`, [industry]);
@@ -183,6 +186,30 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
       );
     }
   }
+  await db.query(`UPDATE posts_raw SET product = NULL, claims = NULL WHERE ${seg} AND (product IS NOT NULL OR claims IS NOT NULL)`, [industry]);
+  await db.query(`UPDATE comments_raw SET product = NULL WHERE ${seg} AND product IS NOT NULL`, [industry]);
+  if (products) {
+    const line = (code: number) => (code >= 2 ? products.products[code] ?? null : null);
+    const posts = products.posts.map(([segment_id, post_id, code, mask]) => {
+      const claims = products.attributes.filter((_, i) => mask & (1 << i));
+      return { segment_id, post_id, product: line(code), claims: claims.length ? claims : null };
+    });
+    for (let at = 0; at < posts.length; at += CHUNK) {
+      await db.query(
+        `UPDATE posts_raw p SET product = t.product, claims = t.claims FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, post_id bigint, product text, claims text[])
+          WHERE p.segment_id = t.segment_id AND p.post_id = t.post_id`,
+        [JSON.stringify(posts.slice(at, at + CHUNK))],
+      );
+    }
+    const rows = products.comments.map(([segment_id, comment_id, code]) => ({ segment_id, comment_id, product: line(code) })).filter((r) => r.product);
+    for (let at = 0; at < rows.length; at += CHUNK) {
+      await db.query(
+        `UPDATE comments_raw c SET product = t.product FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, product text)
+          WHERE c.segment_id = t.segment_id AND c.comment_id = t.comment_id`,
+        [JSON.stringify(rows.slice(at, at + CHUNK))],
+      );
+    }
+  }
 }
 interface RulesFile {
   version?: number;
@@ -241,11 +268,12 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     const model = readLabels(ind.industry);
     const disclosure = readGz<DisclosureFile>("disclosure", ind.industry);
     const commentLabels = readGz<CommentLabelsFile>("comment_labels", ind.industry);
+    const productLabels = readGz<ProductLabelsFile>("product_labels", ind.industry);
     const handles = await db.query<{ h: string }>(`SELECT md5(coalesce(string_agg(brand || ':' || coalesce(handles::text, ''), '|' ORDER BY brand), '')) AS h FROM segments_raw WHERE industry = $1`, [ind.industry]);
     const base = `${rules.hash}:${model?.hash ?? "rules"}:${ind.posts}`;
     // The corrections have their own state, so a new disclosure or comment file does not redo the labels.
     const flagsKey = `flags:${ind.industry}`;
-    const flagsBase = `${base}:f7:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
+    const flagsBase = `${base}:f8:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${productLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
     const applyFlagsIfNeeded = async (): Promise<boolean> => {
       // An import that re-sends posts overwrites is_paid and clears is_paid_source (imports.ts): the corrections must run again.
       const stale = await db.query<{ n: number }>(
@@ -264,9 +292,9 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
       );
       if (!claim.length) return false;
       const t0 = Date.now();
-      await applyFlags(db, ind.industry, disclosure?.file ?? null, commentLabels?.file ?? null);
+      await applyFlags(db, ind.industry, disclosure?.file ?? null, commentLabels?.file ?? null, productLabels?.file ?? null);
       await setMeta(db, flagsKey, flagsBase);
-      log(`${ind.industry}: paid, brand-owned and comment corrections applied in ${Date.now() - t0} ms`);
+      log(`${ind.industry}: paid, brand-owned, comment and product corrections applied in ${Date.now() - t0} ms`);
       return true;
     };
     const state = (await getMeta(db, key)) ?? "";

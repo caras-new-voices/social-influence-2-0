@@ -168,6 +168,35 @@ for r in got["What people love and hate, by attribute"]:
     check(f"attribute {a}: our praise per 1K", 1000 * sum(c.get("sentiment") == "positive" for c in ga) / len(g), r["our praise per 1K"], 0.004)
     check(f"attribute {a}: our objections per 1K", 1000 * sum(neg(c) for c in ga) / len(g), r["our objections per 1K"], 0.004)
 
+# Product lines and claimed benefits (all time, like the boxes).
+if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")) and "What people say, by product" in got:
+    pl = gz("product_labels", IND + ".json.gz")
+    pprod = {(r[0], r[1]): (pl["products"][r[2]] if r[2] >= 2 else None, {a for i, a in enumerate(pl["attributes"]) if r[3] & (1 << i)}) for r in pl["posts"]}
+    cprod = {(r[0], r[1]): pl["products"][r[2]] for r in pl["comments"] if r[2] >= 2}
+    line = lambda p: pprod.get((p["segment_id"], p["post_id"]), (None, set()))[0]
+    claims = lambda p: pprod.get((p["segment_id"], p["post_id"]), (None, set()))[1]
+    for r in got["What people say, by product"]:
+        g = [p for p in posts if p["brand"] == r["brand"] and line(p) == r["product"]]
+        gc = [c for c in comments if c["brand"] == r["brand"] and cprod.get((c["segment_id"], c["comment_id"])) == r["product"]]
+        name = f"product {r['brand']} {r['product']}"
+        check(f"{name}: posts", len(g), r["posts"], 0)
+        check(f"{name}: engagement vs norm", vs(g), r["engagement vs norm"], 0.01)
+        check(f"{name}: brand comments", len(gc), r["brand comments"], 0)
+        if r["praise per 1K"] is not None:
+            check(f"{name}: praise per 1K", 1000 * sum(c.get("sentiment") == "positive" for c in gc) / len(gc), r["praise per 1K"], 0.002)
+            check(f"{name}: objections per 1K", 1000 * sum(neg(c) for c in gc) / len(gc), r["objections per 1K"], 0.002)
+            check(f"{name}: buying signals per 1K", 1000 * sum(c["buying"] for c in gc) / len(gc), r["buying signals per 1K"], 0.002)
+    for title, who, col in (("Benefits nobody claims", None, "posts claiming it"), ("Are we saying what people value?", FOCAL, "our posts claiming it")):
+        gp = [p for p in posts if who is None or p["brand"] == who]
+        gcm = [c for c in comments if (who is None or c["brand"] == who) and c["attribute"] and c.get("sentiment") == "positive"]
+        all_claims = sum(len(claims(p)) for p in gp)
+        for r in got[title]:
+            a = r["attribute"].split(":")[0].split(" ")[0].lower()
+            n = sum(a in claims(p) for p in gp); k = sum(c["attribute"] == a for c in gcm)
+            check(f"{title} {a}: posts claiming", n, r[col], 0)
+            check(f"{title} {a}: comments praising", k, r["comments praising it"], 0)
+            check(f"{title} {a}: gap, points", 100 * k / len(gcm) - 100 * n / all_claims, r["gap, points"], 0.004)
+
 bad = [c for c in checks if not c[0]]
 for ok, name, mine, theirs in bad: print(f"  DIFFERENT {name}: recalculated {mine}, dashboard shows {theirs}")
 print(f"{len(checks) - len(bad)} of {len(checks)} numbers match ({BASE}, {FOCAL} against {len(brands) - 1} competitors, all time)")

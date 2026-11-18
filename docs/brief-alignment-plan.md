@@ -24,21 +24,22 @@ Written 18 November 2026, after the default dashboard ("Tom's 8, Nov 8th") went 
 
 - A new table in the opening section with each brand's share of posts, views, creators and engagements.
 
-## Phase 2: next
+## Phase 2: built (hair removal)
 
-One new read of the captions and comments, to add two things the data lacks.
+One new read of the captions and comments (`scripts/classify_products.py`) added two things the data lacked. Measured accuracy is in `docs/accuracy-report-products.md`. The product lines are a draft for a person to confirm: `docs/product-lines-draft.md`.
 
 **4. Products.** The brief's matrix has four rows: my brand, competitor brands, my products, competitor products. We only have brands.
 
 - Tag each post and each brand comment with the product line it is about (for example a brand's intimate range against its standard razors), from a list per brand drawn from the captions and confirmed by a person.
-- Then: praise, objections and the priority grid per product, and a creator top 10 per product.
+- Built: "What people say, by product", "Objections by product, ours and rivals'" and "Who drives each product".
+- Not built: the priority grid per product. Only four product lines have the 200 brand comments a comment measure needs.
 
 **5. The benefit a post claims.** Two sub-questions are "not possible yet" only because posts are not tagged this way.
 
 - Tag each post with which of the six attributes it claims (price, efficacy, ease, durability, safety, service).
-- Then: "Which benefits does nobody claim?" (rarely claimed, often praised) and "Are we saying what people value?" (what creators claim against what the audience praises).
+- Built: "Benefits nobody claims" (rarely claimed, often praised) and "Are we saying what people value?" (what creators claim against what the audience praises).
 
-Cost: one classifier run over about 6,000 hair removal posts and 7,600 brand comments, a few dollars. Product lists need a person's eye before the run.
+Cost: one classifier run over 6,137 hair removal posts and 7,609 brand comments, a few dollars. The other nine industries have not been read: their product and claim boxes stay hidden.
 
 ## Phase 3: after that
 

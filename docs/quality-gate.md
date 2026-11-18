@@ -77,7 +77,17 @@ Theme accuracy was measured last week: 78% for hair removal, the lowest of the t
   - earned.
   Hair care now reads 37% earned, 13% affiliate, 12% gifted, 10% paid and disclosed, 26% platform label only, 2% brand-owned. Posts shown as affiliate check out at 98 to 99% against the reviewer in hair care, sleep technology and premium fashion. **Still open:** what the 26% "platform label only" posts are. They are probably more shop posts without a tag, but the caption cannot say. And whether affiliate posts should count as earned is Tom's call; today they do not.
 
+### Market filter, briefs, products and claimed benefits (18 November 2026)
+
+- **Market filter.** Checked in the browser and on Postgres: the numbers change, the bar names the market, the choice survives a reload. Inside a small market the minimum samples hide what cannot be read.
+- **Products and claimed benefits** (hair removal only). A model drafted each brand's product lines, then read 6,137 posts and 7,609 brand comments. A stronger model read a sample of 240 of each blind (`docs/accuracy-report-products.md`):
+  - Post product line: where a line was named, the judge names the same one 94% of the time. Comments: 93%.
+  - Claimed benefits: the judge confirms 88 to 90% for price, ease and safety. **Below the mark:** efficacy 72%, durability 75% (8 posts), service 63% (11 posts). Read the two claims tables as a direction, not to the point.
+  - 43% of posts name no product line, so the product boxes cover the rest.
+- **The arithmetic.** `npm run check:numbers` now recomputes 291 numbers, including the product and claims boxes. All match.
+
 ### Not verified
+- The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 
 - No person outside this build has checked a sample. The model checks and my own read are above; Tom or the team has not looked.
 - The list of brand-owned accounts is a draft (`docs/brand-accounts-draft.md`). Earned share depends on it.

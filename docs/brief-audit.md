@@ -8,7 +8,7 @@ Each line has one of three results:
 - **Approximation:** built, with a stated difference.
 - **Not possible yet:** the data does not hold what it needs. Nothing is faked.
 
-Totals for the 39 sub-questions: 24 answered, 9 approximations, 6 not possible yet.
+Totals for the 39 sub-questions: 26 answered, 9 approximations, 4 not possible yet.
 
 ## The eight measures
 
@@ -52,14 +52,14 @@ Output in the brief: an "own it" list with the theme, proof, who is absent and t
 1. **What does the audience reward that no brand owns? Answered,** with one stated change. The brief's "no brand above 25%" cannot be met when fewer than six brands are tracked, so the line is 25% or one and a half times an even split, whichever is higher.
 2. **What do consumers ask about that creators don't cover? Answered.** "Content gap, in points".
 3. **Which questions go unanswered? Answered.** "Questions about the brand that nobody answered", grouped by what they ask about. Questions about the creator are now left out.
-4. **Which benefits does nobody claim? Not possible yet.** Posts are not classified by the benefit they claim. The nearest read is "Start talking about" in the priority grid.
+4. **Which benefits does nobody claim? Answered.** "Benefits nobody claims": each attribute's share of the benefits claimed in captions against its share of the praise in brand comments. Captions are read by a model for the benefit they claim (hair removal only so far).
 5. **Which audiences are under-served? Approximation.** By creator country only. The data has no audience age or gender per post.
 6. **Which platforms are under-served? Approximation.** Share of posts by platform against rivals, not theme by platform.
 7. **Which culture is open to us? Not possible yet.** Culture lens.
 
 ## 3. What do people say about us, our rivals and our products?
 
-Output in the brief: for each brand and product, 3 things to amplify, 3 to answer and 3 to attack. **Built** at brand level: "The answer: what to amplify, answer and attack". Not per product: the data has no product field.
+Output in the brief: for each brand and product, 3 things to amplify, 3 to answer and 3 to attack. **Built** at brand level: "The answer: what to amplify, answer and attack". Per product, "What people say, by product" gives praise, objections and buying signals for each product line, ours and rivals', from a drafted list of lines (`docs/product-lines-draft.md`) that needs confirming. The three-by-three answer itself is still per brand: the data has no product field.
 
 1. **What do people love and hate? Answered.** "What people love and hate, by attribute".
 2. **Which objections matter most? Answered.** "Objections that matter most": frequency plus likes.
@@ -67,13 +67,13 @@ Output in the brief: for each brand and product, 3 things to amplify, 3 to answe
 4. **Who switches to whom? Approximation.** "Who people compare us with" counts other brands named and who was favoured. It is not a flow between brands.
 5. **What stops people buying? Answered.** "What stops people buying", grouped by attribute.
 6. **What should the copy say? Answered.** "What the copy should say": the most-liked product comments per attribute.
-7. **Are we saying what people value? Not possible yet.** It needs the benefits creators claim in posts.
+7. **Are we saying what people value? Answered.** "Are we saying what people value?": what posts about us claim against what our audience praises.
 
 Putting paid behind it: "Who reaches our buyer" shows the audience of our creators where known. Paid audience profiles are not built.
 
 ## 4. Which creators win in each conversation?
 
-Output in the brief: a top 10 per theme, product and competitor. **Built** as a top 15 by creator score across the tracked brands, and the top 3 per theme. Not per product.
+Output in the brief: a top 10 per theme, product and competitor. **Built** as a top 15 by creator score across the tracked brands, the top 3 per theme, and the top 3 per product line ("Who drives each product").
 
 1. **Who drives each theme? Answered.** "Who drives each theme".
 2. **Who drives buying? Answered.** "Who drives buying".
@@ -92,7 +92,7 @@ Also added, because Tom called it out: "Earned creators: posting about us, never
 Output in the brief: the product priority grid. **Built:** "The answer: fix, protect, start talking about" and "Product priority grid".
 
 1. **What do people wish existed? Answered.** "What people wish existed". Requests to the creator are left out.
-2. **What is breaking, and is it getting worse? Answered.** By attribute over time, not by product.
+2. **What is breaking, and is it getting worse? Answered.** By attribute over time. "Objections by product, ours and rivals'" says which product line an objection belongs to, without the trend.
 3. **How do people actually use it? Answered.** "How people actually use it".
 4. **What should we fix, protect or start talking about? Answered.** The grid.
 5. **Where are competitor products weak? Answered.** "Where competitor products are weak: their 'fix first' box".
