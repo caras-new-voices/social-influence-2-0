@@ -28,6 +28,8 @@ Standard measures. When asked for one of these, use this definition so numbers m
 - Theme: the post's primary theme in post_themes (see Classified posts). Do not use hashtags as themes.
 - Minimum samples: 30 posts behind a theme and 200 brand comments behind a comment measure. Say so when a cell is smaller.
 
+Markets: a market is the creator's country (posts.country; a comment takes its post's). When the dashboard context names a market, the tables are already filtered to it.
+
 Words to use, always: "engagements" for the count, "engagement rate" for engagements divided by reach as a percentage, "engagement vs norm" for the ratio. Never write just "engagement" for a number.
 
 Corrections already applied to the data. Use them, they are what the dashboards use:

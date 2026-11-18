@@ -12,7 +12,7 @@ Totals for the 39 sub-questions: 24 answered, 9 approximations, 6 not possible y
 
 ## The eight measures
 
-- **Share of voice. Answered.** Brand posts divided by all tracked brands' posts. The "category" is the tracked brands, not the whole market.
+- **Share of voice. Answered.** Brand posts divided by all tracked brands' posts, and "Share of voice, four ways" gives it by views, creators and engagements too. The "category" is the tracked brands, not the whole market.
 - **Engagement vs norm. Answered.** Engagements divided by expected, where expected is reach (views, or followers for Instagram image posts) times the tracked brands' engagement rate for the platform and creator size. 1.2 and above is outperforming.
 - **Momentum. Answered.** Posts in the period against the period before, minus 1. Viewing all time, it is the last 90 days against the 90 before, the brief's 3 months.
 - **Earned share. Answered,** for the first time. Posts that are neither brand-owned, nor paid, nor sold for commission (affiliate), nor gifted, divided by all brand posts. Paid comes from the caption and the platform flag. Brand-owned comes from a drafted list of accounts (`docs/brand-accounts-draft.md`) that needs confirming. Gifted and affiliate posts are left out of earned: Tom to confirm.
@@ -23,6 +23,10 @@ Totals for the 39 sub-questions: 24 answered, 9 approximations, 6 not possible y
 
 Minimum samples are the brief's: 30 posts per theme and 200 comments behind a comment measure.
 
+## Markets
+
+The brief reads everything per market. A market filter on the period bar (the creator's country) applies to every box, the comparison and the AI analyst.
+
 ## Three lenses
 
 - **Me. Answered.** Every element shows the brand.
@@ -31,7 +35,7 @@ Minimum samples are the brief's: 30 posts per theme and 200 comments behind a co
 
 ## 1. Which conversations are winning?
 
-Output in the brief: 3 to 5 themes to build content around, with the format that works and our gap in each. **Built:** "The answer: themes to build content around".
+Output in the brief: 3 to 5 themes per market to build content around, with the format that works and our gap in each. **Built:** "The answer: themes to build content around" and "Content briefs for the top three themes". Set a market on the period bar and both, like every other box, are for that market.
 
 1. **Which themes are growing fastest and performing best? Answered.** "Themes: momentum and engagement vs norm". Winning is growing and at 1.2 or more.
 2. **Which are early signals, and which are peaking? Answered.** The status column of the same table. Early is 1.5 or more with momentum under 20%. Peaking is "fast growth" below the norm: we set fast at 50% or more, the brief gives no number.
@@ -39,7 +43,7 @@ Output in the brief: 3 to 5 themes to build content around, with the format that
 4. **Where are we missing from winning themes? Answered.** "Where we are missing from winning themes", in points.
 5. **Which formats and hooks win in each theme? Approximation.** "Formats that win" and "Hooks that win" are across themes. Per theme, the answer names the best hook only. Hooks are read from captions, not transcripts.
 6. **What spiked, and why? Answered.** "What spiked, and why". Needs four months of history, so it shows for hair removal only.
-7. **Which markets lead? Approximation.** "Markets that lead" gives momentum by creator country. Where a theme grew first is not shown.
+7. **Which markets lead? Approximation.** "Markets that lead" gives momentum by creator country, and the market filter shows any theme inside one market. Where a theme grew first is not shown as one view.
 
 ## 2. Where is the white space?
 

@@ -165,6 +165,12 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
       WHERE l.kind = 'about' AND l.segment_id = p.segment_id AND l.post_id = p.post_id AND p.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
     [industry],
   );
+  // A comment's market is its post's: the creator's country.
+  await db.query(
+    `UPDATE comments_raw c SET country = p.country FROM posts_raw p
+      WHERE p.segment_id = c.segment_id AND p.post_id = c.post_id AND c.country IS DISTINCT FROM p.country AND c.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
+    [industry],
+  );
   await db.query(`UPDATE comments_raw SET about = NULL, attribute = NULL, buying = NULL WHERE ${seg} AND about IS NOT NULL`, [industry]);
   if (comments) {
     // buying: 1 or 0 from the stricter second reading; anything else (not read twice) stays NULL, so the supplied tag is used.
@@ -239,7 +245,7 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     const base = `${rules.hash}:${model?.hash ?? "rules"}:${ind.posts}`;
     // The corrections have their own state, so a new disclosure or comment file does not redo the labels.
     const flagsKey = `flags:${ind.industry}`;
-    const flagsBase = `${base}:f6:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
+    const flagsBase = `${base}:f7:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
     const applyFlagsIfNeeded = async (): Promise<boolean> => {
       // An import that re-sends posts overwrites is_paid and clears is_paid_source (imports.ts): the corrections must run again.
       const stale = await db.query<{ n: number }>(

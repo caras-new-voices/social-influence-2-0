@@ -8,7 +8,7 @@ The list was drafted by rule from the account names in the data (`scripts/make_b
 - **Venus** (283 of 1564 posts): gillettevenusde (88), gillettevenusit (68), gillettevenusuk (49), gillettevenuses (33), venusgillettefr (27), gillettevenus_greece (8), gillettevenuspt (5), gillettevenusspain (5)
 - **Estrid** (41 of 2212 posts): heyestrid (41)
 - **Veet** (73 of 315 posts): veet.france (67), veetfrance (6)
-- **Philips OneBlade** (95 of 1707 posts): philipsgermany (45), philipsromania (14), philipscz (14), philips_polska (7), Philips (6), philipsua (5), philipsspain (2), philipsportugal (1), philips_hu (1)
+- **Philips OneBlade** (132 of 1707 posts): philipsgermany (45), philips.uki (36), philipsromania (14), philipscz (14), philips_polska (7), Philips (6), philipsua (5), philipsspain (2), philipsnordics (1), philipsportugal (1), philips_hu (1)
 - **Wilkinson Sword** (74 of 267 posts): intuition_by_wilkinson_sword (48), intuitionwilkinsonsword (26)
 - **Mercadona** (2 of 20 posts): mercadona_portugal (1), mercadona (1)
 

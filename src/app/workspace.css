@@ -421,3 +421,7 @@
 
 /* What a chart's numbers measure, above the chart. */
 .chart__unit { padding: 0 0.25rem 0.15rem; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--Base-05); }
+
+/* Market filter on the period bar. */
+.period__market { width: auto; max-width: 15rem; height: 32px; padding: 0 1.8rem 0 0.6rem; font-size: 12.5px; }
+.period__market.is-set { border-color: var(--Primary-400); background-color: var(--Primary-50); color: var(--Primary-700); font-weight: 600; }

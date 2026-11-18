@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout } from "react-grid-layout";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ALL_TIME, formatWindow, periodFromParams, periodToParams, resolveCompare, resolveWindow, type PeriodState } from "@/lib/period";
+import { ALL_TIME, formatWindow, periodFromParams, periodToParams, resolveCompare, resolveWindow, windowKey, type PeriodState } from "@/lib/period";
 import type { UsageKind } from "@/lib/usage-shared";
 import { askAboutWidget, defaultSize, newId, nextY, type DashboardRecord, type WidgetSpec } from "@/lib/widgets";
 import { NewDataBanner } from "./NewDataBanner";
@@ -82,21 +82,23 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     setPeriodState(next);
     // Mirror in the URL without a navigation, and persist with the dashboard (debounced, no dirty flag).
     const params = new URLSearchParams(window.location.search);
-    for (const k of ["period", "compare"]) params.delete(k);
+    for (const k of ["period", "compare", "market"]) params.delete(k);
     for (const [k, v] of Object.entries(periodToParams(next))) if (!(k === "period" && v === "all")) params.set(k, v);
     const qs = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
     if (periodSaveTimer.current) clearTimeout(periodSaveTimer.current);
     periodSaveTimer.current = setTimeout(() => {
-      void fetch(`/api/dashboards/${dashboard.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period: next.mode === "all" && !next.compare ? null : next }) }).catch(() => {});
+      void fetch(`/api/dashboards/${dashboard.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period: next.mode === "all" && !next.compare && !next.market ? null : next }) }).catch(() => {});
     }, 600);
   }, [dashboard.id]);
-  const [periodCounts, setPeriodCounts] = useState<{ posts: number; comments: number } | null>(null);
+  // Counts are kept with the window they belong to, so the bar never shows one period's or market's counts next to another's label.
+  const [countsFor, setCountsFor] = useState<{ key: string; posts: number; comments: number } | null>(null);
+  const periodCounts = countsFor && countsFor.key === windowKey(resolveWindow(period)) ? countsFor : null;
   useEffect(() => {
     const win = resolveWindow(period);
     let alive = true;
     fetchWidgetRows("SELECT (SELECT count(*)::int FROM posts) AS posts, (SELECT count(*)::int FROM comments) AS comments", win)
-      .then((res) => { if (alive && res.rows[0]) setPeriodCounts({ posts: Number(res.rows[0].posts), comments: Number(res.rows[0].comments) }); })
+      .then((res) => { if (alive && res.rows[0]) setCountsFor({ key: windowKey(win), posts: Number(res.rows[0].posts), comments: Number(res.rows[0].comments) }); })
       .catch(() => {});
     return () => { alive = false; };
   }, [period]);

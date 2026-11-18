@@ -216,6 +216,18 @@ FROM a WHERE a.posts > 0 ORDER BY (a.brand = focal_brand()) DESC, a.posts DESC`,
         rationale: "The rival read in one glance, like for like.",
       },
       {
+        type: "table", w: 6, h: 5,
+        title: "Share of voice, four ways",
+        subtitle: "Each brand's share of the tracked brands' posts, views, creators and engagements, in percent. A brand with a small share of posts and a large share of views is being carried by a few big posts.",
+        sql: `WITH t AS (
+  SELECT brand, count(*)::float AS posts, sum(coalesce(views, 0)) AS views, count(DISTINCT influencer_id)::float AS creators, sum(coalesce(engagement, 0)) AS eng FROM posts GROUP BY 1
+), tot AS MATERIALIZED (SELECT sum(posts) AS posts, sum(views) AS views, sum(creators) AS creators, sum(eng) AS eng FROM t)
+SELECT t.brand, ${r1("100.0 * t.posts / NULLIF(tot.posts, 0)")} AS "share of posts %", ${r1("100.0 * t.views / NULLIF(tot.views, 0)")} AS "share of views %",
+       ${r1("100.0 * t.creators / NULLIF(tot.creators, 0)")} AS "share of creators %", ${r1("100.0 * t.eng / NULLIF(tot.eng, 0)")} AS "share of engagements %"
+FROM t, tot ORDER BY (t.brand = focal_brand()) DESC, t.posts DESC`,
+        rationale: "The brief's share of voice is by posts, and also by views, creators and engagements. The four rarely agree, and the difference says how a brand gets its voice.",
+      },
+      {
         type: "stacked_bar", w: 6, h: 5,
         title: "Earned, gifted, affiliate, paid and brand-owned posts",
         subtitle: "Share of each brand's posts. Paid, disclosed: the caption says advert or paid partnership. Paid, platform label only: the platform marks it commercial and the caption says nothing. Affiliate or shop: the creator sells it through the platform's shop or for commission. Gifted: a free product or a giveaway. Brand-owned: the brand's own account. Earned: none of these.",
@@ -225,7 +237,7 @@ FROM posts GROUP BY 1, 2 ORDER BY (brand = focal_brand()) DESC, 1, 2`,
         rationale: "How much of each brand's conversation is unprompted, and how much was bought, gifted or self-published.",
       },
       {
-        type: "table", w: 6, h: 5,
+        type: "table", w: 12, h: 5,
         title: "What the audience says, per tracked brand",
         subtitle: `Buying signals, praise and objections per 1,000 brand comments (brands with ${COMMENT_MIN}+ brand comments). ${BC_NOTE}.`,
         when: N_BC,
@@ -265,6 +277,50 @@ SELECT CASE WHEN n.k = 0 THEN 'No theme is above the norm in this period'
        END AS body
 FROM n`,
         rationale: "The brief's output for this question: 3 to 5 themes to build content around, the format that works, and our gap in each.",
+      },
+      {
+        type: "insight", w: 12, h: 10,
+        title: "Content briefs for the top three themes",
+        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the words to use and the objection to answer. Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
+        when: N_THEMED,
+        sql: `WITH ${THEMES}, ${BEST_HOOK("sp.cur")},
+pick AS (SELECT c.*, row_number() OVER (ORDER BY (status = 'winning') DESC, (status = 'early signal') DESC, vs DESC NULLS LAST) AS rk FROM c WHERE status IN ('winning', 'early signal', 'above norm')),
+top AS MATERIALIZED (SELECT * FROM pick WHERE rk <= 3),
+tp AS MATERIALIZED (SELECT tags.* FROM tags JOIN top USING (theme) WHERE tags.cur),
+fmt AS (
+  SELECT DISTINCT ON (theme) theme, format, fvs FROM (
+    SELECT theme, platform || ' ' || post_type AS format, sum(eng_s) / NULLIF(sum(expected), 0) AS fvs FROM tp
+    WHERE platform IS NOT NULL AND post_type IS NOT NULL GROUP BY 1, 2 HAVING count(*) >= 5
+  ) x WHERE fvs IS NOT NULL ORDER BY theme, fvs DESC
+), cr AS (
+  SELECT theme, username, sum(eng_s) / NULLIF(sum(expected), 0) AS cvs FROM tp WHERE username IS NOT NULL AND NOT is_owned GROUP BY 1, 2 HAVING count(*) >= 2
+), crr AS (
+  SELECT theme, string_agg(username || ' (' || ${x2("cvs")} || ')', ', ' ORDER BY cvs DESC) AS names
+  FROM (SELECT cr.*, row_number() OVER (PARTITION BY theme ORDER BY cvs DESC) AS k FROM cr WHERE cvs >= 1) y WHERE k <= 3 GROUP BY 1
+), mk AS (
+  SELECT theme, string_agg(country || ' (' || n || ' posts)', ', ' ORDER BY n DESC) AS markets
+  FROM (SELECT theme, country, count(*) AS n, row_number() OVER (PARTITION BY theme ORDER BY count(*) DESC) AS k FROM tp WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY 1, 2) z WHERE k <= 3 GROUP BY 1
+), bc AS MATERIALIZED (
+  SELECT tp.theme, (tp.brand = focal_brand()) AS ours, c.text, coalesce(c.likes, 0) AS likes, c.sentiment, c.attribute, c.objection_category
+  FROM brand_comments c JOIN tp ON tp.segment_id = c.segment_id AND tp.post_id = c.post_id
+), quote AS (SELECT DISTINCT ON (theme) theme, left(text, 150) AS said FROM bc WHERE sentiment = 'positive' AND attribute IS NOT NULL AND length(text) >= 25 ORDER BY theme, ours DESC, likes DESC),
+obj AS (SELECT DISTINCT ON (theme) theme, attribute, n FROM (SELECT theme, attribute, count(*) AS n FROM bc WHERE attribute IS NOT NULL AND ${NEGATIVE} GROUP BY 1, 2) q WHERE n >= 3 ORDER BY theme, n DESC),
+n AS (SELECT count(*) AS k FROM top)
+SELECT CASE WHEN n.k = 0 THEN 'No theme is above the norm in this period' ELSE n.k || CASE WHEN n.k = 1 THEN ' content brief' ELSE ' content briefs' END END AS headline,
+       CASE WHEN n.k = 0 THEN '<p>No theme with ${THEME_MIN} or more posts earns 1.2 times the norm, so there is nothing to brief yet. Try a longer period or all markets.</p>'
+       ELSE (SELECT string_agg(
+         '<h3>' || top.rk || '. ' || top.theme || '</h3><ul>'
+         || ${li(`'<strong>Why now:</strong> engagement ' || ${x2("top.vs")} || ' the norm over ' || top.posts::int || ' posts' || CASE WHEN top.mom IS NOT NULL THEN ', posts ' || CASE WHEN top.mom >= 0 THEN 'up ' ELSE 'down ' END || ${pct("abs(top.mom)")} || '%' ELSE '' END || ' (' || top.status || ').'`)}
+         || ${li(`'<strong>Our gap:</strong> we have ' || ${pct("top.ours / top.posts")} || '% of its posts against ' || ${pct("top.share")} || '% of all posts.'`)}
+         || CASE WHEN bh.hook IS NOT NULL OR fmt.format IS NOT NULL THEN ${li(`'<strong>How to tell it:</strong> ' || CASE WHEN bh.hook IS NOT NULL THEN 'told as ' || lower(bh.hook) || ' (' || ${x2("bh.hvs")} || ' the norm)' ELSE '' END || CASE WHEN bh.hook IS NOT NULL AND fmt.format IS NOT NULL THEN ', ' ELSE '' END || CASE WHEN fmt.format IS NOT NULL THEN 'best on ' || fmt.format || ' (' || ${x2("fmt.fvs")} || ')' ELSE '' END || '.'`)} ELSE '' END
+         || CASE WHEN crr.names IS NOT NULL THEN ${li(`'<strong>Who should tell it:</strong> ' || crr.names || '. The figure is engagement vs norm on their posts in this theme.'`)} ELSE '' END
+         || CASE WHEN mk.markets IS NOT NULL THEN ${li(`'<strong>Where:</strong> ' || mk.markets || '.'`)} ELSE '' END
+         || CASE WHEN quote.said IS NOT NULL THEN ${li(`'<strong>In their words:</strong> “' || quote.said || '”'`)} ELSE '' END
+         || CASE WHEN obj.attribute IS NOT NULL THEN ${li(`'<strong>Objection to answer:</strong> ' || lower(${ATTR("obj.attribute")}) || ' (' || obj.n || ' comments).'`)} ELSE '' END
+         || '</ul>', '' ORDER BY top.rk)
+         FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme)) END AS body
+FROM n`,
+        rationale: "The brief says every answer becomes a brief, a creator and an audience. This is the first draft of each.",
       },
       {
         type: "table", w: 12, h: 7,

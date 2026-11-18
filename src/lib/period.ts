@@ -23,6 +23,8 @@ export const PeriodStateSchema = z.object({
   /** Exclusive end, ISO date. Required for month and range. */
   end: z.string().regex(ISO_DATE).optional(),
   compare: CompareSchema.nullable().optional(),
+  /** One market (the creator's country), or absent for all markets. Applies to the main and the comparison window alike. */
+  market: z.string().max(80).nullable().optional(),
 });
 export type PeriodState = z.infer<typeof PeriodStateSchema>;
 
@@ -30,6 +32,8 @@ export type PeriodState = z.infer<typeof PeriodStateSchema>;
 export interface PeriodWindow {
   start?: string;
   end?: string;
+  /** One market (the creator's country); absent for all markets. */
+  market?: string;
 }
 
 /** Per-element override: inherit the dashboard period, ignore it, or pin a fixed window. */
@@ -92,6 +96,8 @@ export function formatDate(iso: string): string {
 }
 /** Human label for a window, e.g. "June 2026" or "3 Apr to 18 May 2026". Inclusive end shown. */
 export function formatWindow(w: PeriodWindow): string {
+  const m = w.market ? `, ${w.market}` : "";
+  if (m) return `${formatWindow({ start: w.start, end: w.end })}${m}`;
   if (!w.start && !w.end) return "All time";
   if (w.start && w.end && isWholeMonth(w.start, w.end)) return formatMonth(monthKey(w.start));
   const a = w.start ? formatDate(w.start) : "the beginning";
@@ -109,8 +115,9 @@ export function monthPeriod(month: string, compare: PeriodState["compare"] = nul
 
 /** The main window of a period state. */
 export function resolveWindow(p: PeriodState | null | undefined): PeriodWindow {
-  if (!p || p.mode === "all" || !p.start || !p.end) return {};
-  return { start: p.start, end: p.end };
+  const market = p?.market ? { market: p.market } : {};
+  if (!p || p.mode === "all" || !p.start || !p.end) return { ...market };
+  return { start: p.start, end: p.end, ...market };
 }
 
 /** The comparison window, derived from the main window and the compare mode. */
@@ -118,26 +125,31 @@ export function resolveCompare(p: PeriodState | null | undefined): PeriodWindow 
   if (!p?.compare) return null;
   const main = resolveWindow(p);
   const c = p.compare;
-  if (c.mode === "custom") return c.start && c.end ? { start: c.start, end: c.end } : null;
+  // The comparison is always within the same market.
+  const market = main.market ? { market: main.market } : {};
+  if (c.mode === "custom") return c.start && c.end ? { start: c.start, end: c.end, ...market } : null;
   if (!main.start || !main.end) return null;
-  if (c.mode === "same_last_year") return { start: addMonths(main.start, -12), end: addMonths(main.end, -12) };
+  if (c.mode === "same_last_year") return { start: addMonths(main.start, -12), end: addMonths(main.end, -12), ...market };
   // previous period: same length immediately before; whole months shift by whole months
-  if (isWholeMonth(main.start, main.end)) return { start: addMonths(main.start, -1), end: main.start };
+  if (isWholeMonth(main.start, main.end)) return { start: addMonths(main.start, -1), end: main.start, ...market };
   const len = daysBetween(main.start, main.end);
-  return { start: addDays(main.start, -len), end: main.start };
+  return { start: addDays(main.start, -len), end: main.start, ...market };
 }
 
 /** Applies an element-level override to the dashboard window. */
 export function effectiveWindow(dashboard: PeriodWindow, override: WidgetPeriod | undefined): PeriodWindow {
+  // An element's own time window never changes the market: that is a property of the whole dashboard.
+  const market = dashboard.market ? { market: dashboard.market } : {};
   if (!override || override === "inherit") return dashboard;
-  if (override === "all") return {};
-  return { start: override.start, end: override.end };
+  if (override === "all") return { ...market };
+  return { start: override.start, end: override.end, ...market };
 }
 
 /** Stable key for caches. */
 export function windowKey(w: PeriodWindow | null | undefined): string {
-  if (!w || (!w.start && !w.end)) return "all";
-  return `${w.start ?? ""}..${w.end ?? ""}`;
+  const m = w?.market ? `@${w.market}` : "";
+  if (!w || (!w.start && !w.end)) return `all${m}`;
+  return `${w.start ?? ""}..${w.end ?? ""}${m}`;
 }
 
 /* ---------------------------------------------------------------- */
@@ -154,11 +166,13 @@ export function periodToParams(p: PeriodState): Record<string, string> {
     else if (p.compare.mode === "same_last_year") out.compare = "ly";
     else if (p.compare.start && p.compare.end) out.compare = `${p.compare.start}..${p.compare.end}`;
   }
+  if (p.market) out.market = p.market;
   return out;
 }
 
 export function periodFromParams(params: { get(name: string): string | null }): PeriodState | null {
-  const period = params.get("period");
+  // "All time" is left out of the URL, so a market on its own is all time in that market.
+  const period = params.get("period") ?? (params.get("market") ? "all" : null);
   if (!period) return null;
   let state: PeriodState;
   if (period === "all") state = { mode: "all" };
@@ -175,6 +189,8 @@ export function periodFromParams(params: { get(name: string): string | null }): 
     const [a, b] = compare.split("..");
     if (ISO_DATE.test(a) && ISO_DATE.test(b)) state.compare = { mode: "custom", start: a, end: b };
   }
+  const market = params.get("market");
+  if (market) state.market = market.slice(0, 80);
   return state;
 }
 
@@ -186,7 +202,13 @@ export interface MonthCoverage {
   /** True when the data delivered so far reaches the end of the month. */
   complete: boolean;
 }
+export interface MarketCoverage {
+  country: string;
+  posts: number;
+}
 export interface Coverage {
+  /** Markets (creator countries) with posts for the selected brands, largest first. */
+  markets?: MarketCoverage[];
   firstDate: string | null;   // first post or comment date (ISO date)
   lastDate: string | null;    // last post or comment date (ISO date)
   /** Latest date the delivered data is known to cover (from imports), else lastDate. */

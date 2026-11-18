@@ -35,7 +35,7 @@ export function fetchWidgetRows(sql: string, window?: PeriodWindow | null, compa
     const p = fetch("/api/widgets/data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sql, window: window && (window.start || window.end) ? window : undefined, compare: compare ?? undefined, sampleSql, scope }),
+      body: JSON.stringify({ sql, window: window && (window.start || window.end || window.market) ? window : undefined, compare: compare ?? undefined, sampleSql, scope }),
     })
       .then(async (r) => {
         const j = (await r.json()) as { rows?: Row[]; compareRows?: Row[]; sample?: number; error?: string };
@@ -144,7 +144,7 @@ export function WidgetCard({
   const [showAnyway, setShowAnyway] = useState(false);
   // Thin data: the element declares a minimum sample and the current window does not reach it,
   // or a period is selected and nothing falls inside it.
-  const inPeriod = !!(win.start || win.end);
+  const inPeriod = !!(win.start || win.end || win.market);
   const thin = !!spec.sample && sample !== undefined && sample < spec.sample.min;
   const empty = !loading && !error && rows.length === 0 && spec.type !== "insight";
   const blocked = !showAnyway && inPeriod && (thin || empty);
