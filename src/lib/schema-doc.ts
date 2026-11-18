@@ -24,7 +24,7 @@ Standard measures. When asked for one of these, use this definition so numbers m
 - Engagement versus norm: sum(engagement) divided by sum(expected engagement), where a post's expected engagement is its reach (views; followers for Instagram image posts and posts without views) times the tracked brands' all-time engagement rate (sum(engagement) / sum(reach) over posts_all) for the same platform, creator tier and reach basis. 1.0 is the norm; 1.2 and above is outperforming.
 - Momentum: posts in the period divided by posts in the period before, minus 1.
 - Earned share: posts that are neither paid, gifted nor brand-owned (NOT is_paid AND NOT is_gifted AND NOT is_owned) divided by all the brand's posts.
-- Purchase intent, praise, objections: brand comments (see below) with purchase_intent_type set, with sentiment 'positive', or with (sentiment 'negative' OR objection_category set), per 1,000 brand comments.
+- Purchase intent, praise, objections: brand comments (see below) with buying true (a buying signal read from the comment; prefer it to purchase_intent_type), with sentiment 'positive', or with (sentiment 'negative' OR objection_category set), per 1,000 brand comments.
 - Theme: the post's primary theme in post_themes (see Classified posts). Do not use hashtags as themes.
 - Minimum samples: 30 posts behind a theme and 200 brand comments behind a comment measure. Say so when a cell is smaller.
 

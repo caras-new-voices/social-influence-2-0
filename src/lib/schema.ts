@@ -180,7 +180,8 @@ CREATE TABLE IF NOT EXISTS period_events (
  *    left out of posts_all and posts. post_about still lists them.
  *  - is_paid is the supplied flag or a paid disclosure found in the caption; is_gifted and
  *    is_owned (posted by the brand's own account) are new columns.
- *  - comments carry `about` (brand, category, creator, other, noise) and `attribute`.
+ *  - comments carry `about` (brand, category, creator, other, noise), `attribute` and `buying`
+ *    (a buying signal, read by the classifier; the supplied purchase_intent_type is looser).
  *    brand_comments and brand_comments_all keep the comments about the brand or its category
  *    (and comments not yet classified), which is what every comment measure should count.
  */
@@ -208,7 +209,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-4";
+const VIEWS_VERSION = "scoped-5";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -229,6 +230,7 @@ ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_owned boolean NOT NULL DEFAULT
 ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS about text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS about text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS attribute text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS buying boolean;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */

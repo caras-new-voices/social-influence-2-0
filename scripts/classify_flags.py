@@ -2,6 +2,7 @@
 
   python3 -I scripts/classify_flags.py posts <work-dir> [--industry id] [--limit N] [--workers 8]
   python3 -I scripts/classify_flags.py comments <work-dir> [--limit N] [--workers 8]
+  python3 -I scripts/classify_flags.py refine <work-dir> [--model gpt-5.4] [--workers 8]
   python3 -I scripts/classify_flags.py compile <work-dir>
 
 posts: reads every caption and says whether the post discloses a paid partnership ("paid"), a
@@ -13,6 +14,11 @@ comments: reads every comment next to the caption of its post and says what the 
 which product attribute it speaks to (price, efficacy, ease, durability, safety, service). The
 supplied comment analysis tags what a comment is (a question, praise) but not what it is about.
 Written to data/seed/comment_labels/<industry>.json.gz.
+
+refine: a second, stricter reading of the comments the first pass called "brand" or "category",
+by a stronger model. It confirms what the comment is about, gives an attribute only when the
+comment says something specific about it (the first pass gave one to "need it!" and "love it"),
+and says whether the comment is a buying signal. Its answers replace the first pass's.
 
 Answers are appended to <work-dir>/<mode>-<industry>.jsonl as they arrive, so an interrupted run
 continues where it stopped. The app loads the compiled files on the next start (src/lib/themes.ts).
@@ -193,6 +199,48 @@ def run_comments(ind):
         return [[flat[l["i"]]["segment_id"], flat[l["i"]]["comment_id"], ABOUT.index(l["about"]), ATTRIBUTES.index(l["attribute"]) if l["about"] in ("brand", "category") else 0] for l in labels if 0 <= l["i"] < len(flat)]
     run_batches(f"comments {ind['id']}", out_path, batches, work)
 
+# ---------------------------------------------------------------- refine: a stricter second reading of brand comments
+
+def refine_system(ind):
+    return comments_system(ind) + """
+
+This is a second, stricter reading. Be exact:
+- attribute: choose one ONLY when the comment itself says something specific about that attribute. General enthusiasm or wanting ("love it", "need this", "obsessed", "best razor", "so good", "I want it", "these are great") is "none". Wanting to buy is not "service" unless the comment mentions stock, delivery, where to buy, or a code. Asking what the product is called is "none". If two attributes apply, choose the main one.
+- buying: true ONLY when the comment signals a purchase being considered or just made, of the tracked brand's product or a product of its category: asks where to get it, the price, a link or a code; says they need it, want it, will buy or try it, are ordering it, or just ordered or bought it. False for everything else: the experience or complaint of someone who already owns it, agreement ("same", "I thought it was just me"), praise without wanting, wanting something else in the post (an outfit, a hotel), wanting to attend an event."""
+REFINE_SCHEMA = schema("comment_refine", {"about": {"type": "string", "enum": ABOUT}, "attribute": {"type": "string", "enum": ATTRIBUTES}, "buying": {"type": "boolean"}})
+
+def run_refine(ind):
+    first = os.path.join(WORK, f"comments-{ind['id']}.jsonl")
+    if not os.path.exists(first): return
+    keep = {(r[0], r[1]) for r in read_rows(first) if r[2] in (ABOUT.index("brand"), ABOUT.index("category"))}
+    posts = {(p["segment_id"], p["post_id"]): p for p in load_posts(ind)}
+    out_path = os.path.join(WORK, f"refine-{ind['id']}.jsonl")
+    done = done_keys(out_path)
+    todo = [c for c in gz(os.path.join(SEED, "comments.json.gz")) if (c["segment_id"], c["comment_id"]) in keep and (c["segment_id"], c["comment_id"]) not in done]
+    if LIMIT: todo = todo[:LIMIT]
+    by_post = {}
+    for c in todo: by_post.setdefault((c["segment_id"], c["post_id"]), []).append(c)
+    batches, cur, n = [], [], 0
+    for key, cs in by_post.items():
+        for k in range(0, len(cs), 30):
+            part = cs[k:k + 30]
+            if n + len(part) > 30 and cur: batches.append(cur); cur, n = [], 0
+            cur.append((key, part)); n += len(part)
+    if cur: batches.append(cur)
+    print(f"refine {ind['id']}: {len(keep)} brand and category comments, {len(done)} already read, {len(batches)} requests to send", flush=True)
+    system = refine_system(ind)
+    def work(batch):
+        flat, payload = [], []
+        for key, cs in batch:
+            p = posts.get(key) or {}
+            items = []
+            for c in cs:
+                items.append({"i": len(flat), "text": (c.get("text") or "")[:300]}); flat.append(c)
+            payload.append({"filed_under": cs[0]["brand"], "caption": (p.get("text") or "")[:350], "comments": items})
+        labels = ask(system, payload, REFINE_SCHEMA)
+        return [[flat[l["i"]]["segment_id"], flat[l["i"]]["comment_id"], ABOUT.index(l["about"]), ATTRIBUTES.index(l["attribute"]) if l["about"] in ("brand", "category") else 0, 1 if l["buying"] and l["about"] in ("brand", "category") else 0] for l in labels if 0 <= l["i"] < len(flat)]
+    run_batches(f"refine {ind['id']}", out_path, batches, work)
+
 # ---------------------------------------------------------------- compile
 
 def read_rows(path):
@@ -224,11 +272,15 @@ def compile_all():
         path = os.path.join(WORK, f"comments-{ind['id']}.jsonl")
         if os.path.exists(path):
             rows = read_rows(path)
+            # The stricter second reading replaces the first where it exists. Each row ends with buying (0 or 1).
+            rpath = os.path.join(WORK, f"refine-{ind['id']}.jsonl")
+            refined = {(r[0], r[1]): r for r in read_rows(rpath)} if os.path.exists(rpath) else {}
+            rows = [refined.get((r[0], r[1]), r + [0]) if (r[0], r[1]) in refined else r + [0] for r in rows]
             total = sum(1 for c in gz(os.path.join(SEED, "comments.json.gz"))) if not ind.get("pack") else 0
             if len(rows) < 0.98 * total: print(f"comments {ind['id']}: only {len(rows)} of {total} read, not compiled")
             else:
                 kb = write("comment_labels", ind, {"industry": ind["id"], "model": MODEL, "about": ABOUT, "attributes": ATTRIBUTES, "rows": rows})
-                print(f"comments {ind['id']}: {len(rows)} of {total} read -> {kb:.0f} KB; about: " + ", ".join(f"{a} {sum(r[2] == i for r in rows)}" for i, a in enumerate(ABOUT)))
+                print(f"comments {ind['id']}: {len(rows)} of {total} read, {len(refined)} read twice, {sum(r[4] for r in rows)} buying signals, {sum(r[3] > 0 for r in rows)} with an attribute -> {kb:.0f} KB; about: " + ", ".join(f"{a} {sum(r[2] == i for r in rows)}" for i, a in enumerate(ABOUT)))
 
 if MODE == "compile":
     compile_all()
@@ -237,4 +289,5 @@ else:
         if ONLY and ind["id"] != ONLY: continue
         if MODE == "posts": run_posts(ind)
         elif MODE == "comments" and not ind.get("pack"): run_comments(ind)
+        elif MODE == "refine" and not ind.get("pack"): run_refine(ind)
     print(f"done: {usage['calls']} requests, {usage['failed']} failed, {usage['in']:,} input tokens, {usage['out']:,} output tokens, model {MODEL}")

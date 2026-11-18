@@ -69,7 +69,7 @@ const CHUNK = 4000;
 /* ------------------------------------------------------------------ */
 
 interface DisclosureFile { values: string[]; rows: Array<[number, number, number]> }
-interface CommentLabelsFile { about: string[]; attributes: string[]; rows: Array<[number, number, number, number]> }
+interface CommentLabelsFile { about: string[]; attributes: string[]; rows: Array<[number, number, number, number, number?]> }
 
 function readGz<T>(folder: string, industry: string): { file: T; hash: string } | null {
   const p = path.join(seedDir(), folder, `${industry}.json.gz`);
@@ -103,7 +103,7 @@ const GIFTED_MARKERS = ["#gifted", "\\mgifted\\M", "#giftedby", "pr sample", "#p
 /**
  * Applies the corrections to one industry's posts and comments:
  *  - disclosure: 'paid' when the model or a caption marker says so (and nothing says "unpaid"),
- *    else 'gifted'. is_paid becomes the supplied flag (kept in is_paid_source) or a paid disclosure.
+ *    else 'gifted' (a free product, or a giveaway run with the brand's product). is_paid becomes the supplied flag (kept in is_paid_source) or a paid disclosure.
  *  - is_owned: the post comes from one of the brand's own accounts (segments_raw.handles, from the catalog).
  *  - about: the post's "about the brand" label, so the views can leave out posts that are not.
  *  - comments: `about` and `attribute` from the comment classifier.
@@ -125,6 +125,12 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
   await db.query(`UPDATE posts_raw SET disclosure = 'paid' WHERE ${seg} AND text IS NOT NULL AND lower(text) ~ $2`, [industry, PAID_MARKERS]);
   await db.query(`UPDATE posts_raw SET disclosure = NULL WHERE ${seg} AND disclosure = 'paid' AND lower(text) ~ $2`, [industry, NOT_PAID_MARKERS]);
   await db.query(`UPDATE posts_raw SET disclosure = 'gifted' WHERE ${seg} AND disclosure IS NULL AND text IS NOT NULL AND lower(text) ~ $2`, [industry, GIFTED_MARKERS]);
+  // A giveaway or competition run with the brand's product is not unprompted, whatever the caption discloses.
+  await db.query(
+    `UPDATE posts_raw p SET disclosure = 'gifted' WHERE p.disclosure IS NULL AND p.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)
+        AND EXISTS (SELECT 1 FROM post_labels_raw l WHERE l.segment_id = p.segment_id AND l.post_id = p.post_id AND l.kind = 'hook' AND l.label = 'Giveaway or competition')`,
+    [industry],
+  );
   await db.query(`UPDATE posts_raw SET is_paid = (is_paid_source OR coalesce(disclosure = 'paid', false)) WHERE ${seg}`, [industry]);
   await db.query(`UPDATE posts_raw SET is_gifted = true WHERE ${seg} AND disclosure = 'gifted' AND NOT is_paid`, [industry]);
   await db.query(
@@ -138,12 +144,12 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
       WHERE l.kind = 'about' AND l.segment_id = p.segment_id AND l.post_id = p.post_id AND p.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
     [industry],
   );
-  await db.query(`UPDATE comments_raw SET about = NULL, attribute = NULL WHERE ${seg} AND about IS NOT NULL`, [industry]);
+  await db.query(`UPDATE comments_raw SET about = NULL, attribute = NULL, buying = NULL WHERE ${seg} AND about IS NOT NULL`, [industry]);
   if (comments) {
-    const rows = comments.rows.map(([segment_id, comment_id, a, t]) => ({ segment_id, comment_id, about: comments.about[a], attribute: t > 0 ? comments.attributes[t] : null }));
+    const rows = comments.rows.map(([segment_id, comment_id, a, t, b]) => ({ segment_id, comment_id, about: comments.about[a], attribute: t > 0 ? comments.attributes[t] : null, buying: b === 1 }));
     for (let at = 0; at < rows.length; at += CHUNK) {
       await db.query(
-        `UPDATE comments_raw c SET about = t.about, attribute = t.attribute FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, about text, attribute text)
+        `UPDATE comments_raw c SET about = t.about, attribute = t.attribute, buying = t.buying FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, about text, attribute text, buying boolean)
           WHERE c.segment_id = t.segment_id AND c.comment_id = t.comment_id`,
         [JSON.stringify(rows.slice(at, at + CHUNK))],
       );
@@ -211,7 +217,7 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     const base = `${rules.hash}:${model?.hash ?? "rules"}:${ind.posts}`;
     // The corrections have their own state, so a new disclosure or comment file does not redo the labels.
     const flagsKey = `flags:${ind.industry}`;
-    const flagsBase = `${base}:f2:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
+    const flagsBase = `${base}:f4:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
     const applyFlagsIfNeeded = async (): Promise<boolean> => {
       if ((await getMeta(db, flagsKey)) === flagsBase) return true;
       if (spent()) return false;

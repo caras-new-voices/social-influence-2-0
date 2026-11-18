@@ -29,7 +29,12 @@ Built and live:
 - **Guided setup** (a wizard of questions) and a simplified New dashboard dialog.
 - **Token usage:** every AI call is metered, with a balance, a demo top-up and a usage page.
 - **Brand selection:** each dashboard looks at one industry, one "your company" brand and chosen competitors. Ten industries, 93 brands.
-- **Four templates:** Starter, Eran's, Tom's Default Template, and "Toms No Hash".
+- **The default dashboard is "Tom's 8, Nov 8th"** (`src/lib/tom8.ts`), built to Tom's brief: eight measures, five questions, a written answer at the top of each section. New dashboard is now "pick your brands, name it". Guided setup and Blank are under "More ways to start". The earlier templates (Starter, Eran's, Tom's Default, Toms No Hash) still build but are no longer offered. See `docs/toms-feedback-plan.md`, `docs/brief-audit.md` and `docs/quality-gate.md`.
+- **Corrected data.** Three things the supplied data gets wrong are fixed when the app starts (`applyFlags` in `src/lib/themes.ts`), from files made by `scripts/classify_flags.py`:
+  - Paid, gifted and brand-owned posts: `is_paid` is now the supplied flag or a disclosure in the caption; `is_gifted` and `is_owned` are new. Brand-owned accounts are in `data/seed/catalog.json` ("handles"), drafted by `scripts/make_brand_accounts.py`; the list for a person to confirm is `docs/brand-accounts-draft.md`.
+  - Posts judged not to be about their brand are left out of the `posts` and `posts_all` views.
+  - Every comment has `about` (brand, category, creator, other, noise), `attribute` (Tom's six) and `buying`. Comment measures read `brand_comments` / `brand_comments_all`, not `comments`.
+- **The quality gate.** Before a build goes to Tom, fill in `docs/quality-gate.md`: the brief audit, a walk-through as a client, and `npm run check:accuracy` (needs the app running and an OpenAI key; writes `docs/accuracy-report.md`).
 - **Chat sessions:** New chat, a history of earlier chats per dashboard, rename and delete, a panel that can be widened or hidden, and a pinned list on very wide screens. See `docs/chat-sessions-plan.md`. `npm run check:sessions` tests it.
 - **An "i" on every element** (`src/components/WidgetInfo.tsx`): what it shows (its subtitle), why it matters (its rationale), the kind of each number (count, share, rate), the period, and buttons to ask the analyst or change the element in the chat. Template elements and AI proposals all carry a subtitle and rationale; keep it that way for new ones.
 - **Elements open at full width**, with charts and tables one row taller than their template size.
@@ -169,6 +174,8 @@ Remove the `.next` folder before starting the dev server again after a build.
 - **Shell safety check:** a command that mixes a heredoc with odd text can be blocked as a possible file removal. Write patch scripts to the scratchpad with the file-writing tool, then run them.
 - **A new secret is only visible in a new session.** That is why `OPEN_AI_2` could not be used in the session that wrote this.
 - **To test the live analyst in a Claude cloud session**, start the app with `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. Without them Node calls OpenAI directly with the old `OPENAI_API_KEY`, which has no credit, and every question fails with "rate limiting (429)". `curl` and Python go through the environment's proxy, which supplies a working key.
+- **New posts and comments are not corrected until the classifiers run on them.** After an import, run `scripts/classify_flags.py posts`, `comments`, `refine` and `compile`, then restart. Until then new comments count as brand comments and new posts rely on the caption rules alone.
+- **A label the small model gives freely needs a stricter second pass.** The first comment pass gave an attribute to "need it!"; agreement with the reviewer was 58%. The `refine` pass with a stronger model took it to 87%. Measure before trusting.
 - **Counts and rates:** name number columns so their unit is clear ("share of voice %", "vs norm", "per 1K comments"); tables format cells from the name. See `docs/counts-and-rates-plan.md`.
 - **Commit finished work only.** Do not commit a background agent's half-written files. The stop hook asks for commits; commit to the development branch, never straight to production.
 

@@ -31,6 +31,8 @@ const COMMENT_MIN = 200;
 const EARNED = "NOT is_paid AND NOT is_owned AND NOT is_gifted";
 const NEGATIVE = "(sentiment = 'negative' OR objection_category IS NOT NULL)";
 const POSITIVE = "sentiment = 'positive'";
+/** A buying signal: the classifier's reading where there is one, else the supplied tag. */
+const INTENT = "coalesce(buying, purchase_intent_type IS NOT NULL)";
 const ATTR = (col = "attribute") => `CASE ${col} WHEN 'price' THEN 'Price and value' WHEN 'efficacy' THEN 'Efficacy: does it work' WHEN 'ease' THEN 'Ease of use' WHEN 'durability' THEN 'Durability' WHEN 'safety' THEN 'Safety and comfort' WHEN 'service' THEN 'Service and availability' END`;
 
 const ER_NOTE = "Engagement rate is engagements divided by reach (views; followers for Instagram image posts)";
@@ -111,7 +113,7 @@ const GRID = (who: string) => `g AS (
  */
 const CREATOR_SCORE = `${SCORED("posts")},
 cp AS (SELECT sp.*, pt.theme FROM sp LEFT JOIN post_themes pt ON pt.segment_id = sp.segment_id AND pt.post_id = sp.post_id AND pt.is_primary WHERE sp.username IS NOT NULL AND NOT sp.is_owned),
-pc AS MATERIALIZED (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE purchase_intent_type IS NOT NULL)::float AS intent FROM brand_comments GROUP BY 1, 2),
+pc AS MATERIALIZED (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments GROUP BY 1, 2),
 ct AS (SELECT username, theme, count(*) AS n, row_number() OVER (PARTITION BY username ORDER BY count(*) DESC, theme) AS rk FROM cp WHERE theme IS NOT NULL AND theme NOT IN ('Other', 'Unknown') GROUP BY 1, 2),
 ca AS (
   SELECT cp.username AS creator, max(cp.platform) AS platform, count(*)::int AS posts,
@@ -154,7 +156,7 @@ us AS MATERIALIZED (
   FROM sp WHERE brand = focal_brand()
 ), cm AS MATERIALIZED (
   SELECT count(*) FILTER (WHERE c.published_at >= b.s)::float AS n, count(*) FILTER (WHERE c.published_at < b.s)::float AS n_prev,
-         count(*) FILTER (WHERE c.published_at >= b.s AND c.purchase_intent_type IS NOT NULL)::float AS intent, count(*) FILTER (WHERE c.published_at < b.s AND c.purchase_intent_type IS NOT NULL)::float AS intent_prev,
+         count(*) FILTER (WHERE c.published_at >= b.s AND coalesce(c.buying, c.purchase_intent_type IS NOT NULL))::float AS intent, count(*) FILTER (WHERE c.published_at < b.s AND coalesce(c.buying, c.purchase_intent_type IS NOT NULL))::float AS intent_prev,
          count(*) FILTER (WHERE c.published_at >= b.s AND c.${POSITIVE})::float AS praise, count(*) FILTER (WHERE c.published_at < b.s AND c.${POSITIVE})::float AS praise_prev,
          count(*) FILTER (WHERE c.published_at >= b.s AND (c.sentiment = 'negative' OR c.objection_category IS NOT NULL))::float AS obj, count(*) FILTER (WHERE c.published_at < b.s AND (c.sentiment = 'negative' OR c.objection_category IS NOT NULL))::float AS obj_prev
   FROM brand_comments_all c, b WHERE c.brand = focal_brand() AND c.published_at >= b.ps AND c.published_at < b.e
@@ -207,7 +209,7 @@ FROM a WHERE a.posts > 0 ORDER BY (a.brand = focal_brand()) DESC, a.posts DESC`,
       {
         type: "stacked_bar", w: 6, h: 5,
         title: "Earned, gifted, paid and brand-owned posts",
-        subtitle: "Share of each brand's posts. Paid: the caption discloses an advert or paid partnership, or the platform flags it. Gifted: a free product, no payment disclosed. Brand-owned: posted by the brand's own account. Earned: none of these.",
+        subtitle: "Share of each brand's posts. Paid: the caption discloses an advert or paid partnership, or the platform flags it. Gifted: a free product or a giveaway, no payment disclosed. Brand-owned: posted by the brand's own account. Earned: none of these.",
         sql: `SELECT brand, CASE WHEN is_owned THEN 'Brand-owned' WHEN is_paid THEN 'Paid' WHEN is_gifted THEN 'Gifted' ELSE 'Earned' END AS kind, count(*)::int AS value
 FROM posts GROUP BY 1, 2 ORDER BY (brand = focal_brand()) DESC, 1, 2`,
         x: "brand", y: "value", series: "kind", normalize: true, horizontal: true, unit: "Share of each brand's posts, in percent",
@@ -219,7 +221,7 @@ FROM posts GROUP BY 1, 2 ORDER BY (brand = focal_brand()) DESC, 1, 2`,
         subtitle: `Buying signals, praise and objections per 1,000 brand comments (brands with ${COMMENT_MIN}+ brand comments). ${BC_NOTE}.`,
         when: N_BC,
         sql: `SELECT brand, count(*)::int AS "brand comments",
-       ${r1(`1000.0 * count(*) FILTER (WHERE purchase_intent_type IS NOT NULL) / count(*)`)} AS "intent per 1K",
+       ${r1(`1000.0 * count(*) FILTER (WHERE ${INTENT}) / count(*)`)} AS "intent per 1K",
        ${r0(`1000.0 * count(*) FILTER (WHERE ${POSITIVE}) / count(*)`)} AS "praise per 1K",
        ${r0(`1000.0 * count(*) FILTER (WHERE ${NEGATIVE}) / count(*)`)} AS "objections per 1K"
 FROM brand_comments GROUP BY brand HAVING count(*) >= ${COMMENT_MIN} OR brand = focal_brand() ORDER BY (brand = focal_brand()) DESC, count(*) DESC`,
@@ -282,7 +284,7 @@ FROM c WHERE vs >= 1.2 AND ours / posts < share ORDER BY ours / posts - share AS
         subtitle: `Themes across the tracked brands ranked by engagement vs norm multiplied by buying signals per 1,000 brand comments (themes with ${THEME_MIN}+ posts and ${COMMENT_MIN}+ brand comments).`,
         when: N_BC,
         sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
-pc AS MATERIALIZED (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE purchase_intent_type IS NOT NULL)::float AS intent FROM brand_comments GROUP BY 1, 2),
+pc AS MATERIALIZED (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments GROUP BY 1, 2),
 t AS (
   SELECT tags.theme, count(*)::int AS posts, sum(pc.n) AS comments, sum(pc.intent) AS intent, ${vs()} AS vs
   FROM tags LEFT JOIN pc ON pc.segment_id = tags.segment_id AND pc.post_id = tags.post_id GROUP BY 1
@@ -452,13 +454,17 @@ FROM c WHERE c.posts >= 10 ORDER BY c.comments::float / c.posts DESC LIMIT 10`,
         rationale: "Where few creators serve an audience that talks back a lot, the next creator gets heard.",
       },
       {
-        type: "stacked_bar", w: 5, h: 5,
+        type: "table", w: 5, h: 5,
         title: "Hooks we under-use",
-        subtitle: "Share of posts by how they are told: us against the tracked competitors. A post can use more than one hook.",
+        subtitle: "Share of posts told each way (tutorial, review, routine and so on): ours, the tracked competitors', and the gap in percentage points. Most under-used first. A post can use more than one hook.",
         when: N_HOOKS,
-        sql: `SELECT CASE WHEN brand = focal_brand() THEN 'Us' ELSE 'Competitors' END AS who, hook, count(*)::int AS value
-FROM post_hooks ph WHERE EXISTS (SELECT 1 FROM posts p WHERE p.segment_id = ph.segment_id AND p.post_id = ph.post_id) GROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC`,
-        x: "who", y: "value", series: "hook", normalize: true, unit: "Share of posts, in percent",
+        sql: `WITH n AS MATERIALIZED (SELECT count(*) FILTER (WHERE brand = focal_brand())::float AS us, count(*) FILTER (WHERE brand <> focal_brand())::float AS them FROM posts),
+h AS (
+  SELECT ph.hook, count(*) FILTER (WHERE p.brand = focal_brand())::float AS us, count(*) FILTER (WHERE p.brand <> focal_brand())::float AS them
+  FROM post_hooks ph JOIN posts p ON p.segment_id = ph.segment_id AND p.post_id = ph.post_id GROUP BY 1
+)
+SELECT h.hook, ${r1("100.0 * h.us / NULLIF(n.us, 0)")} AS "our share of posts %", ${r1("100.0 * h.them / NULLIF(n.them, 0)")} AS "competitors share %", ${r1("100.0 * h.us / NULLIF(n.us, 0) - 100.0 * h.them / NULLIF(n.them, 0)")} AS "gap pts"
+FROM h, n ORDER BY 4 ASC NULLS LAST`,
         rationale: "A way of telling the story that works for rivals and that we rarely use.",
       },
     ],
@@ -468,7 +474,7 @@ FROM post_hooks ph WHERE EXISTS (SELECT 1 FROM posts p WHERE p.segment_id = ph.s
     when: N_BC,
     widgets: [
       {
-        type: "insight", w: 12, h: 6,
+        type: "insight", w: 12, h: 7,
         title: "The answer: what to amplify, answer and attack",
         subtitle: `Composed from the brand comments in this section, by product attribute. Rates are per 1,000 brand comments. ${BC_NOTE}.`,
         sql: `WITH ${ATTR_RATES},
@@ -500,7 +506,7 @@ FROM ar GROUP BY attribute ORDER BY sum(n) FILTER (WHERE brand = focal_brand()) 
         type: "bar", w: 5, h: 6,
         title: "Buying signals per 1,000 brand comments",
         subtitle: `Comments signalling a purchase ("where can I get it", "just ordered"), us and each rival (brands with ${COMMENT_MIN}+ brand comments). A rate, not a count.`,
-        sql: `SELECT brand, ${r1("1000.0 * count(*) FILTER (WHERE purchase_intent_type IS NOT NULL) / count(*)")} AS value
+        sql: `SELECT brand, ${r1("1000.0 * count(*) FILTER (WHERE ${INTENT}) / count(*)")} AS value
 FROM brand_comments GROUP BY brand HAVING count(*) >= ${COMMENT_MIN} OR brand = focal_brand() ORDER BY value DESC`,
         x: "brand", y: "value", colorBy: "brand", format: "decimal", horizontal: true, unit: "Buying signals per 1,000 brand comments (a rate)",
         sample: OUR_BC,
@@ -628,7 +634,7 @@ GROUP BY 1 HAVING NOT bool_or(is_paid) AND NOT bool_or(is_gifted) ORDER BY 5 DES
         title: "Who drives buying",
         subtitle: "Creators of our content ranked by buying signals per 1,000 brand comments under their posts (20+ brand comments)",
         when: N_BC,
-        sql: `WITH pc AS (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE purchase_intent_type IS NOT NULL)::float AS intent FROM brand_comments WHERE brand = focal_brand() GROUP BY 1, 2),
+        sql: `WITH pc AS (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments WHERE brand = focal_brand() GROUP BY 1, 2),
 avg_rate AS MATERIALIZED (SELECT 1000.0 * sum(intent) / NULLIF(sum(n), 0) AS rate FROM pc)
 SELECT p.username AS creator, max(p.platform) AS platform, count(DISTINCT p.post_id)::int AS posts, sum(pc.n)::int AS "brand comments",
        ${r1("1000.0 * sum(pc.intent) / sum(pc.n)")} AS "intent per 1K", ${r1("(1000.0 * sum(pc.intent) / sum(pc.n)) / NULLIF((SELECT rate FROM avg_rate), 0)")} AS "times our average"
@@ -714,7 +720,7 @@ GROUP BY 1, 2, 3, 4, 5, 6 ORDER BY 8 DESC LIMIT 12`,
     when: N_BC,
     widgets: [
       {
-        type: "insight", w: 12, h: 5,
+        type: "insight", w: 12, h: 4,
         title: "The answer: fix, protect, start talking about",
         subtitle: "Composed from the priority grid below: each product attribute in our brand comments placed by how often it comes up and how people feel about it.",
         sql: `WITH ${ATTR_RATES}, ${GRID("brand = focal_brand()")},

@@ -70,7 +70,7 @@ results = []  # (check, where, right, total, [disagreements])
 def record(check, where, pairs):
     """pairs: [(ok, description)]"""
     right = sum(1 for ok, _ in pairs if ok)
-    results.append((check, where, right, len(pairs), [d for ok, d in pairs if not ok][:6]))
+    results.append((check, where, right, len(pairs), [d for ok, d in pairs if not ok][:int(arg('--show', '6'))]))
     rate = 100 * right / len(pairs) if pairs else 0
     print(f"  {'ok  ' if rate >= PASS else 'FAIL'} {check} [{where}]: {rate:.0f}% ({right}/{len(pairs)})", flush=True)
 
@@ -110,10 +110,10 @@ for ind in catalog:
         record("paid-flagged", ind["id"], [(ans[i]["d"] == "paid", f"we say paid, judge says {ans[i]['d']}: {short(p['text'])}") for i, p in enumerate(flagged) if i in ans])
 
     # about-post: posts the dashboards keep.
-    kept = rows(f"SELECT brand, left(text, 600) AS text FROM posts_all WHERE length(coalesce(text, '')) >= 12 ORDER BY md5(post_id::text || 'c') LIMIT {N}", scope)
+    kept = rows(f"SELECT brand, coalesce(about, 'not judged') AS label, left(text, 600) AS text FROM posts_all WHERE length(coalesce(text, '')) >= 12 ORDER BY md5(post_id::text || 'c') LIMIT {N}", scope)
     ans = judge(f"These posts are filed under a tracked brand in a market research dashboard about {ind['name']}. For each, answer about: \"yes\" if the post is about that brand, its products, or mentions or tags it as one of the things in the post; \"no\" if the post has nothing to do with the brand (the name means something else here, or the post is unrelated).",
                 [{"i": i, "filed_under": p["brand"], "text": cut(p["text"], 500)} for i, p in enumerate(kept)], {"about": {"type": "string", "enum": ["yes", "no"]}})
-    record("about-post", ind["id"], [(ans[i]["about"] == "yes", f"kept under {p['brand']}, judge says not about it: {short(p['text'])}") for i, p in enumerate(kept) if i in ans])
+    record("about-post", ind["id"], [(ans[i]["about"] == "yes", f"kept under {p['brand']} (our label: {p['label']}), judge says not about it: {short(p['text'])}") for i, p in enumerate(kept) if i in ans])
 
     if not rows("SELECT 1 AS x FROM comments_all LIMIT 1", scope): continue
 
@@ -178,7 +178,7 @@ for check in checks:
     for c, where, right, total, bad in results:
         if c != check: continue
         lines.append(f"- {where}: {100 * right / total if total else 0:.0f}% ({right} of {total})")
-        for d in bad[:3]: lines.append(f"    - {d}")
+        for d in bad[:int(arg('--show', '3'))]: lines.append(f"    - {d}")
     lines.append("")
 open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 print(f"{'FAILED' if failed else 'all checks passed'}. Report: {OUT}. Judge tokens: {usage['in']:,} in / {usage['out']:,} out")
