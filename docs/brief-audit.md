@@ -15,7 +15,7 @@ Totals for the 39 sub-questions: 24 answered, 9 approximations, 6 not possible y
 - **Share of voice. Answered.** Brand posts divided by all tracked brands' posts. The "category" is the tracked brands, not the whole market.
 - **Engagement vs norm. Answered.** Engagements divided by expected, where expected is reach (views, or followers for Instagram image posts) times the tracked brands' engagement rate for the platform and creator size. 1.2 and above is outperforming.
 - **Momentum. Answered.** Posts in the period against the period before, minus 1. Viewing all time, it is the last 90 days against the 90 before, the brief's 3 months.
-- **Earned share. Answered,** for the first time. Posts that are neither brand-owned, nor paid, nor gifted, divided by all brand posts. Paid comes from the caption and the platform flag. Brand-owned comes from a drafted list of accounts (`docs/brand-accounts-draft.md`) that needs confirming. Gifted posts are left out of earned: Tom to confirm.
+- **Earned share. Answered,** for the first time. Posts that are neither brand-owned, nor paid, nor sold for commission (affiliate), nor gifted, divided by all brand posts. Paid comes from the caption and the platform flag. Brand-owned comes from a drafted list of accounts (`docs/brand-accounts-draft.md`) that needs confirming. Gifted and affiliate posts are left out of earned: Tom to confirm.
 - **Purchase intent. Answered.** Buying-signal comments per 1,000 brand comments, against rivals.
 - **Praise and objections. Answered.** Positive and negative comments per 1,000 brand comments, by the brief's six attributes.
 - **Content gap. Answered.** A theme's share of comments minus its share of posts.

@@ -68,7 +68,14 @@ Theme accuracy was measured last week: 78% for hair removal, the lowest of the t
   - Comments (about the brand or not): 184 agree, 14 are judgement calls, 2 are wrong.
   - Buying signals: all 12 in the sample are right. Attributes: 27 of 31 are right (87%).
 - **Code review.** An independent review of the change found nine problems and none in the migration, the dialog or the label mappings. All nine are fixed. The two that mattered: an import that re-sends existing posts would have dropped the caption-based paid correction, and a comment the second reading had not reached would have counted as "no buying signal". Neither had affected the live numbers.
-- **A question this raised.** The supplied paid flag marks 1,293 of 3,000 hair care posts as paid, about four times what the captions disclose. We trust that flag wherever it is set. Nobody has checked whether it is right for hair care.
+- **A question this raised, and what was done.** The supplied paid flag marks 1,293 of 3,000 hair care posts as paid, about four times what the captions disclose. Almost all are on TikTok and many carry TikTok Shop tags: creators selling the product for commission. The paid mix now has six groups, so nothing is guessed:
+  - brand-owned;
+  - paid, disclosed in the caption;
+  - paid, platform label only (flagged, and the caption says nothing);
+  - affiliate or shop (clear shop or commission markers in the caption);
+  - gifted (also when the platform flagged it, if the caption says gifted);
+  - earned.
+  Hair care now reads 37% earned, 13% affiliate, 12% gifted, 10% paid and disclosed, 26% platform label only, 2% brand-owned. Posts shown as affiliate check out at 98 to 99% against the reviewer in hair care, sleep technology and premium fashion. **Still open:** what the 26% "platform label only" posts are. They are probably more shop posts without a tag, but the caption cannot say. And whether affiliate posts should count as earned is Tom's call; today they do not.
 
 ### Not verified
 

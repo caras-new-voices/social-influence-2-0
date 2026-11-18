@@ -97,13 +97,22 @@ const PAID_MARKERS = [
 ].join("|");
 /** Wording that says the opposite: named brands without payment. */
 const NOT_PAID_MARKERS = ["unbezahlt", "unbeauftragt", "wegen verlinkung", "selbst ?gekauft", "markennennung", "not sponsored", "#notsponsored", "#notanad", "not an ad\\M", "nicht gesponsert", "keine werbung", "#keinewerbung", "no es publi", "non sponsoris"].join("|");
+/**
+ * Shop and commission posts: the creator sells the product through the platform's shop or an
+ * affiliate programme. Nobody at the brand briefed them, but the post is not unprompted either.
+ * Only clear markers: a loose tag such as #tiktokmademebuyit sits on ordinary posts too.
+ */
+const AFFILIATE_MARKERS = ["tiktok ?shop", "#tiktokshop", "#ttshop", "#tts[a-z]{3,}", "#shoptok", "#affiliate", "affiliate link", "\\maffiliate\\M", "#commission", "commission (paid|earned)", "eligible for commission", "earns? commission", "#ltk[a-z]*", "liketoknow\\.it", "#amazonassociate", "#amazoninfluencer", "amazon storefront", "#creatorpicks", "#spotlightfinds", "#dealsforyoudays"].join("|");
 /** A product received for free, with no payment disclosed. */
 const GIFTED_MARKERS = ["#gifted", "\\mgifted\\M", "#giftedby", "pr sample", "#prsample", "pr package", "#prpackage", "#prgift", "#prunboxing", "#complimentary", "#freesample", "kindly sent", "#influenster", "#trnd\\M", "#markenjury", "#theinsiders", "#produkttest", "#gratistesten", "#regalo\\M", "#offert\\M"].join("|");
 
 /**
  * Applies the corrections to one industry's posts and comments:
  *  - disclosure: 'paid' when the model or a caption marker says so (and nothing says "unpaid"),
- *    else 'gifted' (a free product, or a giveaway run with the brand's product). is_paid becomes the supplied flag (kept in is_paid_source) or a paid disclosure.
+ *    else 'gifted' (a free product, or a giveaway run with the brand's product).
+ *  - is_affiliate: a shop or commission post. is_paid: a paid disclosure in the caption, or the
+ *    supplied flag (kept in is_paid_source) when the caption says nothing. is_gifted: gifted and
+ *    neither of those. A post is at most one of the three.
  *  - is_owned: the post comes from one of the brand's own accounts (segments_raw.handles, from the catalog).
  *  - about: the post's "about the brand" label, so the views can leave out posts that are not.
  *  - comments: `about` and `attribute` from the comment classifier.
@@ -111,7 +120,7 @@ const GIFTED_MARKERS = ["#gifted", "\\mgifted\\M", "#giftedby", "pr sample", "#p
 async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile | null, comments: CommentLabelsFile | null) {
   const seg = `segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`;
   await db.query(`UPDATE posts_raw SET is_paid_source = coalesce(is_paid, false) WHERE is_paid_source IS NULL AND ${seg}`, [industry]);
-  await db.query(`UPDATE posts_raw SET disclosure = NULL, is_gifted = false, is_owned = false, about = NULL WHERE ${seg}`, [industry]);
+  await db.query(`UPDATE posts_raw SET disclosure = NULL, is_gifted = false, is_owned = false, is_affiliate = false, paid_basis = NULL, about = NULL WHERE ${seg}`, [industry]);
   if (disclosure) {
     const rows = disclosure.rows.filter((r) => r[2] > 0).map(([segment_id, post_id, d]) => ({ segment_id, post_id, d: disclosure.values[d] }));
     for (let at = 0; at < rows.length; at += CHUNK) {
@@ -131,8 +140,20 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
         AND EXISTS (SELECT 1 FROM post_labels_raw l WHERE l.segment_id = p.segment_id AND l.post_id = p.post_id AND l.kind = 'hook' AND l.label = 'Giveaway or competition')`,
     [industry],
   );
-  await db.query(`UPDATE posts_raw SET is_paid = (is_paid_source OR coalesce(disclosure = 'paid', false)) WHERE ${seg}`, [industry]);
-  await db.query(`UPDATE posts_raw SET is_gifted = true WHERE ${seg} AND disclosure = 'gifted' AND NOT is_paid`, [industry]);
+  // A shop or commission post, unless the caption carries an explicit advert marker. It overrides a model "paid" given for a link or a code.
+  await db.query(
+    `UPDATE posts_raw SET is_affiliate = true WHERE ${seg} AND text IS NOT NULL AND lower(text) ~ $2 AND NOT (lower(text) ~ $3 AND NOT lower(text) ~ $4)`,
+    [industry, AFFILIATE_MARKERS, PAID_MARKERS, NOT_PAID_MARKERS],
+  );
+  // What the caption says wins over the bare flag: a flagged post whose caption says gifted is gifted, a flagged shop post is affiliate.
+  await db.query(
+    `UPDATE posts_raw SET
+       paid_basis = CASE WHEN is_affiliate THEN NULL WHEN disclosure = 'paid' THEN 'caption' WHEN is_paid_source AND disclosure IS DISTINCT FROM 'gifted' THEN 'flag' END,
+       is_paid = NOT is_affiliate AND (coalesce(disclosure = 'paid', false) OR (is_paid_source AND disclosure IS DISTINCT FROM 'gifted')),
+       is_gifted = NOT is_affiliate AND coalesce(disclosure = 'gifted', false)
+     WHERE ${seg}`,
+    [industry],
+  );
   await db.query(
     `UPDATE posts_raw p SET is_owned = true FROM segments_raw s
       WHERE s.id = p.segment_id AND s.industry = $1 AND s.handles IS NOT NULL AND jsonb_typeof(s.handles) = 'array'
@@ -218,7 +239,7 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     const base = `${rules.hash}:${model?.hash ?? "rules"}:${ind.posts}`;
     // The corrections have their own state, so a new disclosure or comment file does not redo the labels.
     const flagsKey = `flags:${ind.industry}`;
-    const flagsBase = `${base}:f5:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
+    const flagsBase = `${base}:f6:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
     const applyFlagsIfNeeded = async (): Promise<boolean> => {
       // An import that re-sends posts overwrites is_paid and clears is_paid_source (imports.ts): the corrections must run again.
       const stale = await db.query<{ n: number }>(
