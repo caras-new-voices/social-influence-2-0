@@ -173,6 +173,17 @@ CREATE TABLE IF NOT EXISTS period_events (
  *    comments_all filtered to that window. Queries that look outside the period use the _all views.
  * With no setting the views return everything. The views list columns at creation: after adding a
  * column to a raw table, bump VIEWS_VERSION so they are rebuilt.
+ *
+ * Three corrections to the supplied data are applied when posts are classified (themes.ts) and
+ * show through these views:
+ *  - posts judged not to be about the brand they are filed under (posts_raw.about = 'no') are
+ *    left out of posts_all and posts. post_about still lists them.
+ *  - is_paid is the supplied flag or a paid disclosure found in the caption; is_gifted and
+ *    is_owned (posted by the brand's own account) are new columns.
+ *  - comments carry `about` (brand, category, creator, other, noise), `attribute` and `buying`
+ *    (a buying signal, read by the classifier; the supplied purchase_intent_type is looser).
+ *    brand_comments and brand_comments_all keep the comments about the brand or its category
+ *    (and comments not yet classified), which is what every comment measure should count.
  */
 const SEGMENT_COLUMNS = "id, name, brand, scan_start_date, insight_headline, insight_framing, insight_assess, insight_act, insight_anticipate, insights_by_platform, comment_insights, total_emv, total_engagement, estimated_impressions, total_unique_influencers, invested_budget_min, invested_budget_max, industry, description, owner, kind, source_posts";
 const PERIOD_FILTER = (t: string) => `SELECT * FROM ${t}
@@ -184,7 +195,7 @@ CREATE OR REPLACE FUNCTION in_scope(b text) RETURNS boolean LANGUAGE sql STABLE 
 CREATE OR REPLACE FUNCTION focal_brand() RETURNS text LANGUAGE sql STABLE AS $f$ SELECT coalesce(nullif(current_setting('app.focal_brand', true), ''), (SELECT brand FROM segments_raw WHERE role = 'focal' ORDER BY id LIMIT 1), (SELECT brand FROM segments_raw ORDER BY id LIMIT 1)) $f$;
 CREATE OR REPLACE FUNCTION period_start() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_start', true), '')::timestamptz $f$;
 CREATE OR REPLACE FUNCTION period_end() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_end', true), '')::timestamptz $f$;
-CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand);
+CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand) AND about IS DISTINCT FROM 'no';
 CREATE VIEW comments_all AS SELECT * FROM comments_raw WHERE in_scope(brand);
 CREATE VIEW influencers AS SELECT * FROM influencers_raw WHERE in_scope(brand);
 CREATE VIEW post_themes AS SELECT segment_id, post_id, brand, label AS theme, coalesce(rank, 1) = 1 AS is_primary FROM post_labels_raw WHERE kind = 'theme' AND in_scope(brand);
@@ -195,8 +206,10 @@ CREATE OR REPLACE FUNCTION is_competitor(b text) RETURNS boolean LANGUAGE sql ST
 CREATE OR REPLACE FUNCTION is_self_mention(t text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT t ILIKE '%' || focal_brand() || '%' OR EXISTS (SELECT 1 FROM segments_raw s, jsonb_array_elements_text(coalesce(s.aliases, '[]'::jsonb)) a WHERE s.brand = focal_brand() AND t ILIKE '%' || a || '%') $f$;
 CREATE VIEW posts AS ${PERIOD_FILTER("posts_all")};
 CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
+CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
+CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-3";
+const VIEWS_VERSION = "scoped-5";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -209,6 +222,15 @@ ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS aliases jsonb;
 ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS source_posts integer;
 ALTER TABLE post_labels_raw ADD COLUMN IF NOT EXISTS rank smallint;
 ALTER TABLE post_labels_raw ADD COLUMN IF NOT EXISTS source text;
+ALTER TABLE segments_raw ADD COLUMN IF NOT EXISTS handles jsonb;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_paid_source boolean;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS disclosure text;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_gifted boolean NOT NULL DEFAULT false;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_owned boolean NOT NULL DEFAULT false;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS about text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS about text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS attribute text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS buying boolean;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */
@@ -263,7 +285,7 @@ const RAW_TABLES: Array<[raw: string, earlier: string[]]> = [
   ["segments_raw", ["segments"]],
   ["influencers_raw", ["influencers"]],
 ];
-const VIEW_NAMES = ["posts", "comments", "posts_all", "comments_all", "segments", "influencers", "post_themes", "post_hooks", "post_about"];
+const VIEW_NAMES = ["posts", "comments", "posts_all", "comments_all", "segments", "influencers", "post_themes", "post_hooks", "post_about", "brand_comments", "brand_comments_all"];
 
 /**
  * Brings the dataset tables to the current layout and (re)builds the views. Databases created by
@@ -413,7 +435,7 @@ async function prepare() {
  */
 async function refreshStatistics(db: Db) {
   const [n] = await db.query<{ k: string }>(
-    `SELECT (SELECT count(*) FROM posts_raw) || ':' || (SELECT count(*) FROM comments_raw) || ':' || (SELECT count(*) FROM post_labels_raw) AS k`,
+    `SELECT (SELECT count(*) FROM posts_raw) || ':' || (SELECT count(*) FROM comments_raw) || ':' || (SELECT count(*) FROM post_labels_raw) || ':' || (SELECT count(*) FROM posts_raw WHERE about = 'no' OR is_paid) || ':' || (SELECT count(*) FROM comments_raw WHERE about IS NOT NULL) AS k`,
   );
   const rows = await db.query<{ value: string }>(`SELECT value FROM app_meta WHERE key = 'stats_for'`);
   if (rows[0]?.value === n.k) return;

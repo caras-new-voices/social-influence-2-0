@@ -156,7 +156,9 @@ async function upsert(table: DatasetTable, rows: Row[], brands: Map<number, stri
       .join(",");
     // Columns absent from every row of the batch keep their stored value on update.
     const present = updates.filter((c) => chunk.some((r) => c in r));
-    const set = present.length ? present.map((c) => `${c} = EXCLUDED.${c}`).join(", ") : `${keys[0]} = EXCLUDED.${keys[0]}`;
+    let set = present.length ? present.map((c) => `${c} = EXCLUDED.${c}`).join(", ") : `${keys[0]} = EXCLUDED.${keys[0]}`;
+    // A newly supplied paid flag replaces the remembered one; the caption check is applied again on the next start (themes.ts).
+    if (physical === "posts_raw" && present.includes("is_paid")) set += ", is_paid_source = NULL";
     const res = await db.query<{ inserted: boolean }>(
       `INSERT INTO ${physical} (${cols.join(",")}) VALUES ${values} ON CONFLICT (${keys.join(",")}) DO UPDATE SET ${set} RETURNING (xmax = 0) AS inserted`,
       params,

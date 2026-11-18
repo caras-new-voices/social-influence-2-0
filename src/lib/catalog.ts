@@ -171,7 +171,7 @@ interface CatalogFile {
     summary?: string;
     suggestedFocal?: string;
     pack?: string | null;
-    brands: Array<{ name: string; description?: string; owner?: string; kind?: string; aliases?: string[] }>;
+    brands: Array<{ name: string; description?: string; owner?: string; kind?: string; aliases?: string[]; handles?: string[] }>;
   }>;
 }
 interface PackFile {
@@ -223,9 +223,9 @@ export async function syncCatalog(db: Db) {
     );
     for (const b of ind.brands) {
       await db.query(
-        `UPDATE segments_raw SET industry = $1, description = $3, owner = $4, kind = $5, aliases = $6::jsonb
+        `UPDATE segments_raw SET industry = $1, description = $3, owner = $4, kind = $5, aliases = $6::jsonb, handles = $8::jsonb
           WHERE brand = $2 AND (industry = $1 OR ($7::boolean AND industry IS NULL))`,
-        [ind.id, b.name, b.description ?? null, b.owner ?? null, b.kind ?? null, JSON.stringify(b.aliases ?? []), !ind.pack],
+        [ind.id, b.name, b.description ?? null, b.owner ?? null, b.kind ?? null, JSON.stringify(b.aliases ?? []), !ind.pack, JSON.stringify(b.handles ?? [])],
       );
     }
   }
@@ -289,10 +289,10 @@ export async function loadPacks(db: Db, budgetMs: number, log: (m: string) => vo
       for (const s of pack.segments) {
         const b = byName.get(s.brand);
         await db.query(
-          `INSERT INTO segments_raw (id, name, brand, role, industry, description, owner, kind, aliases, source_posts) VALUES ($1, $2, $2, 'competitor', $3, $4, $5, $6, $7::jsonb, $8)
+          `INSERT INTO segments_raw (id, name, brand, role, industry, description, owner, kind, aliases, source_posts, handles) VALUES ($1, $2, $2, 'competitor', $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb)
            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, brand = EXCLUDED.brand, industry = EXCLUDED.industry, description = EXCLUDED.description,
-             owner = EXCLUDED.owner, kind = EXCLUDED.kind, aliases = EXCLUDED.aliases, source_posts = EXCLUDED.source_posts`,
-          [s.id, s.brand, ind.id, b?.description ?? null, b?.owner ?? null, b?.kind ?? null, JSON.stringify(b?.aliases ?? []), s.exported ?? null],
+             owner = EXCLUDED.owner, kind = EXCLUDED.kind, aliases = EXCLUDED.aliases, source_posts = EXCLUDED.source_posts, handles = EXCLUDED.handles`,
+          [s.id, s.brand, ind.id, b?.description ?? null, b?.owner ?? null, b?.kind ?? null, JSON.stringify(b?.aliases ?? []), s.exported ?? null, JSON.stringify(b?.handles ?? [])],
         );
       }
       h = hash;

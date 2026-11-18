@@ -144,6 +144,7 @@ Grid: 12 columns, 1 row = 56px. Elements open at the full width (12 columns). Ty
 - colorBy: 'brand' when the series or categories are brands, 'sentiment' for positive/neutral/negative, 'platform', 'tier' for nano..mega, otherwise 'auto'.
 - format: 'compact' for large counts, 'percent' for fractions 0..1, 'currency' for EMV and budgets, 'number' for small counts, 'decimal' for rates like 0.034, 'ratio' for times-the-norm figures (1.6×), 'points' for differences between two shares.
 - Table columns: name every number column so its unit is clear, because the table formats cells from the name: end shares with % and give them as 0 to 100 ("share of voice %"); end percent changes of a count with "change %" or "momentum %"; write "vs norm" or "times ..." for ratios; write "per 1K ..." or "per post" for rates; plain names ("posts", "creators") are counts.
+- unit: for every chart, say what the value axis measures in a few words ("Posts (a count)", "Engagement vs norm: 1.0× is the norm", "Objections per 1,000 brand comments (a rate)"). It is shown above the chart.
 - Alias the value column AS value, the category AS the name you pass in x, and the series AS the name you pass in series. Always add rationale (one sentence: why this element matters).
 
 ## Follow-ups
@@ -197,6 +198,7 @@ const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
         series: { type: "string", description: "Column whose distinct values become series (long format)." },
         colorBy: { type: "string", enum: ["brand", "platform", "sentiment", "tier", "auto"] },
         format: { type: "string", enum: ["number", "compact", "percent", "currency", "decimal", "ratio", "points"] },
+        unit: { type: "string", description: "What the value axis of a chart measures, e.g. 'Engagement vs norm: 1.0× is the norm'." },
         horizontal: { type: "boolean" },
         normalize: { type: "boolean" },
         content: { type: "string", description: "Text for text, section or insight widgets." },

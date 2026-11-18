@@ -1,3 +1,4 @@
+import { TOM8_SECTIONS } from "./tom8";
 import { STARTER_SECTIONS } from "./starter";
 import { TOM_NOHASH_SECTIONS, TOM_SECTIONS } from "./tom";
 import { FULL_WIDTH, isChartOrTable, newId, type WidgetSpec } from "./widgets";
@@ -6,7 +7,7 @@ import { FULL_WIDTH, isChartOrTable, newId, type WidgetSpec } from "./widgets";
  * Dashboard templates. A template is a list of sections; each section is a header followed by
  * its elements, one per row at the full width of the 12 column grid.
  */
-export type TemplateId = "starter" | "eran" | "tom" | "tomnohash" | "blank";
+export type TemplateId = "tom8" | "starter" | "eran" | "tom" | "tomnohash" | "blank";
 
 export interface DashboardTemplate {
   id: TemplateId;
@@ -496,7 +497,17 @@ GROUP BY 1 HAVING count(DISTINCT brand) >= 2 ORDER BY engagement DESC NULLS LAST
   },
 ];
 
+/** Templates offered when creating a dashboard. The earlier ones stay buildable for existing links and tests, but are not offered. */
+export const OFFERED_TEMPLATES: TemplateId[] = ["tom8", "blank"];
+export const DEFAULT_TEMPLATE: TemplateId = "tom8";
+
 export const TEMPLATES: DashboardTemplate[] = [
+  {
+    id: "tom8",
+    name: "Tom's 8, Nov 8th",
+    description: "The default dashboard. Eight measures calculated the same way every month, then five questions answered in order: which conversations are winning, where is the white space, what do people say about us and our rivals, which creators win, and what should we build or fix. Each section opens with a written answer.",
+    build: () => layoutSections(TOM8_SECTIONS.map((sec) => ({ title: sec.title, widgets: sec.widgets.map(({ when, ...el }) => { void when; return el; }) }))),
+  },
   {
     id: "starter",
     name: "Starter template",
@@ -535,8 +546,8 @@ export function isTemplateId(v: unknown): v is TemplateId {
 }
 /** Accepts ids from older clients: "default" was the first template before the starter replaced it. */
 export function toTemplateId(v: unknown): TemplateId {
-  if (v === "default") return "starter";
-  return isTemplateId(v) ? v : "starter";
+  if (v === "default") return DEFAULT_TEMPLATE;
+  return isTemplateId(v) ? v : DEFAULT_TEMPLATE;
 }
 export function buildTemplate(id: TemplateId): WidgetSpec[] {
   return (TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0]).build();

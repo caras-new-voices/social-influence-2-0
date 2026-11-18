@@ -50,7 +50,7 @@ export interface TemplateCheckResult {
  * Tom's template is analytical: outside its headline, a table can be rightly empty (no spike, no
  * unowned theme), so only the headline is held to it.
  */
-const CORE_SECTIONS: Partial<Record<TemplateId, RegExp>> = { starter: /^[123]\. /, eran: /^[123]\. /, tom: /^The eight measures/, tomnohash: /^The eight measures/ };
+const CORE_SECTIONS: Partial<Record<TemplateId, RegExp>> = { starter: /^[123]\. /, eran: /^[123]\. /, tom: /^The eight measures/, tomnohash: /^The eight measures/, tom8: /^The eight measures/ };
 /** Below this many posts a brand is too thin for "must not be empty" to mean anything. */
 const CORE_MIN_POSTS = 20;
 

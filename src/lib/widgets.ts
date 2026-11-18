@@ -32,6 +32,8 @@ export const WidgetSpecSchema = z.object({
   colorBy: z.enum(["brand", "platform", "sentiment", "tier", "auto"]).optional(),
   format: z.enum(["number", "compact", "percent", "currency", "decimal", "ratio", "points"]).optional(),
   horizontal: z.boolean().optional(),
+  /** What the value axis measures, shown above a chart: "per 1,000 brand comments", "times the norm (1.0 is the norm)". */
+  unit: z.string().max(80).optional(),
   /** Normalise each category to 100 percent (stacked bars). */
   normalize: z.boolean().optional(),
   /** Free text (notes, section headers, insight cards). Simple markdown: **bold**, bullet lines starting with "- ". */
@@ -265,9 +267,9 @@ export const EXPLAIN_CHANGE_QUESTION = "Explain the change";
 
 /** Quick questions offered in the focused chat. */
 export const FOCUS_QUESTIONS: string[] = [
-  "Explain what this shows",
-  "What stands out here?",
-  "Split this by platform",
+  "What stands out here, and what should we do about it?",
+  "Which posts and creators are behind the biggest number?",
+  "Split this by country",
   "Show how this changed over time",
   "Give me example comments behind this",
 ];
@@ -279,14 +281,12 @@ export function focusQuestions(comparing: boolean): string[] {
 
 /** Starter questions surfaced in the chat panel. */
 export const STARTER_QUESTIONS: string[] = [
-  "Which competitor is winning on TikTok, and why?",
-  "What are people complaining about with us versus our closest competitor?",
-  "Where are our buyers getting stuck before purchase?",
-  "Which creators drove the most engagement for us?",
-  "How does comment sentiment compare across brands on Instagram?",
-  "Which brands do commenters prefer over us, and what do they cite?",
-  "What questions are commenters asking that nobody answers?",
-  "Which countries over-index for our biggest competitor?",
-  "How much of each brand's content is paid versus organic?",
-  "What do our loyal customers say about the product?",
+  "Tell me more about our fastest-growing theme: who is behind it and what do they say?",
+  "Which winning theme are we most absent from, and which creators could get us in?",
+  "What do people say about skin irritation with us versus our closest competitor?",
+  "Write a content brief for the theme with the biggest content gap",
+  "Which earned creators should we approach first, and why?",
+  "What is our weakest rival's biggest product complaint, in their audience's words?",
+  "Which questions about our product go unanswered most in Germany?",
+  "How did our paid posts perform against our earned ones last month?",
 ];

@@ -12,6 +12,7 @@
     "check:templates": "node scripts/check-templates.mjs",
     "check:usage": "python3 -I scripts/check_usage.py",
     "check:scope": "python3 -I scripts/check_scope.py",
+    "check:accuracy": "python3 -I scripts/check_accuracy.py",
     "check:sessions": "python3 -I scripts/check_sessions.py",
     "check:verticals": "python3 -I scripts/check_verticals.py",
     "typecheck": "tsc --noEmit"
