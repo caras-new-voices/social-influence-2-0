@@ -506,7 +506,7 @@ FROM ar GROUP BY attribute ORDER BY sum(n) FILTER (WHERE brand = focal_brand()) 
         type: "bar", w: 5, h: 6,
         title: "Buying signals per 1,000 brand comments",
         subtitle: `Comments signalling a purchase ("where can I get it", "just ordered"), us and each rival (brands with ${COMMENT_MIN}+ brand comments). A rate, not a count.`,
-        sql: `SELECT brand, ${r1("1000.0 * count(*) FILTER (WHERE ${INTENT}) / count(*)")} AS value
+        sql: `SELECT brand, ${r1(`1000.0 * count(*) FILTER (WHERE ${INTENT}) / count(*)`)} AS value
 FROM brand_comments GROUP BY brand HAVING count(*) >= ${COMMENT_MIN} OR brand = focal_brand() ORDER BY value DESC`,
         x: "brand", y: "value", colorBy: "brand", format: "decimal", horizontal: true, unit: "Buying signals per 1,000 brand comments (a rate)",
         sample: OUR_BC,

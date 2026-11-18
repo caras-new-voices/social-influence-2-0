@@ -1,6 +1,6 @@
 # Plan: answering Tom's feedback
 
-Status: plan, not built. Written 18 November 2026.
+Status: built on 18 November 2026 as the template "Tom's 8, Nov 8th". Section 7 says what was built and where it differs from this plan.
 
 Source: Tom's message on the latest build, and his brief "Social intelligence: from conversation to content, creators and product" (7 November 2026).
 
@@ -128,3 +128,18 @@ Model cost for the whole plan: under $40 (comments, paid classification, accurac
 - Comments for the nine snapshot industries. Their exports had posts only.
 - Transcripts and visual tagging. Hooks stay caption-based.
 - Purchase intent as a predictor of sales. The brief itself says that needs a client's sales data.
+
+## 7. As built
+
+Built as planned, with these differences:
+
+- **Name.** The default template is "Tom's 8, Nov 8th" (`src/lib/tom8.ts`), written fresh against the brief and not as a rename of "Toms No Hash".
+- **Written section answers are composed in SQL** from the section's own numbers, not written by a model. They are always current, cost no tokens and cannot say anything the tables do not.
+- **Comments were read twice.** The first pass (small model) gave product attributes too freely: 58% agreement with the reviewer. A stricter second pass by a stronger model over the 8,732 brand and category comments took attributes to 87 to 90% and added `buying`, our own reading of a buying signal, which replaces the supplier's looser tag.
+- **Giveaway posts count as gifted,** so they are not earned.
+- **"No brand above 25%" cannot hold with fewer than six brands,** so the ownership line is 25% or one and a half times an even split.
+- **The other templates are hidden, not removed.** Their numbers benefit from the corrected paid flag and the "about the brand" filter, because both are applied in the data and the views.
+- **Step 1d (hair removal theme list) is not done.** It waits for Tom's review.
+- **Model cost:** about $30 in all (posts 10 million input tokens, comments 2 million, second reading 0.7 million on the larger model, and four accuracy runs).
+
+Results and what is still weak: `docs/quality-gate.md`.

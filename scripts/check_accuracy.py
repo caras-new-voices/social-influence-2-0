@@ -80,7 +80,7 @@ short = lambda t, n=140: " ".join((t or "").split())[:n]
 catalog = app("/api/catalog")["industries"]
 PAID_SYSTEM = """You check social media captions for disclosure. For each post answer d:
 - "paid": the caption discloses an advert or a paid partnership (#ad, ad as a label, sponsored, paid partnership, Anzeige, Werbung, Publi, publicidad, #pub, #adv, reklame, annons, brand ambassador or partner, or the creator's own discount code or affiliate link).
-- "gifted": no payment disclosed, but the product was given for free (#gifted, PR sample, #complimentary, testing panel, kindly sent).
+- "gifted": no payment disclosed, but the product was given for free (#gifted, PR sample, #complimentary, testing panel, kindly sent), or the post is a giveaway or competition of the brand's product.
 - "none": neither. "Unpaid advertising" or "not sponsored" wording means none."""
 
 for ind in catalog:
