@@ -59,9 +59,20 @@ Theme accuracy was measured last week: 78% for hair removal, the lowest of the t
 - Migration tested on Postgres 16 from production's state: the views rebuilt, no post label redone, corrections applied in the first six requests. Every element of the default dashboard ran in under a second.
 - Type check, lint and build.
 
+### Further QA after the merge (18 November 2026)
+
+- **The live site.** The upgrade ran on https://social-influence-2-0.vercel.app/ for all ten industries. A dashboard made through the new dialog loaded all 46 boxes with no errors; the slowest took 1.5 seconds.
+- **The arithmetic.** `npm run check:numbers` recomputes 180 headline numbers from the raw files without the app's SQL: the eight measures, the per-brand table, the paid mix, the comment rates, the theme table with its status, and the attribute splits. All 180 match the live dashboard, with Venus as "us" and again with Estrid.
+- **A person's read, of sorts.** I read 100 Venus posts and 200 Venus comments without seeing our labels first.
+  - Posts (paid, gifted, brand-owned or earned): 94 agree, 3 are judgement calls, 3 are wrong. The wrong ones: a laser clinic's "Venus Viva" post kept as a Venus post; a plainly gifted post shown as paid because the platform flagged it; one shown as paid with no disclosure in the part I read.
+  - Comments (about the brand or not): 184 agree, 14 are judgement calls, 2 are wrong.
+  - Buying signals: all 12 in the sample are right. Attributes: 27 of 31 are right (87%).
+- **Code review.** An independent review of the change found nine problems and none in the migration, the dialog or the label mappings. All nine are fixed. The two that mattered: an import that re-sends existing posts would have dropped the caption-based paid correction, and a comment the second reading had not reached would have counted as "no buying signal". Neither had affected the live numbers.
+- **A question this raised.** The supplied paid flag marks 1,293 of 3,000 hair care posts as paid, about four times what the captions disclose. We trust that flag wherever it is set. Nobody has checked whether it is right for hair care.
+
 ### Not verified
 
-- No person has checked a sample. Everything above is one model judging another.
+- No person outside this build has checked a sample. The model checks and my own read are above; Tom or the team has not looked.
 - The list of brand-owned accounts is a draft (`docs/brand-accounts-draft.md`). Earned share depends on it.
 - Gifted posts are left out of earned share. Tom to confirm.
 - The live site's own upgrade has not been watched.

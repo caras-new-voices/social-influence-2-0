@@ -283,10 +283,10 @@ export function focusQuestions(comparing: boolean): string[] {
 export const STARTER_QUESTIONS: string[] = [
   "Tell me more about our fastest-growing theme: who is behind it and what do they say?",
   "Which winning theme are we most absent from, and which creators could get us in?",
-  "What do people say about skin irritation with us versus our closest competitor?",
+  "What is the biggest objection to us versus our closest competitor, in people's own words?",
   "Write a content brief for the theme with the biggest content gap",
   "Which earned creators should we approach first, and why?",
   "What is our weakest rival's biggest product complaint, in their audience's words?",
-  "Which questions about our product go unanswered most in Germany?",
+  "Which questions about our product go unanswered most, and in which country?",
   "How did our paid posts perform against our earned ones last month?",
 ];

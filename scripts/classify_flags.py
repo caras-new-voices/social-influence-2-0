@@ -149,17 +149,17 @@ Each post is filed under a tracked brand and comes with its caption and some of 
 For each comment return:
 - about: what the comment is about.
   - "brand": the tracked brand, its product, its advert, its price, where to buy it, a discount code for it, or the commenter's experience with it. Also a comment about a rival brand's product in the same category.
-  - "category": the product category or the problem it solves, without a specific brand: shaving, hair removal methods, skin irritation after shaving, and so on.
+  - "category": the product category or the problem it solves, without a specific brand.
   - "creator": the creator or the video itself: their looks, outfit, voice, home, partner, editing, other content, a request for another video, or a question about an item that is not the tracked product (their hat, their lipstick, the hotel).
   - "other": anything else with content, including other products in the post that are outside the category.
   - "noise": no content: only emojis, only tags of friends, giveaway entries ("done", "participo"), spam, single words like "first".
   A comment like "need this", "where can I get it?" or "what is it called?" is "brand" only when the caption shows the post is mainly about the tracked brand's product; otherwise "other". Praise such as "love it" or "so pretty" is "creator" unless it clearly refers to the product.
 - attribute: for a "brand" or "category" comment, the ONE product attribute it speaks to, else "none":
   - "price": price, value, discounts, too expensive, worth it.
-  - "efficacy": how well it works, results, closeness, smoothness.
+  - "efficacy": how well it works, the results it gives.
   - "ease": ease of use, convenience, how to use it.
-  - "durability": how long it lasts, blades dulling, breaking, battery.
-  - "safety": irritation, cuts, bumps, allergies, ingredients as a health worry, pain.
+  - "durability": how long it lasts, wearing out, breaking, battery.
+  - "safety": irritation, injury, allergies, ingredients as a health worry, pain.
   - "service": availability, stock, delivery, where to buy, customer service, returns, codes not working.
   Use "none" when no attribute applies."""
 COMMENTS_SCHEMA = schema("comment_labels", {"about": {"type": "string", "enum": ABOUT}, "attribute": {"type": "string", "enum": ATTRIBUTES}})
@@ -205,7 +205,7 @@ def refine_system(ind):
     return comments_system(ind) + """
 
 This is a second, stricter reading. Be exact:
-- attribute: choose one ONLY when the comment itself says something specific about that attribute. General enthusiasm or wanting ("love it", "need this", "obsessed", "best razor", "so good", "I want it", "these are great") is "none". Wanting to buy is not "service" unless the comment mentions stock, delivery, where to buy, or a code. Asking what the product is called is "none". If two attributes apply, choose the main one.
+- attribute: choose one ONLY when the comment itself says something specific about that attribute. General enthusiasm or wanting ("love it", "need this", "obsessed", "the best one", "so good", "I want it", "these are great") is "none". Wanting to buy is not "service" unless the comment mentions stock, delivery, where to buy, or a code. Asking what the product is called is "none". If two attributes apply, choose the main one.
 - buying: true ONLY when the comment signals a purchase being considered or just made, of the tracked brand's product or a product of its category: asks where to get it, the price, a link or a code; says they need it, want it, will buy or try it, are ordering it, or just ordered or bought it. False for everything else: the experience or complaint of someone who already owns it, agreement ("same", "I thought it was just me"), praise without wanting, wanting something else in the post (an outfit, a hotel), wanting to attend an event."""
 REFINE_SCHEMA = schema("comment_refine", {"about": {"type": "string", "enum": ABOUT}, "attribute": {"type": "string", "enum": ATTRIBUTES}, "buying": {"type": "boolean"}})
 
@@ -275,12 +275,16 @@ def compile_all():
             # The stricter second reading replaces the first where it exists. Each row ends with buying (0 or 1).
             rpath = os.path.join(WORK, f"refine-{ind['id']}.jsonl")
             refined = {(r[0], r[1]): r for r in read_rows(rpath)} if os.path.exists(rpath) else {}
-            rows = [refined.get((r[0], r[1]), r + [0]) if (r[0], r[1]) in refined else r + [0] for r in rows]
+            wanted = [r for r in rows if r[2] in (ABOUT.index("brand"), ABOUT.index("category"))]
+            if refined and sum((r[0], r[1]) in refined for r in wanted) < 0.98 * len(wanted):
+                print(f"comments {ind['id']}: the second reading covers only {sum((r[0], r[1]) in refined for r in wanted)} of {len(wanted)} brand comments, not compiled"); continue
+            # buying: 1 or 0 from the second reading; -1 (unknown) for a brand comment it did not read, 0 for comments not about the brand.
+            rows = [refined[(r[0], r[1])] if (r[0], r[1]) in refined else r + [-1 if r[2] in (ABOUT.index("brand"), ABOUT.index("category")) else 0] for r in rows]
             total = sum(1 for c in gz(os.path.join(SEED, "comments.json.gz"))) if not ind.get("pack") else 0
             if len(rows) < 0.98 * total: print(f"comments {ind['id']}: only {len(rows)} of {total} read, not compiled")
             else:
                 kb = write("comment_labels", ind, {"industry": ind["id"], "model": MODEL, "about": ABOUT, "attributes": ATTRIBUTES, "rows": rows})
-                print(f"comments {ind['id']}: {len(rows)} of {total} read, {len(refined)} read twice, {sum(r[4] for r in rows)} buying signals, {sum(r[3] > 0 for r in rows)} with an attribute -> {kb:.0f} KB; about: " + ", ".join(f"{a} {sum(r[2] == i for r in rows)}" for i, a in enumerate(ABOUT)))
+                print(f"comments {ind['id']}: {len(rows)} of {total} read, {len(refined)} read twice, {sum(r[4] == 1 for r in rows)} buying signals, {sum(r[3] > 0 for r in rows)} with an attribute -> {kb:.0f} KB; about: " + ", ".join(f"{a} {sum(r[2] == i for r in rows)}" for i, a in enumerate(ABOUT)))
 
 if MODE == "compile":
     compile_all()
