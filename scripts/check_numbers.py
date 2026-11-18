@@ -1,0 +1,170 @@
+"""Recalculates the default dashboard's headline numbers from the raw seed files, independently of
+the app's SQL, and compares them with what a running app returns.
+
+  python3 -I scripts/check_numbers.py [--base http://localhost:3000] [--focal Venus]
+
+It tests the arithmetic, not the labels: given the same labels, do share of voice, earned share,
+momentum, engagement vs norm, the paid mix, the per-1,000 comment rates and the theme table come
+out the same when computed a second way? It covers the live industry (hair removal), all time, with
+every tracked brand in the selection. Numbers must match to the rounding the dashboard shows.
+
+The paid, gifted and brand-owned rules are re-applied here from the same marker lists the app uses
+(read out of src/lib/themes.ts), so a difference means the app applied them differently.
+"""
+import gzip, json, os, re, sys, urllib.request
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SEED = os.path.join(ROOT, "data", "seed")
+def arg(name, default=None):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
+BASE = arg("--base", os.environ.get("SI_BASE", "http://localhost:3000"))
+IND = arg("--industry", "hair-removal")
+_ind = [i for i in json.load(open(os.path.join(SEED, "catalog.json"), encoding="utf-8"))["industries"] if i["id"] == IND][0]
+FOCAL = arg("--focal", _ind.get("suggestedFocal") or _ind["brands"][0]["name"])
+gz = lambda *p: json.load(gzip.open(os.path.join(SEED, *p), "rt", encoding="utf-8"))
+
+def call(path, body=None, method=None):
+    req = urllib.request.Request(BASE + path, data=json.dumps(body).encode() if body is not None else None, headers={"Content-Type": "application/json", "User-Agent": "qa-check"}, method=method or ("POST" if body is not None else "GET"))
+    return json.loads(urllib.request.urlopen(req, timeout=300).read().decode())
+
+# ---------------------------------------------------------------- the data, corrected a second way
+catalog = json.load(open(os.path.join(SEED, "catalog.json"), encoding="utf-8"))
+ind = [i for i in catalog["industries"] if i["id"] == IND][0]
+handles = {b["name"]: {h.lower() for h in b.get("handles", [])} for b in ind["brands"]}
+brands = [b["name"] for b in ind["brands"]]
+
+src = open(os.path.join(ROOT, "src", "lib", "themes.ts"), encoding="utf-8").read()
+def markers(name):
+    body = re.search(r"const %s = \[(.*?)\]\.join" % name, src, re.S).group(1)
+    items = [json.loads('"' + m + '"') for m in re.findall(r'"((?:[^"\\]|\\.)*)"', body)]
+    return re.compile("|".join(items).replace("\\m", "\\b").replace("\\M", "\\b"))
+PAID, NOT_PAID, GIFTED = markers("PAID_MARKERS"), markers("NOT_PAID_MARKERS"), markers("GIFTED_MARKERS")
+
+labels = gz("labels", IND + ".json.gz")
+themes, hooks = labels["themes"], labels["hooks"]
+lab = {(r[0], r[1]): r for r in labels["rows"]}
+disc = {(r[0], r[1]): gz("disclosure", IND + ".json.gz")["values"][r[2]] for r in gz("disclosure", IND + ".json.gz")["rows"]}
+ts = lambda s: datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S") if s else None
+
+posts = []
+for p in gz("posts.json.gz"):
+    key = (p["segment_id"], p["post_id"])
+    l = lab.get(key)
+    if l and l[5] == "no": continue                      # not about the brand: left out of everything
+    text = (p.get("text") or "").lower()
+    d = disc.get(key)
+    if p.get("text") and PAID.search(text): d = "paid"
+    if d == "paid" and NOT_PAID.search(text): d = None
+    if d is None and p.get("text") and GIFTED.search(text): d = "gifted"
+    if d is None and l and l[4] > 0 and hooks[l[4] - 1] == "Giveaway or competition": d = "gifted"
+    paid = bool(p.get("is_paid")) or d == "paid"
+    reach_f = (p["platform"] == "instagram" and p["post_type"] == "image") or not (p.get("views") or 0)
+    posts.append({**p, "at": ts(p.get("published_at")), "paid": paid, "gifted": d == "gifted" and not paid,
+                  "owned": (p.get("username") or "").lower() in handles.get(p["brand"], set()),
+                  "theme": themes[l[2] - 1] if l and l[2] > 0 else None,
+                  "basis": "f" if reach_f else "v", "reach": (p.get("followers") if reach_f else p.get("views")) or 0})
+for p in posts: p["earned"] = not (p["paid"] or p["gifted"] or p["owned"])
+
+cl = gz("comment_labels", IND + ".json.gz")
+kept_posts = {(p["segment_id"], p["post_id"]) for p in posts}
+cmeta = {(r[0], r[1]): r for r in cl["rows"]}
+comments = []
+for c in gz("comments.json.gz"):
+    r = cmeta.get((c["segment_id"], c["comment_id"]))
+    about = cl["about"][r[2]] if r else None
+    if about is not None and about not in ("brand", "category"): continue   # brand comments only (unclassified ones stay in)
+    comments.append({**c, "at": ts(c.get("published_at")), "attribute": cl["attributes"][r[3]] if r and r[3] > 0 else None,
+                     "buying": (r[4] == 1) if r else (c.get("purchase_intent_type") is not None)})
+
+# ---------------------------------------------------------------- the measures, computed here
+dated = [p["at"] for p in posts if p["at"]]
+end = max(dated) + timedelta(seconds=1); start = max(dated) - timedelta(days=90); prev = start - (end - start)
+cur = [p for p in posts if p["at"] and start <= p["at"] < end]
+before = [p for p in posts if p["at"] and prev <= p["at"] < start]
+
+norm = defaultdict(lambda: [0.0, 0.0])
+for p in posts:
+    if p["reach"] > 0:
+        k = (p["platform"], p.get("tier") or "", p["basis"]); norm[k][0] += p.get("engagement") or 0; norm[k][1] += p["reach"]
+def vs(group):
+    eng = exp = 0.0
+    for p in group:
+        k = (p["platform"], p.get("tier") or "", p["basis"])
+        rate = norm[k][0] / norm[k][1] if norm[k][1] else 0
+        if p["reach"] > 0 and rate > 0: eng += p.get("engagement") or 0; exp += p["reach"] * rate
+    return eng / exp if exp else None
+of = lambda group, b: [p for p in group if p["brand"] == b]
+neg = lambda c: c.get("sentiment") == "negative" or c.get("objection_category") is not None
+
+checks = []
+def check(name, mine, theirs, tol=0.006):
+    # The dashboard rounds what it shows; allow half a unit of the last digit shown (0, 1 or 2 decimals).
+    shown = len(repr(float(theirs)).split(".")[1].rstrip("0")) if theirs is not None else 0
+    slack = 0.5 * 10 ** -shown + 1e-9 if shown <= 2 else 0
+    ok = (mine is None and theirs is None) or (mine is not None and theirs is not None and abs(mine - theirs) <= max(slack, tol * max(1, abs(theirs))))
+    checks.append((ok, name, mine, theirs))
+
+scope = {"industry": IND, "focal": FOCAL, "competitors": [b for b in brands if b != FOCAL]}
+dash = call("/api/dashboards", {"name": "QA numbers (safe to delete)", "template": "tom8", "scope": scope})["dashboard"]
+got = {}
+for w in dash["widgets"]:
+    if w.get("sql"): got[w["title"]] = call("/api/widgets/data", {"sql": w["sql"], "scope": scope}).get("rows", [])
+call(f"/api/dashboards/{dash['id']}", None, "DELETE")
+
+kpi = {r["label"]: r for r in got["Our eight measures"]}
+us, us_b = of(cur, FOCAL), of(before, FOCAL)
+check("KPI share of voice", len(us) / len(cur), kpi["Share of voice"]["value"])
+check("KPI share of voice, period before", len(us_b) / len(before), kpi["Share of voice"]["compare"])
+check("KPI engagement vs norm", vs(us), kpi["Engagement vs norm"]["value"])
+check("KPI momentum", len(us) / len(us_b) - 1, kpi["Momentum"]["value"])
+check("KPI earned share", sum(p["earned"] for p in us) / len(us), kpi["Earned share"]["value"])
+cc = [c for c in comments if c["brand"] == FOCAL and c["at"] and start <= c["at"] < end]
+check("KPI purchase intent per 1K", 1000 * sum(c["buying"] for c in cc) / len(cc), kpi["Purchase intent per 1K"]["value"])
+check("KPI praise per 1K", 1000 * sum(c.get("sentiment") == "positive" for c in cc) / len(cc), kpi["Praise per 1K"]["value"])
+check("KPI objections per 1K", 1000 * sum(neg(c) for c in cc) / len(cc), kpi["Objections per 1K"]["value"])
+
+for r in got["The same measures for every tracked brand"]:
+    b = r["brand"]; g, gb = of(cur, b), of(before, b)
+    check(f"{b}: posts", len(g), r["posts"], 0)
+    check(f"{b}: creators", len({p['influencer_id'] for p in g if p.get('influencer_id') is not None}), r["creators"], 0)
+    check(f"{b}: share of voice %", 100 * len(g) / len(cur), r["share of voice %"], 0.004)
+    check(f"{b}: engagement rate %", 100 * sum(p.get("engagement") or 0 for p in g) / max(1e-9, sum(p["reach"] for p in g)), r["engagement rate %"], 0.02)
+    check(f"{b}: engagement vs norm", vs(g), r["engagement vs norm"], 0.01)
+    if r["momentum %"] is not None: check(f"{b}: momentum %", 100 * (len(g) / len(gb) - 1), r["momentum %"], 0.01)
+    check(f"{b}: earned share %", 100 * sum(p["earned"] for p in g) / len(g), r["earned share %"], 0.02)
+
+mix = defaultdict(int)
+for p in posts: mix[(p["brand"], "Brand-owned" if p["owned"] else "Paid" if p["paid"] else "Gifted" if p["gifted"] else "Earned")] += 1
+for r in got["Earned, gifted, paid and brand-owned posts"]: check(f"mix {r['brand']} {r['kind']}", mix[(r["brand"], r["kind"])], r["value"], 0)
+
+for r in got["What the audience says, per tracked brand"]:
+    g = [c for c in comments if c["brand"] == r["brand"]]
+    check(f"{r['brand']}: brand comments", len(g), r["brand comments"], 0)
+    check(f"{r['brand']}: intent per 1K", 1000 * sum(c["buying"] for c in g) / len(g), r["intent per 1K"], 0.002)
+    check(f"{r['brand']}: praise per 1K", 1000 * sum(c.get("sentiment") == "positive" for c in g) / len(g), r["praise per 1K"], 0.002)
+    check(f"{r['brand']}: objections per 1K", 1000 * sum(neg(c) for c in g) / len(g), r["objections per 1K"], 0.002)
+
+share = len(us) / len(cur)
+for r in got["Themes: momentum and engagement vs norm"]:
+    t = r["theme"]; g = [p for p in cur if p["theme"] == t]; gb = [p for p in before if p["theme"] == t]
+    v = vs(g); mom = len(g) / len(gb) - 1 if len(gb) >= 3 else None
+    check(f"theme {t}: posts", len(g), r["posts"], 0)
+    check(f"theme {t}: engagement vs norm", v, r["engagement vs norm"], 0.01)
+    if r["momentum %"] is not None: check(f"theme {t}: momentum %", 100 * mom, r["momentum %"], 0.01)
+    check(f"theme {t}: our share of posts %", 100 * len(of(g, FOCAL)) / len(g), r["our share of posts %"], 0.02)
+    status = ("early signal" if v >= 1.5 and mom is not None and mom < 0.2 else "winning" if v >= 1.2 and mom is not None and mom > 0 else
+              "peaking" if mom is not None and mom >= 0.5 and v < 1 else "above norm" if v >= 1.2 else "below norm" if v < 0.8 else "steady")
+    checks.append((status == r["status"], f"theme {t}: status", status, r["status"]))
+
+for r in got["What people love and hate, by attribute"]:
+    a = r["attribute"].split(":")[0].split(" ")[0].lower()
+    g = [c for c in comments if c["brand"] == FOCAL]; ga = [c for c in g if c["attribute"] == a]
+    check(f"attribute {a}: our praise per 1K", 1000 * sum(c.get("sentiment") == "positive" for c in ga) / len(g), r["our praise per 1K"], 0.004)
+    check(f"attribute {a}: our objections per 1K", 1000 * sum(neg(c) for c in ga) / len(g), r["our objections per 1K"], 0.004)
+
+bad = [c for c in checks if not c[0]]
+for ok, name, mine, theirs in bad: print(f"  DIFFERENT {name}: recalculated {mine}, dashboard shows {theirs}")
+print(f"{len(checks) - len(bad)} of {len(checks)} numbers match ({BASE}, {FOCAL} against {len(brands) - 1} competitors, all time)")
+raise SystemExit(1 if bad else 0)

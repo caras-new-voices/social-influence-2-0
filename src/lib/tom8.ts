@@ -73,11 +73,12 @@ c AS MATERIALIZED (
 const STATUS_NOTE = "Winning: growing, and engagement at 1.2 times the norm or more. Early signal: 1.5 times the norm while momentum is under 20%. Peaking: growing 50% or more with engagement below the norm";
 
 /** The hook with the best engagement vs norm in each theme (5+ posts, at the norm or above): bh(theme, hook, hvs). Needs `sp`. */
-const BEST_HOOK = `bh AS MATERIALIZED (
+const BEST_HOOK = (where = "TRUE") => `bh AS MATERIALIZED (
   SELECT DISTINCT ON (theme) theme, hook, hvs FROM (
     SELECT pt.theme, ph.hook, sum(sp.eng_s) / NULLIF(sum(sp.expected), 0) AS hvs, count(*) AS n
     FROM sp JOIN post_themes pt ON pt.segment_id = sp.segment_id AND pt.post_id = sp.post_id AND pt.is_primary
             JOIN post_hooks ph ON ph.segment_id = sp.segment_id AND ph.post_id = sp.post_id
+    WHERE ${where}
     GROUP BY 1, 2 HAVING count(*) >= 5
   ) x WHERE hvs >= 1 ORDER BY theme, hvs DESC
 )`;
@@ -112,7 +113,11 @@ const GRID = (who: string) => `g AS (
  * cs(creator, platform, posts, ours, theirs, brands, vs, theme, fit, intent_k, rel, paid_by_us, score).
  */
 const CREATOR_SCORE = `${SCORED("posts")},
-cp AS (SELECT sp.*, pt.theme FROM sp LEFT JOIN post_themes pt ON pt.segment_id = sp.segment_id AND pt.post_id = sp.post_id AND pt.is_primary WHERE sp.username IS NOT NULL AND NOT sp.is_owned),
+cp AS (
+  SELECT DISTINCT ON (sp.segment_id, sp.post_id) sp.*, pt.theme
+  FROM sp LEFT JOIN post_themes pt ON pt.segment_id = sp.segment_id AND pt.post_id = sp.post_id AND pt.is_primary
+  WHERE sp.username IS NOT NULL AND NOT sp.is_owned ORDER BY sp.segment_id, sp.post_id, pt.theme
+),
 pc AS MATERIALIZED (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments GROUP BY 1, 2),
 ct AS (SELECT username, theme, count(*) AS n, row_number() OVER (PARTITION BY username ORDER BY count(*) DESC, theme) AS rk FROM cp WHERE theme IS NOT NULL AND theme NOT IN ('Other', 'Unknown') GROUP BY 1, 2),
 ca AS (
@@ -161,7 +166,8 @@ us AS MATERIALIZED (
          count(*) FILTER (WHERE c.published_at >= b.s AND (c.sentiment = 'negative' OR c.objection_category IS NOT NULL))::float AS obj, count(*) FILTER (WHERE c.published_at < b.s AND (c.sentiment = 'negative' OR c.objection_category IS NOT NULL))::float AS obj_prev
   FROM brand_comments_all c, b WHERE c.brand = focal_brand() AND c.published_at >= b.ps AND c.published_at < b.e
 ), gap AS (SELECT theme, count(*)::float AS n, sum(coalesce(comments, 0)) AS comments FROM tags GROUP BY 1),
-top_gap AS (SELECT 100.0 * gap.comments / NULLIF(tot.comments, 0) - 100.0 * gap.n / NULLIF(tot.cur, 0) AS pts FROM gap, tot WHERE gap.n >= ${THEME_MIN} ORDER BY 1 DESC NULLS LAST LIMIT 1)
+gt AS MATERIALIZED (SELECT sum(n) AS n, NULLIF(sum(comments), 0) AS comments FROM gap),
+top_gap AS (SELECT 100.0 * gap.comments / gt.comments - 100.0 * gap.n / NULLIF(gt.n, 0) AS pts FROM gap, gt WHERE gap.n >= ${THEME_MIN} ORDER BY 1 DESC NULLS LAST LIMIT 1)
 SELECT 'Share of voice' AS label, us.cur / NULLIF(tot.cur, 0) AS value, us.prev / NULLIF(tot.prev, 0) AS compare, 'percent' AS fmt FROM us, tot
 UNION ALL SELECT 'Engagement vs norm', us.vs_cur, us.vs_prev, 'ratio' FROM us
 UNION ALL SELECT 'Momentum', CASE WHEN us.prev >= 3 THEN us.cur / us.prev - 1 END, NULL, 'percent' FROM us
@@ -238,7 +244,7 @@ FROM brand_comments GROUP BY brand HAVING count(*) >= ${COMMENT_MIN} OR brand = 
         title: "The answer: themes to build content around",
         subtitle: `Composed from the numbers in this section. ${STATUS_NOTE}.`,
         when: N_THEMED,
-        sql: `WITH ${THEMES}, ${BEST_HOOK},
+        sql: `WITH ${THEMES}, ${BEST_HOOK("sp.cur")},
 pick AS (
   SELECT c.*, bh.hook, bh.hvs, row_number() OVER (ORDER BY (status = 'winning') DESC, (status = 'early signal') DESC, vs DESC NULLS LAST) AS rk
   FROM c LEFT JOIN bh USING (theme) WHERE status IN ('winning', 'early signal', 'above norm')
@@ -369,7 +375,7 @@ FROM s JOIN top USING (brand, mo) ORDER BY s.mo DESC, s.eng / s.base DESC LIMIT 
         title: "The answer: the \"own it\" list",
         subtitle: "Composed from the numbers in this section: the theme, proof the audience rewards it, who is absent, and the first brief.",
         when: N_THEMED,
-        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${BEST_HOOK},
+        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${BEST_HOOK()},
 tb AS (SELECT theme, brand, count(*)::float AS n, sum(eng_s) AS eng_s, sum(expected) AS expected FROM tags GROUP BY 1, 2),
 t AS (
   SELECT theme, sum(n) AS posts, sum(eng_s) / NULLIF(sum(expected), 0) AS vs, max(n) AS lead_n, (array_agg(brand ORDER BY n DESC))[1] AS leader,
@@ -425,7 +431,7 @@ FROM t, tot WHERE t.posts >= ${THEME_MIN} AND tot.comments IS NOT NULL AND 100.0
   FROM brand_comments WHERE brand = focal_brand() AND faq_topic IS NOT NULL
 ), top AS (SELECT DISTINCT ON (topic) topic, left(question, 160) AS example FROM q WHERE replies = 0 ORDER BY topic, likes DESC)
 SELECT q.topic AS "asks about", count(*)::int AS questions, count(*) FILTER (WHERE q.replies = 0)::int AS unanswered, coalesce(sum(q.likes) FILTER (WHERE q.replies = 0), 0)::int AS "likes on unanswered", top.example AS "most-liked unanswered"
-FROM q JOIN top USING (topic) GROUP BY q.topic, top.example ORDER BY 3 DESC, 4 DESC`,
+FROM q LEFT JOIN top USING (topic) GROUP BY q.topic, top.example ORDER BY 3 DESC, 4 DESC`,
         sample: OUR_BC,
         rationale: "Every unanswered question about the product is a piece of content somebody already asked for.",
       },

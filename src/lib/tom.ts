@@ -87,9 +87,10 @@ const HASH_NOTE = "A theme is a caption hashtag, with brand names and platform f
  * shared by definition.
  */
 export const LABEL_TAGS = (src = "posts") => `tags AS (
-  SELECT p.*, pt.theme FROM ${src} p JOIN post_themes pt ON pt.segment_id = p.segment_id AND pt.post_id = p.post_id AND pt.is_primary
+  SELECT DISTINCT ON (p.segment_id, p.post_id) p.*, pt.theme FROM ${src} p JOIN post_themes pt ON pt.segment_id = p.segment_id AND pt.post_id = p.post_id AND pt.is_primary
   WHERE pt.theme NOT IN ('Other', 'Unknown')
     AND NOT EXISTS (SELECT 1 FROM post_about pa WHERE pa.segment_id = p.segment_id AND pa.post_id = p.post_id AND pa.about = 'no')
+  ORDER BY p.segment_id, p.post_id, pt.theme
 )`;
 const LABEL_NOTE = "A theme is what the caption is about, from a fixed list for the industry. Posts judged not to be about the brand are left out";
 

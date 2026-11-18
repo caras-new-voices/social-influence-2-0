@@ -96,7 +96,7 @@ const PAID_MARKERS = [
   "wsp[oó][lł]praca reklamowa", "#wsp[oó][lł]praca", "#samenwerking", "#advertentie", "#spolupraca", "#spoluprace", "#parceriapaga", "#διαφημιση",
 ].join("|");
 /** Wording that says the opposite: named brands without payment. */
-const NOT_PAID_MARKERS = ["unbezahlt", "selbst ?gekauft", "markennennung", "not sponsored", "#notsponsored", "#notanad", "not an ad\\M", "nicht gesponsert", "keine werbung", "#keinewerbung", "no es publi", "non sponsoris"].join("|");
+const NOT_PAID_MARKERS = ["unbezahlt", "unbeauftragt", "wegen verlinkung", "selbst ?gekauft", "markennennung", "not sponsored", "#notsponsored", "#notanad", "not an ad\\M", "nicht gesponsert", "keine werbung", "#keinewerbung", "no es publi", "non sponsoris"].join("|");
 /** A product received for free, with no payment disclosed. */
 const GIFTED_MARKERS = ["#gifted", "\\mgifted\\M", "#giftedby", "pr sample", "#prsample", "pr package", "#prpackage", "#prgift", "#prunboxing", "#complimentary", "#freesample", "kindly sent", "#influenster", "#trnd\\M", "#markenjury", "#theinsiders", "#produkttest", "#gratistesten", "#regalo\\M", "#offert\\M"].join("|");
 
@@ -146,7 +146,8 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
   );
   await db.query(`UPDATE comments_raw SET about = NULL, attribute = NULL, buying = NULL WHERE ${seg} AND about IS NOT NULL`, [industry]);
   if (comments) {
-    const rows = comments.rows.map(([segment_id, comment_id, a, t, b]) => ({ segment_id, comment_id, about: comments.about[a], attribute: t > 0 ? comments.attributes[t] : null, buying: b === 1 }));
+    // buying: 1 or 0 from the stricter second reading; anything else (not read twice) stays NULL, so the supplied tag is used.
+    const rows = comments.rows.map(([segment_id, comment_id, a, t, b]) => ({ segment_id, comment_id, about: comments.about[a], attribute: t > 0 ? comments.attributes[t] : null, buying: b === 1 ? true : b === 0 ? false : null }));
     for (let at = 0; at < rows.length; at += CHUNK) {
       await db.query(
         `UPDATE comments_raw c SET about = t.about, attribute = t.attribute, buying = t.buying FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, about text, attribute text, buying boolean)
@@ -217,10 +218,24 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     const base = `${rules.hash}:${model?.hash ?? "rules"}:${ind.posts}`;
     // The corrections have their own state, so a new disclosure or comment file does not redo the labels.
     const flagsKey = `flags:${ind.industry}`;
-    const flagsBase = `${base}:f4:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
+    const flagsBase = `${base}:f5:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
     const applyFlagsIfNeeded = async (): Promise<boolean> => {
-      if ((await getMeta(db, flagsKey)) === flagsBase) return true;
+      // An import that re-sends posts overwrites is_paid and clears is_paid_source (imports.ts): the corrections must run again.
+      const stale = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM posts_raw WHERE is_paid_source IS NULL AND segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
+        [ind.industry],
+      );
+      if ((await getMeta(db, flagsKey)) === flagsBase && !stale[0]?.n) return true;
       if (spent()) return false;
+      // One instance at a time: the corrections reset columns before filling them, so two runs must not
+      // overlap, and a run that dies must not leave the key saying "applied". The claim expires after five minutes.
+      const now = Date.now();
+      const claim = await db.query<{ key: string }>(
+        `INSERT INTO app_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+          WHERE app_meta.value NOT LIKE 'running:%' OR split_part(app_meta.value, ':', 2)::bigint < $3 RETURNING key`,
+        [flagsKey, `running:${now}`, now - 300000],
+      );
+      if (!claim.length) return false;
       const t0 = Date.now();
       await applyFlags(db, ind.industry, disclosure?.file ?? null, commentLabels?.file ?? null);
       await setMeta(db, flagsKey, flagsBase);
