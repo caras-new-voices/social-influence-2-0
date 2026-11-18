@@ -25,29 +25,29 @@ import type { StarterCondition, StarterSection } from "./starter";
 /* Measure fragments                                                     */
 /* ------------------------------------------------------------------ */
 
-const NOT_SELF = (col: string) => `NOT is_self_mention(${col})`;
+export const NOT_SELF = (col: string) => `NOT is_self_mention(${col})`;
 
 /** Current window [s, e) and the start of the one before (ps). With no period: the last 90 days of tracked activity and the 90 before. */
-const BOUNDS = `b0 AS MATERIALIZED (
+export const BOUNDS = `b0 AS MATERIALIZED (
   SELECT coalesce(period_start(), (SELECT max(published_at) FROM posts_all) - interval '90 days') AS s,
          coalesce(period_end(), (SELECT max(published_at) FROM posts_all) + interval '1 second') AS e
 ), b AS MATERIALIZED (
   SELECT s, e, CASE WHEN s = date_trunc('month', s) AND e = s + interval '1 month' THEN s - interval '1 month' ELSE s - (e - s) END AS ps FROM b0
 )`;
 /** Posts of both windows, flagged cur for the current one. Needs BOUNDS. */
-const WINDOW_POSTS = `w AS (
+export const WINDOW_POSTS = `w AS (
   SELECT p.*, (p.published_at >= b.s) AS cur FROM posts_all p, b WHERE p.published_at >= b.ps AND p.published_at < b.e
 )`;
-const VERSUS = "This period against the one before (the last 90 days against the 90 before, when viewing all time)";
+export const VERSUS = "This period against the one before (the last 90 days against the 90 before, when viewing all time)";
 
 const REACH_BASIS = (a: string) => `CASE WHEN (${a}.platform = 'instagram' AND ${a}.post_type = 'image') OR coalesce(${a}.views, 0) = 0 THEN 'f' ELSE 'v' END`;
-const REACH = (a: string) => `CASE WHEN (${a}.platform = 'instagram' AND ${a}.post_type = 'image') OR coalesce(${a}.views, 0) = 0 THEN ${a}.followers ELSE ${a}.views END`;
+export const REACH = (a: string) => `CASE WHEN (${a}.platform = 'instagram' AND ${a}.post_type = 'image') OR coalesce(${a}.views, 0) = 0 THEN ${a}.followers ELSE ${a}.views END`;
 /**
  * norms: the tracked brands' engagement rate per platform, creator size and reach basis, over all
  * time. sp: every post of `src` with `expected` (its expected engagement) and `eng_s` (its
  * engagement), both null when the post cannot be scored (no reach, or no norm for its cell).
  */
-const SCORED = (src = "posts") => `norms AS MATERIALIZED (
+export const SCORED = (src = "posts") => `norms AS MATERIALIZED (
   SELECT a.platform, coalesce(a.tier, '') AS tier_k, ${REACH_BASIS("a")} AS basis, sum(a.engagement) / NULLIF(sum(${REACH("a")}), 0) AS rate
   FROM posts_all a WHERE coalesce(${REACH("a")}, 0) > 0 GROUP BY 1, 2, 3
 ), sp AS (
@@ -56,8 +56,8 @@ const SCORED = (src = "posts") => `norms AS MATERIALIZED (
   FROM ${src} p LEFT JOIN norms n ON n.platform = p.platform AND n.tier_k = coalesce(p.tier, '') AND n.basis = ${REACH_BASIS("p")}
 )`;
 /** Engagement versus norm of a group of scored posts, optionally of the rows matching `filter`. */
-const vs = (filter?: string) => (filter ? `sum(eng_s) FILTER (WHERE ${filter}) / NULLIF(sum(expected) FILTER (WHERE ${filter}), 0)` : `sum(eng_s) / NULLIF(sum(expected), 0)`);
-const NORM_NOTE = "1.0 is the norm for the platform and creator size across the tracked brands; 1.2 and above is outperforming";
+export const vs = (filter?: string) => (filter ? `sum(eng_s) FILTER (WHERE ${filter}) / NULLIF(sum(expected) FILTER (WHERE ${filter}), 0)` : `sum(eng_s) / NULLIF(sum(expected), 0)`);
+export const NORM_NOTE = "1.0 is the norm for the platform and creator size across the tracked brands; 1.2 and above is outperforming";
 
 /** Hashtags that describe the platform, not the conversation. */
 const FILLER = ["fyp", "fy", "foryou", "foryoupage", "foryourpage", "fypage", "viral", "explore", "explorepage", "trending", "trend", "shorts", "short", "reels", "reel", "video", "videos", "views", "tiktok", "instagram", "youtube", "parati", "capcut", "like", "follow", "love", "instagood", "xyzbca", "ad", "anzeige", "werbung", "sponsored", "new", "usa", "ads", "adv", "pub", "publi", "publicidad", "pubblicita", "reklame", "reklama", "gifted", "collab", "partner", "partnership", "pr"];
@@ -86,16 +86,16 @@ const HASH_NOTE = "A theme is a caption hashtag, with brand names and platform f
  * themes.ts). Themes come from a fixed list per industry, so they need no name check and are
  * shared by definition.
  */
-const LABEL_TAGS = (src = "posts") => `tags AS (
+export const LABEL_TAGS = (src = "posts") => `tags AS (
   SELECT p.*, pt.theme FROM ${src} p JOIN post_themes pt ON pt.segment_id = p.segment_id AND pt.post_id = p.post_id AND pt.is_primary
   WHERE pt.theme NOT IN ('Other', 'Unknown')
     AND NOT EXISTS (SELECT 1 FROM post_about pa WHERE pa.segment_id = p.segment_id AND pa.post_id = p.post_id AND pa.about = 'no')
 )`;
 const LABEL_NOTE = "A theme is what the caption is about, from a fixed list for the industry. Posts judged not to be about the brand are left out";
 
-const r2 = (expr: string) => `round((${expr})::numeric, 2)`;
-const r1 = (expr: string) => `round((${expr})::numeric, 1)`;
-const r0 = (expr: string) => `round((${expr})::numeric, 0)`;
+export const r2 = (expr: string) => `round((${expr})::numeric, 2)`;
+export const r1 = (expr: string) => `round((${expr})::numeric, 1)`;
+export const r0 = (expr: string) => `round((${expr})::numeric, 0)`;
 
 /* ------------------------------------------------------------------ */
 /* Conditions                                                            */
@@ -103,20 +103,20 @@ const r0 = (expr: string) => `round((${expr})::numeric, 0)`;
 
 const OUR_COMMENTS = { sql: `SELECT count(*)::int AS n FROM comments WHERE brand = focal_brand()`, min: 30, unit: "comments on our content" };
 const N_COMMENTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand()`, min: 100, what: "audience comments on our content" };
-const N_HISTORY: StarterCondition = { sql: `SELECT coalesce(extract(epoch FROM max(published_at) - min(published_at)) / 86400, 0)::int AS n FROM posts_all`, min: 45, what: "days of history to compare one period with the one before" };
-const N_LONG_HISTORY: StarterCondition = { sql: `SELECT coalesce(extract(epoch FROM max(published_at) - min(published_at)) / 86400, 0)::int AS n FROM posts_all`, min: 120, what: "days of history to tell a spike from a normal month" };
-const N_COMPETITORS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM segments WHERE is_competitor(brand)`, min: 1, what: "competitor in the selection" };
+export const N_HISTORY: StarterCondition = { sql: `SELECT coalesce(extract(epoch FROM max(published_at) - min(published_at)) / 86400, 0)::int AS n FROM posts_all`, min: 45, what: "days of history to compare one period with the one before" };
+export const N_LONG_HISTORY: StarterCondition = { sql: `SELECT coalesce(extract(epoch FROM max(published_at) - min(published_at)) / 86400, 0)::int AS n FROM posts_all`, min: 120, what: "days of history to tell a spike from a normal month" };
+export const N_COMPETITORS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM segments WHERE is_competitor(brand)`, min: 1, what: "competitor in the selection" };
 const N_PAID: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE brand = focal_brand() AND is_paid`, min: 20, what: "disclosed paid posts" };
-const N_FEES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE brand = focal_brand() AND budget_min IS NOT NULL`, min: 50, what: "posts with an estimated creator fee" };
-const N_AUDIENCE: StarterCondition = { sql: `SELECT count(*)::int AS n FROM influencers WHERE brand = focal_brand() AND audience_countries IS NOT NULL`, min: 20, what: "creators with audience data" };
+export const N_FEES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE brand = focal_brand() AND budget_min IS NOT NULL`, min: 50, what: "posts with an estimated creator fee" };
+export const N_AUDIENCE: StarterCondition = { sql: `SELECT count(*)::int AS n FROM influencers WHERE brand = focal_brand() AND audience_countries IS NOT NULL`, min: 20, what: "creators with audience data" };
 const N_REQUESTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND feature_request_type IS NOT NULL`, min: 30, what: "comments asking for a product change" };
 const N_USE_CASES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND use_case_segment IS NOT NULL`, min: 20, what: "comments describing how the product is used" };
 const N_OBJECTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND objection_category IS NOT NULL`, min: 50, what: "comments raising an objection" };
 const N_RIVAL_MENTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND competitor_name IS NOT NULL AND ${NOT_SELF("competitor_name")}`, min: 20, what: "comments naming another brand" };
 const N_BLOCKERS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE brand = focal_brand() AND purchase_blocker IS NOT NULL`, min: 10, what: "comments naming what stops a purchase" };
-const N_THEMED: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_themes`, min: 50, what: "posts with a theme" };
-const N_ABOUT: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_about WHERE brand = focal_brand()`, min: 50, what: "of our posts checked for whether they are about us" };
-const N_HOOKS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_hooks WHERE brand = focal_brand()`, min: 20, what: "of our posts with a recognisable hook" };
+export const N_THEMED: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_themes`, min: 50, what: "posts with a theme" };
+export const N_ABOUT: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_about WHERE brand = focal_brand()`, min: 50, what: "of our posts checked for whether they are about us" };
+export const N_HOOKS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM post_hooks WHERE brand = focal_brand()`, min: 20, what: "of our posts with a recognisable hook" };
 const HAS_INSIGHT: StarterCondition = { sql: `SELECT count(*)::int AS n FROM segments WHERE brand = focal_brand() AND insight_headline IS NOT NULL`, min: 1, what: "a precomputed strategy insight" };
 
 /**

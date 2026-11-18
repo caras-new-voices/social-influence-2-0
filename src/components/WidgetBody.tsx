@@ -30,6 +30,26 @@ export function InsightBody({ rows, spec }: { rows: Row[]; spec: WidgetSpec }) {
   );
 }
 
+/** What a chart's value axis measures: the element's own `unit`, or a default read from its format. */
+function chartUnit(spec: WidgetSpec): string | null {
+  if (spec.unit) return spec.unit;
+  if (spec.normalize) return "Share of each bar, in percent";
+  switch (spec.format) {
+    case "percent":
+      return "Percent";
+    case "ratio":
+      return "Ratio: 1.0× is the norm";
+    case "points":
+      return "Percentage points";
+    case "currency":
+      return "Amount";
+    case "decimal":
+      return "Rate (not a count)";
+    default:
+      return "Count";
+  }
+}
+
 /** True when the element has a comparison result set to draw. */
 function hasCompare(compareRows: Row[] | undefined): compareRows is Row[] {
   return Array.isArray(compareRows);
@@ -61,15 +81,18 @@ export function WidgetBody({ spec, rows, compareRows, tableView }: { spec: Widge
     const fmt = spec.type === "table" ? undefined : spec.format;
     return cmp ? <CompareTable rows={rows} compareRows={cmp} fmt={fmt} labels={labels} /> : <DataTable rows={rows} fmt={fmt} />;
   }
+  // Every chart says what its value axis measures, so a rate is never read as a count.
+  const unit = chartUnit(spec);
+  const withUnit = (chart: React.ReactNode) => (unit ? <><div className="chart__unit" title="What the numbers on this chart measure">{unit}</div>{chart}</> : chart);
   switch (spec.type) {
     case "kpi":
       return <KpiRow rows={kpiRows} spec={spec} compareLabel={cmp ? labels.compare : undefined} />;
     case "bar":
-      return cmp ? <CompareBarChart rows={rows} compareRows={cmp} spec={spec} labels={labels} /> : <BarChartW rows={rows} spec={spec} />;
+      return withUnit(cmp ? <CompareBarChart rows={rows} compareRows={cmp} spec={spec} labels={labels} /> : <BarChartW rows={rows} spec={spec} />);
     case "stacked_bar":
-      return cmp ? <CompareBarChart rows={rows} compareRows={cmp} spec={spec} labels={labels} stacked /> : <BarChartW rows={rows} spec={spec} stacked />;
+      return withUnit(cmp ? <CompareBarChart rows={rows} compareRows={cmp} spec={spec} labels={labels} stacked /> : <BarChartW rows={rows} spec={spec} stacked />);
     case "line":
-      return cmp ? <CompareLineChart rows={rows} compareRows={cmp} spec={spec} labels={labels} starts={starts} /> : <LineChartW rows={rows} spec={spec} />;
+      return withUnit(cmp ? <CompareLineChart rows={rows} compareRows={cmp} spec={spec} labels={labels} starts={starts} /> : <LineChartW rows={rows} spec={spec} />);
     case "segmented":
       return (
         <>

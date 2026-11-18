@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useWorkspace } from "./WorkspaceProvider";
 import { relativeTime } from "@/lib/format";
-import { TEMPLATES, type TemplateId } from "@/lib/templates";
+import { DEFAULT_TEMPLATE, TEMPLATES } from "@/lib/templates";
 import type { DashboardRecord } from "@/lib/widgets";
 import type { DashboardScope } from "@/lib/scope-shared";
 import { BrandPicker } from "./BrandPicker";
@@ -33,21 +33,22 @@ export function DashboardList({ initial, labels: initialLabels = {} }: { initial
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [template, setTemplate] = useState<TemplateId>("starter");
   const ws = useWorkspace();
   const [creating, setCreating] = useState(false);
-  const [path, setPath] = useState<"guided" | "template" | "blank">("guided");
-  const [screen, setScreen] = useState<"choose" | "brands" | "name">("choose");
+  // The default path is the default dashboard: pick the brands, name it, done. Guided setup and a
+  // blank canvas are still there under "More ways to start", for people who want to build their own.
+  const [path, setPath] = useState<"guided" | "template" | "blank">("template");
+  const [screen, setScreen] = useState<"choose" | "brands" | "name">("brands");
   const [scope, setScope] = useState<DashboardScope | null>(null);
   const defaultName = `${scope?.focal ?? ws.focal} dashboard`;
 
-  const openDialog = () => { setScreen("choose"); setPath("guided"); setScope(null); setName(""); setDescription(""); setCreating(false); setOpen(true); };
+  const openDialog = () => { setScreen("brands"); setPath("template"); setScope(null); setName(""); setDescription(""); setCreating(false); setOpen(true); };
 
   const create = async () => {
     if (!scope) return;
     setCreating(true);
     try {
-      const r = await fetch("/api/dashboards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() || defaultName, description, template: path === "blank" ? "blank" : template, scope }) });
+      const r = await fetch("/api/dashboards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() || defaultName, description, template: path === "blank" ? "blank" : DEFAULT_TEMPLATE, scope }) });
       const j = (await r.json()) as { dashboard?: DashboardRecord; error?: string };
       if (!r.ok || !j.dashboard) throw new Error(j.error ?? "Could not create the dashboard");
       setOpen(false);
@@ -72,7 +73,8 @@ export function DashboardList({ initial, labels: initialLabels = {} }: { initial
     }
     setScreen("name");
   };
-  const back = () => setScreen(screen === "name" ? "brands" : "choose");
+  const back = () => setScreen(screen === "name" ? "brands" : path === "template" ? "brands" : "choose");
+  const defaultTemplate = TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE);
 
   const remove = async (d: DashboardRecord) => {
     const ok = await confirmDialog({
@@ -109,10 +111,9 @@ export function DashboardList({ initial, labels: initialLabels = {} }: { initial
       {dashboards.length === 0 ? (
         <div className="empty im-card">
           <p className="im-text-sub-header">No dashboards yet</p>
-          <p className="im-text-description" style={{ margin: "0.3rem 0 1rem" }}>Pick your brands, answer a few questions with the analyst and get a dashboard made for you, or start from a template.</p>
+          <p className="im-text-description" style={{ margin: "0.3rem 0 1rem" }}>Pick your company and its competitors. You get a full dashboard that answers the five questions every brand asks, ready to read.</p>
           <div className="row" style={{ justifyContent: "center", gap: "0.5rem" }}>
-            <button className="im-btn im-btn-primary" onClick={openDialog}>Build it with the analyst</button>
-            <button className="im-btn im-btn-secondary" onClick={openDialog}>Other options</button>
+            <button className="im-btn im-btn-primary" onClick={openDialog}>+ New dashboard</button>
           </div>
         </div>
       ) : (
@@ -147,17 +148,18 @@ export function DashboardList({ initial, labels: initialLabels = {} }: { initial
             <div className="modal__body">
               {screen === "choose" ? (
                 <>
+                  <p className="im-text-description" style={{ marginTop: 0 }}>Most people should use the standard dashboard. These are for building your own.</p>
                   <div className="start-grid">
-                    <button className={`start-card ${path === "guided" ? "is-active" : ""}`} onClick={() => setPath("guided")} aria-pressed={path === "guided"}>
-                      <span className="start-card__icon">{Ico.spark}</span>
-                      <b>Build it with the analyst</b>
-                      <span className="im-badge im-badge-primary">Recommended · about 5 min</span>
-                      <small>Answer a few questions and get a dashboard made for you.</small>
-                    </button>
                     <button className={`start-card ${path === "template" ? "is-active" : ""}`} onClick={() => setPath("template")} aria-pressed={path === "template"}>
                       <span className="start-card__icon">{Ico.grid}</span>
-                      <b>Start from a template</b>
-                      <small>A ready-made set of elements you can edit.</small>
+                      <b>The standard dashboard</b>
+                      <span className="im-badge im-badge-primary">Recommended</span>
+                      <small>{defaultTemplate?.name}: eight measures and five questions, answered for your brands.</small>
+                    </button>
+                    <button className={`start-card ${path === "guided" ? "is-active" : ""}`} onClick={() => setPath("guided")} aria-pressed={path === "guided"}>
+                      <span className="start-card__icon">{Ico.spark}</span>
+                      <b>Build your own with the analyst</b>
+                      <small>Answer a few questions and choose the elements yourself. About 5 minutes.</small>
                     </button>
                     <button className={`start-card ${path === "blank" ? "is-active" : ""}`} onClick={() => setPath("blank")} aria-pressed={path === "blank"}>
                       <span className="start-card__icon">{Ico.blank}</span>
@@ -165,32 +167,27 @@ export function DashboardList({ initial, labels: initialLabels = {} }: { initial
                       <small>An empty canvas; ask the analyst for anything.</small>
                     </button>
                   </div>
-                  {path === "template" && (
-                    <div className="start-templates" role="radiogroup" aria-label="Template">
-                      {TEMPLATES.filter((t) => t.id !== "blank").map((t) => (
-                        <button key={t.id} className={`start-template ${template === t.id ? "is-active" : ""}`} onClick={() => setTemplate(t.id)} role="radio" aria-checked={template === t.id}>
-                          <b>{t.name}</b><small>{t.description}</small>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </>
               ) : screen === "brands" ? (
                 <BrandPicker value={scope} onChange={setScope} />
               ) : (
                 <>
-                  <p className="im-text-description">{scope ? `${scope.focal} against ${scope.competitors.length} ${scope.competitors.length === 1 ? "competitor" : "competitors"}. ` : ""}{path === "template" ? `Starting from ${TEMPLATES.find((t) => t.id === template)?.name ?? "a template"}.` : "Starting with an empty dashboard."}</p>
+                  <p className="im-text-description">{scope ? `${scope.focal} against ${scope.competitors.length} ${scope.competitors.length === 1 ? "competitor" : "competitors"}. ` : ""}{path === "template" ? `You get the standard dashboard (${defaultTemplate?.name ?? "the default"}). You can change it later.` : "Starting with an empty dashboard."}</p>
                   <label><span className="im-label">Name</span><input className="im-input" autoFocus placeholder={defaultName} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void create(); }} /></label>
                   <label><span className="im-label">Description (optional)</span><input className="im-input" placeholder="What is this dashboard for?" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
                 </>
               )}
             </div>
             <div className="modal__foot">
-              {screen !== "choose" ? (
+              {screen === "name" || (screen === "brands" && path !== "template") ? (
                 <button className="im-btn im-btn-secondary" onClick={back} disabled={creating}>Back</button>
               ) : (
                 <button className="im-btn im-btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
               )}
+              {screen === "brands" && path === "template" && (
+                <button className="im-btn im-btn-ghost" onClick={() => setScreen("choose")} disabled={creating} title="Guided setup with the analyst, or a blank dashboard">More ways to start</button>
+              )}
+              <span className="grow" />
               {screen === "choose" ? (
                 <button className="im-btn im-btn-primary" onClick={next}>Next: choose brands</button>
               ) : screen === "brands" ? (

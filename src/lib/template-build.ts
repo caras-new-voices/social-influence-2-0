@@ -1,3 +1,4 @@
+import { TOM8_SECTIONS } from "./tom8";
 import { runWidgetQuery } from "./query";
 import { STARTER_SECTIONS, type StarterCondition, type StarterSection } from "./starter";
 import { TOM_NOHASH_SECTIONS, TOM_SECTIONS } from "./tom";
@@ -26,6 +27,7 @@ export async function buildTemplateForWorkspace(id: TemplateId, opts: { focal?: 
   if (id === "starter") return buildConditional(STARTER_SECTIONS, opts.focal);
   if (id === "tom") return buildConditional(TOM_SECTIONS, opts.focal);
   if (id === "tomnohash") return buildConditional(TOM_NOHASH_SECTIONS, opts.focal);
+  if (id === "tom8") return buildConditional(TOM8_SECTIONS, opts.focal);
   return { widgets: buildTemplate(id), skipped: [] };
 }
 
