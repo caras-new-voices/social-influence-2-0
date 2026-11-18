@@ -42,6 +42,24 @@ const VS_NOTE = "Engagement vs norm compares engagements with what the platform 
 const BC_NOTE = "Brand comments are comments about the brand, its product or the category. Comments about the creator, other things in the post, and empty ones are left out";
 const THEME_NOTE = "A theme is what a post is about, from a fixed list for the industry";
 
+/** Posts whose caption has been read for a product line or a claimed benefit. */
+const N_PRODUCTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE product IS NOT NULL`, min: 50, what: "posts filed under a product line" };
+const N_CLAIMS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE claims IS NOT NULL`, min: 50, what: "posts read for the benefit they claim" };
+const N_OUR_CLAIMS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE claims IS NOT NULL AND brand = focal_brand()`, min: 30, what: "of our posts read for the benefit they claim" };
+const PRODUCT_NOTE = "A product line is read from the caption (posts) or from the comment next to its caption (brand comments), from a drafted list per brand. Posts and comments that name no line are left out";
+/**
+ * What creators claim against what the audience praises, per attribute. j(attribute, claims, praise, cs, ps):
+ * counts, and each attribute's share of all claims and of all attribute praise, in percent.
+ */
+const CLAIM_GAP = (who: string) => `cl AS (SELECT a AS attribute, count(*)::float AS n FROM posts, unnest(claims) AS a WHERE ${who} GROUP BY 1),
+pr AS (SELECT attribute, count(*)::float AS n FROM brand_comments WHERE attribute IS NOT NULL AND ${POSITIVE} AND ${who} GROUP BY 1),
+att AS (SELECT unnest(ARRAY['price', 'efficacy', 'ease', 'durability', 'safety', 'service']) AS attribute),
+j AS (
+  SELECT att.attribute, coalesce(cl.n, 0) AS claims, coalesce(pr.n, 0) AS praise,
+         100.0 * coalesce(cl.n, 0) / NULLIF((SELECT sum(n) FROM cl), 0) AS cs, 100.0 * coalesce(pr.n, 0) / NULLIF((SELECT sum(n) FROM pr), 0) AS ps
+  FROM att LEFT JOIN cl USING (attribute) LEFT JOIN pr USING (attribute)
+)`;
+
 /** Brand comments on our content in the period: the sample behind comment elements. */
 const OUR_BC = { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE brand = focal_brand()`, min: COMMENT_MIN, unit: "brand comments on our content" };
 const N_BC: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand()`, min: COMMENT_MIN, what: "comments about the brand on our content" };
@@ -495,6 +513,18 @@ FROM q LEFT JOIN top USING (topic) GROUP BY q.topic, top.example ORDER BY 3 DESC
         rationale: "Every unanswered question about the product is a piece of content somebody already asked for.",
       },
       {
+        type: "table", w: 12, h: 5,
+        title: "Benefits nobody claims",
+        subtitle: "For each product attribute across the tracked brands: its share of the benefits creators claim in captions, against its share of the praise in brand comments. Open: the audience praises it at least 5 points more than creators claim it. Crowded: claimed at least 5 points more than praised. Counts are posts and comments; shares are percentages.",
+        when: N_CLAIMS,
+        sql: `WITH ${CLAIM_GAP("true")}
+SELECT ${ATTR("j.attribute")} AS attribute, j.claims::int AS "posts claiming it", ${r1("j.cs")} AS "share of claims %", j.praise::int AS "comments praising it", ${r1("j.ps")} AS "share of praise %", ${r1("j.ps - j.cs")} AS "gap, points",
+       CASE WHEN j.ps - j.cs >= 5 THEN 'Open' WHEN j.ps - j.cs <= -5 THEN 'Crowded' ELSE 'In line' END AS read
+FROM j ORDER BY j.ps - j.cs DESC NULLS LAST`,
+        sample: { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE attribute IS NOT NULL AND ${POSITIVE}`, min: COMMENT_MIN, unit: "comments praising an attribute" },
+        rationale: "The brief asks which benefits nobody claims. A benefit the audience praises unprompted and creators rarely claim is white space for the message.",
+      },
+      {
         type: "stacked_bar", w: 5, h: 6,
         title: "Platforms we under-use",
         subtitle: "Share of posts by platform: us against the tracked competitors",
@@ -602,6 +632,36 @@ FROM worst LEFT JOIN us USING (attribute) ORDER BY worst.rate - coalesce(us.rate
         rationale: "A positive gap is a claim we can make and they cannot.",
       },
       {
+        type: "table", w: 12, h: 7,
+        title: "What people say, by product",
+        subtitle: `Each product line of each tracked brand (lines with 20+ posts): posts and brand comments are counts, engagement vs norm is a ratio, praise, objections and buying signals are per 1,000 of the line's brand comments and shown only with ${COMMENT_MIN}+ of them. ${PRODUCT_NOTE}.`,
+        when: N_PRODUCTS,
+        sql: `WITH ${SCORED("posts")},
+pp AS (SELECT brand, product, count(*)::int AS posts, sum(eng_s) / NULLIF(sum(expected), 0) AS vs FROM sp WHERE product IS NOT NULL GROUP BY 1, 2),
+pc AS (
+  SELECT brand, product, count(*)::float AS n, count(*) FILTER (WHERE ${POSITIVE}) AS pos, count(*) FILTER (WHERE ${NEGATIVE}) AS neg, count(*) FILTER (WHERE ${INTENT}) AS intent
+  FROM brand_comments WHERE product IS NOT NULL GROUP BY 1, 2
+)
+SELECT pp.brand, pp.product, pp.posts, ${r2("pp.vs")} AS "engagement vs norm", coalesce(pc.n, 0)::int AS "brand comments",
+       CASE WHEN pc.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * pc.pos / pc.n")} END AS "praise per 1K",
+       CASE WHEN pc.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * pc.neg / pc.n")} END AS "objections per 1K",
+       CASE WHEN pc.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * pc.intent / pc.n")} END AS "buying signals per 1K"
+FROM pp LEFT JOIN pc USING (brand, product) WHERE pp.posts >= 20 ORDER BY (pp.brand = focal_brand()) DESC, pp.brand, pp.posts DESC`,
+        rationale: "The brief's matrix has four rows: my brand, competitor brands, my products, competitor products. This is the product half.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "Are we saying what people value?",
+        subtitle: "For each product attribute: its share of the benefits claimed in posts about us, against its share of the praise in our brand comments. Say it more: people praise it at least 5 points more than our content claims it. Over-said: claimed at least 5 points more than praised. Counts are posts and comments; shares are percentages.",
+        when: N_OUR_CLAIMS,
+        sql: `WITH ${CLAIM_GAP("brand = focal_brand()")}
+SELECT ${ATTR("j.attribute")} AS attribute, j.claims::int AS "our posts claiming it", ${r1("j.cs")} AS "share of our claims %", j.praise::int AS "comments praising it", ${r1("j.ps")} AS "share of our praise %", ${r1("j.ps - j.cs")} AS "gap, points",
+       CASE WHEN j.ps - j.cs >= 5 THEN 'Say it more' WHEN j.ps - j.cs <= -5 THEN 'Over-said' ELSE 'In line' END AS read
+FROM j ORDER BY j.ps - j.cs DESC NULLS LAST`,
+        sample: { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE brand = focal_brand() AND attribute IS NOT NULL AND ${POSITIVE}`, min: COMMENT_MIN, unit: "comments praising an attribute of ours" },
+        rationale: "The brief's last question on what people say: is the message in our content the one the audience gives back?",
+      },
+      {
         type: "table", w: 6, h: 6,
         title: "Who people compare us with",
         subtitle: "Other brands and methods named in our brand comments (as written by commenters), and who the commenter favoured. Counts of comments.",
@@ -683,6 +743,22 @@ r AS (SELECT c.*, row_number() OVER (PARTITION BY theme ORDER BY views DESC) AS 
 SELECT r.theme, r.creator, r.platform, r.posts, ${r0("100.0 * r.views / NULLIF(tv.theme_views, 0)")} AS "share of theme views %", ${r2("r.vs")} AS "engagement vs norm", r.brands AS "posts about"
 FROM r JOIN big USING (theme) JOIN tv USING (theme) WHERE r.rk <= 3 ORDER BY big.n DESC, r.rk`,
         rationale: "A shortlist per conversation, with who they already work with.",
+      },
+      {
+        type: "table", w: 12, h: 7,
+        title: "Who drives each product",
+        subtitle: `The three creators with the most views for each product line with 20+ posts, ours first (creators with 2+ posts on the line). Share of the line's views is a percentage; brand-owned accounts are left out. ${PRODUCT_NOTE}.`,
+        when: N_PRODUCTS,
+        sql: `WITH ${SCORED("posts")},
+big AS (SELECT brand, product, count(*) AS n FROM sp WHERE product IS NOT NULL GROUP BY 1, 2 HAVING count(*) >= 20),
+c AS (
+  SELECT t.brand, t.product, t.username AS creator, max(t.platform) AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views, sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs
+  FROM sp t JOIN big USING (brand, product) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2, 3
+), tv AS (SELECT brand, product, sum(views) AS line_views FROM c GROUP BY 1, 2),
+r AS (SELECT c.*, row_number() OVER (PARTITION BY brand, product ORDER BY views DESC, creator) AS rk FROM c WHERE posts >= 2)
+SELECT r.brand, r.product, r.creator, r.platform, r.posts, ${r0("100.0 * r.views / NULLIF(tv.line_views, 0)")} AS "share of line views %", ${r2("r.vs")} AS "engagement vs norm"
+FROM r JOIN big USING (brand, product) JOIN tv USING (brand, product) WHERE r.rk <= 3 ORDER BY (r.brand = focal_brand()) DESC, r.brand, big.n DESC, r.rk`,
+        rationale: "The brief asks for the top creators per product, ours and competitors'.",
       },
       {
         type: "table", w: 6, h: 6,
@@ -818,6 +894,22 @@ ex AS (SELECT DISTINCT ON (brand, attribute) brand, attribute, left(coalesce(obj
 SELECT grid.brand, ${ATTR("grid.attribute")} AS attribute, grid.mentions::int AS mentions, ${r1("1000.0 * grid.neg / (SELECT n FROM tot WHERE tot.brand = grid.brand)")} AS "objections per 1K", ${r0("100 * grid.net")} AS "net sentiment", ex.example AS "most-liked objection"
 FROM grid LEFT JOIN ex ON ex.brand = grid.brand AND ex.attribute = grid.attribute WHERE grid.box = 'Fix first' ORDER BY grid.brand, grid.mentions DESC`,
         rationale: "Their weaknesses, in their own audience's words.",
+      },
+      {
+        type: "table", w: 12, h: 6,
+        title: "Objections by product, ours and rivals'",
+        subtitle: `Product lines with 5+ objections in their brand comments, ours first: objections (a count), per 1,000 of the line's brand comments (a rate, shown with ${COMMENT_MIN}+ of them), the attribute objected to most, and the most-liked objection about that attribute in the commenter's words. ${PRODUCT_NOTE}.`,
+        when: N_PRODUCTS,
+        sql: `WITH o AS (SELECT brand, product, attribute, text, coalesce(likes, 0) AS likes FROM brand_comments WHERE product IS NOT NULL AND ${NEGATIVE}),
+n AS (SELECT brand, product, count(*)::float AS n FROM brand_comments WHERE product IS NOT NULL GROUP BY 1, 2),
+t AS (SELECT brand, product, count(*)::int AS objections FROM o GROUP BY 1, 2 HAVING count(*) >= 5),
+a AS (SELECT DISTINCT ON (brand, product) brand, product, attribute FROM (SELECT brand, product, attribute, count(*) AS k FROM o WHERE attribute IS NOT NULL GROUP BY 1, 2, 3) x ORDER BY brand, product, k DESC, attribute),
+q AS (SELECT DISTINCT ON (o.brand, o.product) o.brand, o.product, left(o.text, 160) AS said FROM o JOIN a ON a.brand = o.brand AND a.product = o.product AND a.attribute = o.attribute WHERE length(o.text) >= 20 ORDER BY o.brand, o.product, o.likes DESC, o.text)
+SELECT t.brand, t.product, t.objections, n.n::int AS "brand comments", CASE WHEN n.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * t.objections / n.n")} END AS "objections per 1K",
+       ${ATTR("a.attribute")} AS "objected to most", q.said AS "in their words"
+FROM t JOIN n USING (brand, product) LEFT JOIN a USING (brand, product) LEFT JOIN q USING (brand, product)
+ORDER BY (t.brand = focal_brand()) DESC, t.objections DESC`,
+        rationale: "The priority grid is per brand. This says which product the objection belongs to, for us and for each rival.",
       },
       {
         type: "line", w: 7, h: 6,

@@ -184,6 +184,8 @@ CREATE TABLE IF NOT EXISTS period_events (
  *    the caption, the supplied flag (paid_basis 'flag'). is_affiliate (a shop or commission
  *    post), is_gifted and is_owned (posted by the brand's own account) are new columns. A post
  *    is at most one of paid, affiliate and gifted: what the caption says wins over the bare flag.
+ *  - posts carry `product` (the brand's product line the caption is about) and `claims` (the
+ *    attributes the caption claims as a benefit); brand comments carry `product` too.
  *  - comments carry `about` (brand, category, creator, other, noise), `attribute` and `buying`
  *    (a buying signal, read by the classifier; the supplied purchase_intent_type is looser).
  *    brand_comments and brand_comments_all keep the comments about the brand or its category
@@ -214,7 +216,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-7";
+const VIEWS_VERSION = "scoped-8";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -239,6 +241,9 @@ ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS about text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS attribute text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS buying boolean;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS country text;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS product text;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS claims text[];
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS product text;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */
