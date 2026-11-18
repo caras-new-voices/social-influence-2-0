@@ -268,6 +268,7 @@ export const EXPLAIN_CHANGE_QUESTION = "Explain the change";
 /** Quick questions offered in the focused chat. */
 export const FOCUS_QUESTIONS: string[] = [
   "What stands out here, and what should we do about it?",
+  "Write this up as a creative brief for our agency",
   "Which posts and creators are behind the biggest number?",
   "Split this by country",
   "Show how this changed over time",

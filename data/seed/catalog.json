@@ -33,7 +33,7 @@
           "name": "Philips OneBlade",
           "owner": "Philips",
           "description": "Philips' hybrid electric trimmer and shaver, tracked here for its intimate and female range.",
-          "handles": ["philips", "philips_hu", "philips_polska", "philipscz", "philipsgermany", "philipsportugal", "philipsromania", "philipsspain", "philipsua"]
+          "handles": ["philips", "philips.uki", "philips_hu", "philips_polska", "philipscz", "philipsgermany", "philipsnordics", "philipsportugal", "philipsromania", "philipsspain", "philipsua"]
         },
         {
           "name": "Wilkinson Sword",

@@ -171,6 +171,8 @@ CREATE TABLE IF NOT EXISTS period_events (
  *    another dashboard's brands.
  *  - app.period_start / app.period_end: posts and comments are views over posts_all and
  *    comments_all filtered to that window. Queries that look outside the period use the _all views.
+ *  - app.market: when set, posts_all and comments_all keep one market, the creator's country (a
+ *    comment takes the country of its post). Like the period, it changes no saved SQL.
  * With no setting the views return everything. The views list columns at creation: after adding a
  * column to a raw table, bump VIEWS_VERSION so they are rebuilt.
  *
@@ -197,8 +199,9 @@ CREATE OR REPLACE FUNCTION in_scope(b text) RETURNS boolean LANGUAGE sql STABLE 
 CREATE OR REPLACE FUNCTION focal_brand() RETURNS text LANGUAGE sql STABLE AS $f$ SELECT coalesce(nullif(current_setting('app.focal_brand', true), ''), (SELECT brand FROM segments_raw WHERE role = 'focal' ORDER BY id LIMIT 1), (SELECT brand FROM segments_raw ORDER BY id LIMIT 1)) $f$;
 CREATE OR REPLACE FUNCTION period_start() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_start', true), '')::timestamptz $f$;
 CREATE OR REPLACE FUNCTION period_end() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_end', true), '')::timestamptz $f$;
-CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand) AND about IS DISTINCT FROM 'no';
-CREATE VIEW comments_all AS SELECT * FROM comments_raw WHERE in_scope(brand);
+CREATE OR REPLACE FUNCTION in_market(c text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.market', true), '') IS NULL OR c = current_setting('app.market', true) $f$;
+CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand) AND about IS DISTINCT FROM 'no' AND in_market(country);
+CREATE VIEW comments_all AS SELECT * FROM comments_raw WHERE in_scope(brand) AND in_market(country);
 CREATE VIEW influencers AS SELECT * FROM influencers_raw WHERE in_scope(brand);
 CREATE VIEW post_themes AS SELECT segment_id, post_id, brand, label AS theme, coalesce(rank, 1) = 1 AS is_primary FROM post_labels_raw WHERE kind = 'theme' AND in_scope(brand);
 CREATE VIEW post_hooks AS SELECT segment_id, post_id, brand, label AS hook FROM post_labels_raw WHERE kind = 'hook' AND in_scope(brand);
@@ -211,7 +214,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-6";
+const VIEWS_VERSION = "scoped-7";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -235,6 +238,7 @@ ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS paid_basis text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS about text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS attribute text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS buying boolean;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS country text;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */

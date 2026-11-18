@@ -7,7 +7,7 @@ import { resolveScope, runInScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
-const WindowSchema = z.object({ start: z.string().regex(ISO_DATE).optional(), end: z.string().regex(ISO_DATE).optional() }).nullable().optional();
+const WindowSchema = z.object({ start: z.string().regex(ISO_DATE).optional(), end: z.string().regex(ISO_DATE).optional(), market: z.string().max(80).optional() }).nullable().optional();
 const BodySchema = z.object({
   sql: z.string().min(1),
   /** Main window; omit for all time. */

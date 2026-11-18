@@ -27,6 +27,8 @@ export function periodSettings(window?: PeriodWindow | null): Record<string, str
   const out: Record<string, string> = {};
   if (window?.start && ISO_DATE.test(window.start)) out["app.period_start"] = window.start;
   if (window?.end && ISO_DATE.test(window.end)) out["app.period_end"] = window.end;
+  // One market: posts_all and comments_all keep only that creator country (see schema.ts).
+  if (window?.market) out["app.market"] = window.market.slice(0, 80);
   return out;
 }
 

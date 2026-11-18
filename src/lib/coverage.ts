@@ -25,6 +25,9 @@ export async function getCoverage(): Promise<Coverage> {
       LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM posts_all GROUP BY 1) p ON p.month = m.month
       LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM comments_all GROUP BY 1) c ON c.month = m.month
     ORDER BY 1`);
+  const markets = await readScoped<{ country: string; posts: number }>(
+    `SELECT country, count(*)::int AS posts FROM posts_all WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY 1 HAVING count(*) >= 30 ORDER BY 2 DESC LIMIT 40`,
+  );
   const firstDate = d.first ? toIsoDate(new Date(d.first)) : null;
   const lastDate = d.last ? toIsoDate(new Date(d.last)) : null;
   const coveredTo = imp.covered_to ? (imp.covered_to > (lastDate ?? "") ? imp.covered_to : lastDate) : lastDate;
@@ -40,7 +43,7 @@ export async function getCoverage(): Promise<Coverage> {
       m = addMonths(`${m}-01`, 1).slice(0, 7);
     }
   }
-  return { firstDate, lastDate, coveredTo, months, posts: Number(d.posts), comments: Number(d.comments) };
+  return { firstDate, lastDate, coveredTo, months, posts: Number(d.posts), comments: Number(d.comments), markets: markets.map((m) => ({ country: m.country, posts: Number(m.posts) })) };
 }
 
 /** Months with any data, newest first. */

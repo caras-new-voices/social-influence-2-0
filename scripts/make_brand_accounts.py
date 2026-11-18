@@ -68,7 +68,7 @@ MANUAL_REMOVE = {"Venus": ["venusbeauty.ch"], "BMW": ["bmwautomotor"], "Oracle":
 # "oracle", "orion", "guess" and the like as a bare username are often not the company; they are kept only where the posts show it is.
 KEEP_BARE = {"Guess": ["guess"], "Oracle": ["oracle"]}
 
-COUNTRY = "uk us usa de fr es it pt nl be ch at se no dk fi pl cz ro hu gr ie ca au mx br in jp kr cn tr ua ru eu emea latam mena global intl international europe deutschland germany france espana spain italia italy portugal nederland belgium belux greece norge sverige danmark suomi polska romania hungary ukraine switzerland austria canada mexico india japan america latinoamerica".split()
+COUNTRY = "uk us usa de fr es it pt nl be ch at se no dk fi pl cz ro hu gr ie ca au mx br in jp kr cn tr ua ru eu emea latam mena global intl international europe deutschland germany france espana spain italia italy portugal nederland belgium belux greece norge sverige danmark suomi polska romania hungary ukraine switzerland austria canada mexico india japan america latinoamerica uki dach benelux nordics nordic cee anz".split()
 OFFICIAL = "official offiziell oficial officiel hq inc tv cars auto motors motor group brand team life news studio store shop paris tequila whiskey bourbon distillery ring sleep hair beauty tech cloud developers developer learn academy events security motorsport".split()
 DEST_PRE = "visit go travel discover explore tourism experience".split()
 DEST_SUF = "tourism tourismboard travel tourismauthority touristboard government gov".split()

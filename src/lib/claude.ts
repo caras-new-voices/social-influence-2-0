@@ -395,6 +395,7 @@ async function contextBlock(widgets: WidgetSummary[], period?: PeriodState): Pro
   const win = resolveWindow(period);
   const cmp = resolveCompare(period);
   parts.push(win.start || win.end ? `Current period: ${formatWindow(win)} (${win.start ?? "…"} to ${win.end ?? "…"}, end exclusive); posts and comments are filtered to it.${cmp ? ` Comparison period: ${formatWindow(cmp)} (${cmp.start} to ${cmp.end}).` : ""}` : "Current period: all time (no filter).");
+  if (win.market) parts.push(`Market: ${win.market} only. posts, posts_all, comments and comments_all are already filtered to creators in ${win.market}, so do not add a country filter and say that the numbers are for ${win.market}.`);
   parts.push(widgets.length ? `Current widgets: ${widgets.map((w) => `${w.id} (${w.type}) "${w.title}"`).join("; ")}` : "The dashboard is empty.");
   return `[Dashboard context: ${parts.join(" ")}]`;
 }

@@ -40,7 +40,9 @@ export function PeriodBar({ counts }: { counts?: { posts: number; comments: numb
   const canPrev = currentMonth ? idx > 0 : withData.length > 0;
   const canNext = currentMonth ? idx >= 0 && idx < withData.length - 1 : false;
 
-  const go = (next: PeriodState) => { setState({ ...next, compare: next.compare === undefined ? state.compare ?? null : next.compare }); };
+  // Changing the period keeps the comparison and the market unless the new state sets them.
+  const go = (next: PeriodState) => { setState({ ...next, compare: next.compare === undefined ? state.compare ?? null : next.compare, market: next.market === undefined ? state.market ?? null : next.market }); };
+  const markets = coverage?.markets ?? [];
   const step = (dir: -1 | 1) => {
     if (!withData.length) return;
     if (!currentMonth) {
@@ -99,9 +101,24 @@ export function PeriodBar({ counts }: { counts?: { posts: number; comments: numb
       <div className="period__coverage" aria-live="polite">
         <span>{coverageLine}</span>
         {counts && <span className="period__counts">· {fmtN(counts.posts)} posts · {fmtN(counts.comments)} comments</span>}
-        {compareWindow && <span className="period__cmp">· compared with {formatWindow(compareWindow)}</span>}
+        {state.market && <span className="period__cmp">· {state.market} only</span>}
+        {compareWindow && <span className="period__cmp">· compared with {formatWindow({ start: compareWindow.start, end: compareWindow.end })}</span>}
       </div>
       <div className="period__actions">
+        {markets.length > 1 && (
+          <select
+            className={`im-select period__market ${state.market ? "is-set" : ""}`}
+            value={state.market ?? ""}
+            onChange={(e) => go({ ...state, market: e.target.value || null })}
+            aria-label="Market"
+            title="Show one market: the creator's country. Every box on the dashboard follows it."
+          >
+            <option value="">All markets</option>
+            {/* A market saved earlier that has since dropped below the listing threshold stays selectable. */}
+            {state.market && !markets.some((m) => m.country === state.market) && <option value={state.market}>{state.market}</option>}
+            {markets.map((m) => <option key={m.country} value={m.country}>{m.country} ({fmtN(m.posts)} posts)</option>)}
+          </select>
+        )}
         <button className={`im-btn im-btn-sm ${state.compare ? "im-btn-primary" : "im-btn-secondary"}`} onClick={() => setOpen(open === "compare" ? null : "compare")} aria-haspopup="dialog" aria-expanded={open === "compare"} disabled={state.mode === "all" && !state.compare}>
           {Ic.cmp} {compareLabel}
         </button>
