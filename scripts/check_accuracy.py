@@ -9,6 +9,7 @@ default) judges each sampled row without seeing our answer. Checks:
 
   paid          a random sample of posts per industry: paid, gifted or neither?
   paid-flagged  posts we show as paid: does the caption (or the platform flag) support it?
+  affiliate     posts we show as affiliate or shop: does the caption show it?
   about-post    posts kept in the dashboards: are they about the brand they are filed under?
   about-comment a random sample of comments: about the brand or category, or not?
   attribute     brand comments with an attribute: is it the right one of the six?
@@ -92,15 +93,16 @@ for ind in catalog:
     rnd = random.Random(ind["id"])
 
     # paid: a random sample of posts, judged blind.
-    sample = rows(f"SELECT segment_id, post_id, brand, is_paid, is_gifted, is_paid_source, left(text, 900) AS text FROM posts_all WHERE length(coalesce(text, '')) >= 12 ORDER BY md5(post_id::text || 'a') LIMIT {N}", scope)
+    sample = rows(f"SELECT segment_id, post_id, brand, is_paid, is_gifted, is_affiliate, is_paid_source, left(text, 900) AS text FROM posts_all WHERE length(coalesce(text, '')) >= 12 ORDER BY md5(post_id::text || 'a') LIMIT {N}", scope)
     ans = judge(PAID_SYSTEM, [{"i": i, "text": cut(p["text"], 700)} for i, p in enumerate(sample)], {"d": {"type": "string", "enum": ["paid", "gifted", "none"]}})
     pairs = []
     for i, p in enumerate(sample):
         if i not in ans: continue
-        ours = "paid" if p["is_paid"] else "gifted" if p["is_gifted"] else "none"
+        ours = "paid" if p["is_paid"] else "affiliate" if p["is_affiliate"] else "gifted" if p["is_gifted"] else "none"
         theirs = ans[i]["d"]
         # The platform's own flag is not in the caption; the judge cannot see it, so it is not held against us.
-        ok = ours == theirs or (ours == "paid" and p["is_paid_source"])
+        # A shop or commission post reads as "paid" to this judge (its own code or link); it has its own check below.
+        ok = ours == theirs or (ours == "paid" and p["is_paid_source"]) or (ours == "affiliate" and theirs in ("paid", "none"))
         pairs.append((ok, f"we say {ours}, judge says {theirs}: {short(p['text'])}"))
     record("paid", ind["id"], pairs)
 
@@ -108,6 +110,12 @@ for ind in catalog:
     if flagged:
         ans = judge(PAID_SYSTEM, [{"i": i, "text": cut(p["text"], 700)} for i, p in enumerate(flagged)], {"d": {"type": "string", "enum": ["paid", "gifted", "none"]}})
         record("paid-flagged", ind["id"], [(ans[i]["d"] == "paid", f"we say paid, judge says {ans[i]['d']}: {short(p['text'])}") for i, p in enumerate(flagged) if i in ans])
+
+    aff = rows(f"SELECT left(text, 900) AS text FROM posts_all WHERE is_affiliate ORDER BY md5(post_id::text || 'g') LIMIT {min(N, 80)}", scope)
+    if len(aff) >= 10:
+        ans = judge("These captions are from social media posts. For each answer shop: \"yes\" if the caption shows the creator is selling or linking the product through a platform shop or an affiliate or commission programme (TikTok Shop tags or wording, affiliate link, commission, LTK, Amazon storefront or associate); \"no\" if nothing in the caption shows that.",
+                    [{"i": i, "text": cut(p["text"], 700)} for i, p in enumerate(aff)], {"shop": {"type": "string", "enum": ["yes", "no"]}})
+        record("affiliate", ind["id"], [(ans[i]["shop"] == "yes", f"we say affiliate or shop, judge says no: {short(p['text'])}") for i, p in enumerate(aff) if i in ans])
 
     # about-post: posts the dashboards keep.
     kept = rows(f"SELECT brand, coalesce(about, 'not judged') AS label, left(text, 600) AS text FROM posts_all WHERE length(coalesce(text, '')) >= 12 ORDER BY md5(post_id::text || 'c') LIMIT {N}", scope)
@@ -163,6 +171,7 @@ checks = {}
 for check, where, right, total, bad in results:
     c = checks.setdefault(check, [0, 0]); c[0] += right; c[1] += total
 WHAT = {"paid": "Paid, gifted or neither, on a random sample of posts", "paid-flagged": "Posts shown as paid from the caption: is a paid disclosure there?", "about-post": "Posts kept in the dashboards: about the brand they are filed under?",
+        "affiliate": "Posts shown as affiliate or shop: does the caption show it?",
         "about-comment": "Comments: about the brand or category, or not?", "attribute": "Brand comments: the right one of the six attributes?", "intent": "Comments counted as buying signals: are they?",
         "questions": "\"Questions about the brand that nobody answered\": about the brand?", "earned": "\"Earned creators, never paid\": no disclosure in their captions?"}
 lines = ["# Accuracy report", "", f"Written by `npm run check:accuracy` on {time.strftime('%d %B %Y')}. Judge: {MODEL}, blind to our answer. Pass mark: {PASS:.0f}%.",

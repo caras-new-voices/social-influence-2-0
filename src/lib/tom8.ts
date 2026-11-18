@@ -11,8 +11,8 @@ import { BOUNDS, LABEL_TAGS, N_AUDIENCE, N_COMPETITORS, N_FEES, N_HISTORY, N_HOO
  * What makes it different from the earlier templates:
  *  - Themes come from the post classifier (a fixed list per industry), not hashtags.
  *  - Posts not about the brand are already out of the posts views.
- *  - Paid, gifted and brand-owned posts are told apart (is_paid from the caption as well as the
- *    supplied flag, is_gifted, is_owned), so earned share is Tom's: neither brand-owned nor paid.
+ *  - Paid, affiliate, gifted and brand-owned posts are told apart (is_paid from the caption or
+ *    the supplied flag, is_affiliate, is_gifted, is_owned), so earned share is Tom's: unprompted.
  *  - Comment measures count comments about the brand or its category only (brand_comments), and
  *    attributes are Tom's six: price, efficacy, ease, durability, safety, service.
  *  - The brief's thresholds: winning = growing and 1.2 times the norm; early = 1.5 with momentum
@@ -27,8 +27,10 @@ import { BOUNDS, LABEL_TAGS, N_AUDIENCE, N_COMPETITORS, N_FEES, N_HISTORY, N_HOO
 const THEME_MIN = 30;
 const COMMENT_MIN = 200;
 
-/** A post that is neither paid, gifted nor from the brand's own account. */
-const EARNED = "NOT is_paid AND NOT is_owned AND NOT is_gifted";
+/** A post that is neither paid, affiliate, gifted nor from the brand's own account. */
+const EARNED = "NOT is_paid AND NOT is_owned AND NOT is_gifted AND NOT is_affiliate";
+/** What kind of post it is, for charts: one label per post. */
+const KIND = (a = "") => `CASE WHEN ${a}is_owned THEN 'Brand-owned' WHEN ${a}is_paid AND ${a}paid_basis = 'flag' THEN 'Paid: platform label only' WHEN ${a}is_paid THEN 'Paid: disclosed in the caption' WHEN ${a}is_affiliate THEN 'Affiliate or shop' WHEN ${a}is_gifted THEN 'Gifted' ELSE 'Earned' END`;
 const NEGATIVE = "(sentiment = 'negative' OR objection_category IS NOT NULL)";
 const POSITIVE = "sentiment = 'positive'";
 /** A buying signal: the classifier's reading where there is one, else the supplied tag. */
@@ -125,6 +127,7 @@ ca AS (
          count(*) FILTER (WHERE cp.brand = focal_brand())::int AS ours, count(*) FILTER (WHERE cp.brand <> focal_brand())::int AS theirs,
          string_agg(DISTINCT cp.brand, ', ') AS brands, sum(cp.eng_s) / NULLIF(sum(cp.expected), 0) AS vs,
          bool_or(cp.is_paid AND cp.brand = focal_brand()) AS paid_by_us, bool_or(cp.is_gifted AND cp.brand = focal_brand()) AS gifted_by_us,
+         bool_or(cp.is_affiliate AND cp.brand = focal_brand()) AS affiliate_of_ours,
          sum(pc.n) AS c_n, sum(pc.intent) AS c_intent
   FROM cp LEFT JOIN pc ON pc.segment_id = cp.segment_id AND pc.post_id = cp.post_id GROUP BY 1 HAVING count(*) >= 2
 ), cr AS (
@@ -134,7 +137,7 @@ ca AS (
 ), cs AS MATERIALIZED (
   SELECT cr.creator, cr.platform, cr.posts, cr.ours, cr.theirs, cr.brands, cr.vs, ct.theme, ct.n::float / cr.posts AS fit,
          CASE WHEN cr.c_n >= 20 THEN 1000.0 * cr.c_intent / cr.c_n END AS intent_k,
-         CASE WHEN cr.ours = 0 THEN 'rivals only' WHEN cr.paid_by_us THEN 'paid by us' WHEN cr.gifted_by_us THEN 'gifted by us' ELSE 'unpaid' END AS rel,
+         CASE WHEN cr.ours = 0 THEN 'rivals only' WHEN cr.paid_by_us THEN 'paid by us' WHEN cr.affiliate_of_ours THEN 'sells us for commission' WHEN cr.gifted_by_us THEN 'gifted by us' ELSE 'unpaid' END AS rel,
          100 * (0.5 * cr.p_vs + 0.3 * coalesce(cr.p_intent, cr.p_vs) + 0.2 * coalesce(ct.n::float / cr.posts, 0)) * (0.6 + 0.4 * least(cr.posts - 2, 3) / 3.0) AS score
   FROM cr LEFT JOIN ct ON ct.username = cr.creator AND ct.rk = 1
 )`;
@@ -184,7 +187,7 @@ UNION ALL SELECT 'Content gap', top_gap.pts, NULL, 'points' FROM top_gap WHERE t
         content: `- **Share of voice** (a share): how much of the conversation is ours. Our posts divided by all tracked brands' posts.
 - **Engagement vs norm** (a ratio): does content do better than it should? Engagements divided by what the platform and creator size normally earn. 1.0 is the norm, 1.2 and above is outperforming.
 - **Momentum** (a change): is it growing? Posts in this period against the period before.
-- **Earned share** (a share): are people talking about us unprompted? Posts that are neither from our own accounts, nor paid, nor gifted, divided by all our posts.
+- **Earned share** (a share): are people talking about us unprompted? Posts that are neither from our own accounts, nor paid, nor sold for commission, nor gifted, divided by all our posts.
 - **Purchase intent** (a rate): is the conversation selling? Buying-signal comments per 1,000 brand comments.
 - **Praise and objections** (rates): what people love and hate. Positive and negative comments per 1,000 brand comments, split by attribute in section 3.
 - **Content gap** (a difference, in points): what people talk about more than creators post about. A theme's share of comments minus its share of posts.
@@ -214,9 +217,9 @@ FROM a WHERE a.posts > 0 ORDER BY (a.brand = focal_brand()) DESC, a.posts DESC`,
       },
       {
         type: "stacked_bar", w: 6, h: 5,
-        title: "Earned, gifted, paid and brand-owned posts",
-        subtitle: "Share of each brand's posts. Paid: the caption discloses an advert or paid partnership, or the platform flags it. Gifted: a free product or a giveaway, no payment disclosed. Brand-owned: posted by the brand's own account. Earned: none of these.",
-        sql: `SELECT brand, CASE WHEN is_owned THEN 'Brand-owned' WHEN is_paid THEN 'Paid' WHEN is_gifted THEN 'Gifted' ELSE 'Earned' END AS kind, count(*)::int AS value
+        title: "Earned, gifted, affiliate, paid and brand-owned posts",
+        subtitle: "Share of each brand's posts. Paid, disclosed: the caption says advert or paid partnership. Paid, platform label only: the platform marks it commercial and the caption says nothing. Affiliate or shop: the creator sells it through the platform's shop or for commission. Gifted: a free product or a giveaway. Brand-owned: the brand's own account. Earned: none of these.",
+        sql: `SELECT brand, ${KIND()} AS kind, count(*)::int AS value
 FROM posts GROUP BY 1, 2 ORDER BY (brand = focal_brand()) DESC, 1, 2`,
         x: "brand", y: "value", series: "kind", normalize: true, horizontal: true, unit: "Share of each brand's posts, in percent",
         rationale: "How much of each brand's conversation is unprompted, and how much was bought, gifted or self-published.",
@@ -357,11 +360,11 @@ FROM c WHERE c.posts >= 10 ORDER BY c.posts DESC LIMIT 10`,
             count(*) OVER (PARTITION BY brand ORDER BY mo ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING) AS months_before FROM m
 ), s AS (SELECT * FROM r WHERE months_before = 3 AND base > 0 AND eng >= 2 * base AND posts >= 5),
 top AS (
-  SELECT DISTINCT ON (s.brand, s.mo) s.brand, s.mo, p.username, p.is_paid, p.is_gifted, p.is_owned, p.engagement, p.url
+  SELECT DISTINCT ON (s.brand, s.mo) s.brand, s.mo, p.username, p.is_paid, p.is_gifted, p.is_owned, p.is_affiliate, p.engagement, p.url
   FROM s JOIN posts_all p ON p.brand = s.brand AND date_trunc('month', p.published_at) = s.mo ORDER BY s.brand, s.mo, p.engagement DESC NULLS LAST
 )
 SELECT to_char(s.mo, 'YYYY-MM') AS month, s.brand, ${r1("s.eng / s.base")} AS "times the usual", top.username AS creator,
-       CASE WHEN top.is_owned THEN 'brand-owned' WHEN top.is_paid THEN 'paid' WHEN top.is_gifted THEN 'gifted' ELSE 'earned' END AS kind, ${r0("100.0 * top.engagement / NULLIF(s.eng, 0)")} AS "top post share %", top.url AS post
+       CASE WHEN top.is_owned THEN 'brand-owned' WHEN top.is_paid THEN 'paid' WHEN top.is_affiliate THEN 'affiliate' WHEN top.is_gifted THEN 'gifted' ELSE 'earned' END AS kind, ${r0("100.0 * top.engagement / NULLIF(s.eng, 0)")} AS "top post share %", top.url AS post
 FROM s JOIN top USING (brand, mo) ORDER BY s.mo DESC, s.eng / s.base DESC LIMIT 12`,
         rationale: "A spike made by one paid post is a purchase. A spike made by many earned posts is a conversation.",
       },
@@ -628,11 +631,11 @@ FROM r JOIN big USING (theme) JOIN tv USING (theme) WHERE r.rk <= 3 ORDER BY big
       {
         type: "table", w: 6, h: 6,
         title: "Earned creators: posting about us, never paid",
-        subtitle: "Creators whose posts about us carry no paid or gifted disclosure, ranked by engagements (a count). Brand-owned accounts are left out. A partnership shortlist.",
+        subtitle: "Creators whose posts about us carry no paid, gifted or shop marker, ranked by engagements (a count). Brand-owned accounts are left out. A partnership shortlist.",
         sql: `WITH ${SCORED("posts")}
 SELECT username AS creator, max(platform) AS platform, max(tier) AS size, count(*)::int AS posts, sum(engagement)::bigint AS engagements, ${r2(vs())} AS "engagement vs norm"
 FROM sp WHERE brand = focal_brand() AND username IS NOT NULL AND NOT is_owned
-GROUP BY 1 HAVING NOT bool_or(is_paid) AND NOT bool_or(is_gifted) ORDER BY 5 DESC NULLS LAST LIMIT 12`,
+GROUP BY 1 HAVING NOT bool_or(is_paid) AND NOT bool_or(is_gifted) AND NOT bool_or(is_affiliate) ORDER BY 5 DESC NULLS LAST LIMIT 12`,
         rationale: "People who chose to talk about us without being asked.",
       },
       {
@@ -668,10 +671,10 @@ FROM c WHERE c.theirs > 0 ORDER BY (c.ours > 0) DESC, c.engagement DESC NULLS LA
       {
         type: "bar", w: 5, h: 6,
         title: "Does performance hold when paid? Engagement vs norm",
-        subtitle: "On earned, gifted and paid posts, us against the tracked competitors. Brand-owned posts are left out. 1.0 is the norm.",
+        subtitle: "On earned, gifted, affiliate and paid posts, us against the tracked competitors. Brand-owned posts are left out. 1.0 is the norm.",
         when: N_PAID,
         sql: `WITH ${SCORED("posts")}
-SELECT CASE WHEN is_paid THEN 'Paid' WHEN is_gifted THEN 'Gifted' ELSE 'Earned' END AS kind, ${r2(vs("brand = focal_brand()"))} AS us, ${r2(vs("brand <> focal_brand()"))} AS competitors
+SELECT CASE WHEN is_paid THEN 'Paid' WHEN is_affiliate THEN 'Affiliate or shop' WHEN is_gifted THEN 'Gifted' ELSE 'Earned' END AS kind, ${r2(vs("brand = focal_brand()"))} AS us, ${r2(vs("brand <> focal_brand()"))} AS competitors
 FROM sp WHERE expected IS NOT NULL AND NOT is_owned GROUP BY 1 ORDER BY 1`,
         x: "kind", format: "ratio", unit: "Engagement vs norm: 1.0× is the norm",
         rationale: "If paid posts fall below the norm, the audience can tell.",
@@ -814,7 +817,7 @@ FROM brand_comments WHERE brand = focal_brand() AND use_case_segment IS NOT NULL
         title: "Reading it every month, and what it cannot show yet",
         content: `**Every month.** The measures are calculated the same way each month. Set the period bar to a month and switch on Compare to see what moved. Counts change by a percent, shares by percentage points. The Reports page keeps a written review per month.
 
-**What is checked.** Paid posts are found from the caption (#ad, Anzeige, Publi and the like) as well as the platform's flag. Comments are read one by one to tell whether they are about the brand or about the creator. Posts not about the brand are left out. The list of brand-owned accounts is a draft for you to confirm.
+**What is checked.** Paid posts are found from the caption (#ad, Anzeige, Publi and the like) as well as the platform's flag. Shop and commission posts are counted on their own, as affiliate. Comments are read one by one to tell whether they are about the brand or about the creator. Posts not about the brand are left out. The list of brand-owned accounts is a draft for you to confirm.
 
 **Limits we state up front.**
 - **Culture lens:** not here yet. It needs a culture query beyond brand mentions.

@@ -23,7 +23,7 @@ Standard measures. When asked for one of these, use this definition so numbers m
 - Share of voice: a brand's posts divided by all tracked brands' posts.
 - Engagement versus norm: sum(engagement) divided by sum(expected engagement), where a post's expected engagement is its reach (views; followers for Instagram image posts and posts without views) times the tracked brands' all-time engagement rate (sum(engagement) / sum(reach) over posts_all) for the same platform, creator tier and reach basis. 1.0 is the norm; 1.2 and above is outperforming.
 - Momentum: posts in the period divided by posts in the period before, minus 1.
-- Earned share: posts that are neither paid, gifted nor brand-owned (NOT is_paid AND NOT is_gifted AND NOT is_owned) divided by all the brand's posts.
+- Earned share: posts that are neither paid, affiliate, gifted nor brand-owned (NOT is_paid AND NOT is_affiliate AND NOT is_gifted AND NOT is_owned) divided by all the brand's posts.
 - Purchase intent, praise, objections: brand comments (see below) with buying true (a buying signal read from the comment; prefer it to purchase_intent_type), with sentiment 'positive', or with (sentiment 'negative' OR objection_category set), per 1,000 brand comments.
 - Theme: the post's primary theme in post_themes (see Classified posts). Do not use hashtags as themes.
 - Minimum samples: 30 posts behind a theme and 200 brand comments behind a comment measure. Say so when a cell is smaller.
@@ -32,7 +32,7 @@ Words to use, always: "engagements" for the count, "engagement rate" for engagem
 
 Corrections already applied to the data. Use them, they are what the dashboards use:
 - Posts judged not to be about the brand they are filed under are already left out of posts and posts_all.
-- is_paid is true when the platform flags the post or the caption discloses an advert or paid partnership (#ad, Anzeige, Publi and so on). is_gifted is true for a free product with no payment disclosed. is_owned is true when the post comes from the brand's own account. Leave is_owned posts out of creator lists.
+- is_paid is true when the platform flags the post or the caption discloses an advert or paid partnership (#ad, Anzeige, Publi and so on). paid_basis says which ('caption' or 'flag'). is_affiliate is true for a shop or commission post (TikTok Shop, affiliate links). is_gifted is true for a free product with no payment disclosed. A post is at most one of paid, affiliate and gifted. is_owned is true when the post comes from the brand's own account. Leave is_owned posts out of creator lists.
 - Every comment has about: 'brand' (the brand, its product, price, where to buy), 'category' (the product category or problem, no brand), 'creator' (the creator or the video), 'other', 'noise'. Most comments are about the creator. For anything about what people think of the brand or product, query brand_comments (period-filtered) or brand_comments_all, which keep only 'brand' and 'category' comments and have the same columns as comments. Use comments only when the question is about the creator or about all reactions.
 - Brand and category comments have attribute: 'price', 'efficacy', 'ease', 'durability', 'safety', 'service', or NULL. Use it to split praise and objections; prefer it to topics and objection_category.
 - Content gap: a theme's share of audience comments (sum of posts.comments) minus its share of posts, in points.
@@ -43,7 +43,7 @@ Classified posts: two more tables give every post the themes and hooks found in 
 post_id bigint, segment_id int, brand text, influencer_id bigint, username text, platform text, post_type text ('video'|'image'),
 url text, title text (mostly null), text text (caption), published_at timestamptz,
 likes, comments, shares, views, saves (double; views null for ~36 percent of rows),
-engagement double (likes+comments+shares+saves), is_paid boolean (paid: platform flag or caption disclosure), is_gifted boolean, is_owned boolean (posted by the brand's own account),
+engagement double (likes+comments+shares+saves), is_paid boolean (paid: caption disclosure or platform flag), paid_basis text, is_affiliate boolean, is_gifted boolean, is_owned boolean (posted by the brand's own account),
 tier text ('nano'|'micro'|'mid'|'macro'|'mega' by follower count), country text (creator country, 'Unknown' when unknown),
 language text (ISO code or 'unknown' for 64 percent), sentiment text ('positive'|'neutral'|'negative' of the post itself),
 emv double (earned media value in USD), followers double (creator followers at the time), budget_min/budget_max double (estimated creator fee USD).

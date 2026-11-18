@@ -40,7 +40,7 @@ def markers(name):
     body = re.search(r"const %s = \[(.*?)\]\.join" % name, src, re.S).group(1)
     items = [json.loads('"' + m + '"') for m in re.findall(r'"((?:[^"\\]|\\.)*)"', body)]
     return re.compile("|".join(items).replace("\\m", "\\b").replace("\\M", "\\b"))
-PAID, NOT_PAID, GIFTED = markers("PAID_MARKERS"), markers("NOT_PAID_MARKERS"), markers("GIFTED_MARKERS")
+PAID, NOT_PAID, GIFTED, AFFILIATE = markers("PAID_MARKERS"), markers("NOT_PAID_MARKERS"), markers("GIFTED_MARKERS"), markers("AFFILIATE_MARKERS")
 
 labels = gz("labels", IND + ".json.gz")
 themes, hooks = labels["themes"], labels["hooks"]
@@ -59,13 +59,17 @@ for p in gz("posts.json.gz"):
     if d == "paid" and NOT_PAID.search(text): d = None
     if d is None and p.get("text") and GIFTED.search(text): d = "gifted"
     if d is None and l and l[4] > 0 and hooks[l[4] - 1] == "Giveaway or competition": d = "gifted"
-    paid = bool(p.get("is_paid")) or d == "paid"
+    # What the caption says wins over the bare flag; a shop post is affiliate unless the caption carries an advert marker.
+    affiliate = bool(p.get("text")) and bool(AFFILIATE.search(text)) and not (PAID.search(text) and not NOT_PAID.search(text))
+    by_caption = d == "paid" and not affiliate
+    by_flag = bool(p.get("is_paid")) and not affiliate and d != "gifted" and not by_caption
+    paid = by_caption or by_flag
     reach_f = (p["platform"] == "instagram" and p["post_type"] == "image") or not (p.get("views") or 0)
-    posts.append({**p, "at": ts(p.get("published_at")), "paid": paid, "gifted": d == "gifted" and not paid,
+    posts.append({**p, "at": ts(p.get("published_at")), "paid": paid, "flag_only": by_flag, "affiliate": affiliate, "gifted": d == "gifted" and not affiliate,
                   "owned": (p.get("username") or "").lower() in handles.get(p["brand"], set()),
                   "theme": themes[l[2] - 1] if l and l[2] > 0 else None,
                   "basis": "f" if reach_f else "v", "reach": (p.get("followers") if reach_f else p.get("views")) or 0})
-for p in posts: p["earned"] = not (p["paid"] or p["gifted"] or p["owned"])
+for p in posts: p["earned"] = not (p["paid"] or p["gifted"] or p["owned"] or p["affiliate"])
 
 cl = gz("comment_labels", IND + ".json.gz")
 kept_posts = {(p["segment_id"], p["post_id"]) for p in posts}
@@ -136,8 +140,8 @@ for r in got["The same measures for every tracked brand"]:
     check(f"{b}: earned share %", 100 * sum(p["earned"] for p in g) / len(g), r["earned share %"], 0.02)
 
 mix = defaultdict(int)
-for p in posts: mix[(p["brand"], "Brand-owned" if p["owned"] else "Paid" if p["paid"] else "Gifted" if p["gifted"] else "Earned")] += 1
-for r in got["Earned, gifted, paid and brand-owned posts"]: check(f"mix {r['brand']} {r['kind']}", mix[(r["brand"], r["kind"])], r["value"], 0)
+for p in posts: mix[(p["brand"], "Brand-owned" if p["owned"] else "Paid: platform label only" if p["flag_only"] else "Paid: disclosed in the caption" if p["paid"] else "Affiliate or shop" if p["affiliate"] else "Gifted" if p["gifted"] else "Earned")] += 1
+for r in got["Earned, gifted, affiliate, paid and brand-owned posts"]: check(f"mix {r['brand']} {r['kind']}", mix[(r["brand"], r["kind"])], r["value"], 0)
 
 for r in got["What the audience says, per tracked brand"]:
     g = [c for c in comments if c["brand"] == r["brand"]]

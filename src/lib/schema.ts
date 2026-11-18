@@ -178,8 +178,10 @@ CREATE TABLE IF NOT EXISTS period_events (
  * show through these views:
  *  - posts judged not to be about the brand they are filed under (posts_raw.about = 'no') are
  *    left out of posts_all and posts. post_about still lists them.
- *  - is_paid is the supplied flag or a paid disclosure found in the caption; is_gifted and
- *    is_owned (posted by the brand's own account) are new columns.
+ *  - is_paid is a paid disclosure found in the caption (paid_basis 'caption') or, with nothing in
+ *    the caption, the supplied flag (paid_basis 'flag'). is_affiliate (a shop or commission
+ *    post), is_gifted and is_owned (posted by the brand's own account) are new columns. A post
+ *    is at most one of paid, affiliate and gifted: what the caption says wins over the bare flag.
  *  - comments carry `about` (brand, category, creator, other, noise), `attribute` and `buying`
  *    (a buying signal, read by the classifier; the supplied purchase_intent_type is looser).
  *    brand_comments and brand_comments_all keep the comments about the brand or its category
@@ -209,7 +211,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-5";
+const VIEWS_VERSION = "scoped-6";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -228,6 +230,8 @@ ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS disclosure text;
 ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_gifted boolean NOT NULL DEFAULT false;
 ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_owned boolean NOT NULL DEFAULT false;
 ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS about text;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS is_affiliate boolean NOT NULL DEFAULT false;
+ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS paid_basis text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS about text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS attribute text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS buying boolean;
