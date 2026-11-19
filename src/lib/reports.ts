@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS period_reports (
   data jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (dashboard_id, period_start, period_end)
-);`;
+);
+-- A review is written per market ('' is all markets), so the key includes it.
+ALTER TABLE period_reports ADD COLUMN IF NOT EXISTS market text NOT NULL DEFAULT '';
+ALTER TABLE period_reports DROP CONSTRAINT IF EXISTS period_reports_dashboard_id_period_start_period_end_key;
+CREATE UNIQUE INDEX IF NOT EXISTS period_reports_key ON period_reports (dashboard_id, period_start, period_end, market);`;
 
 let ready: Promise<void> | null = null;
 async function ensureReports() {
@@ -90,7 +94,7 @@ SELECT
 
 /** One of the eight measures for a month: its value, the month before, and how to show it. */
 export interface MonthMeasure { label: string; value: number | null; compare: number | null; fmt: "percent" | "ratio" | "decimal" | "points" }
-export interface MonthRead { measures: MonthMeasure[]; kpis: MonthKpis; previous: MonthKpis | null }
+export interface MonthRead { measures: MonthMeasure[]; kpis: MonthKpis; previous: MonthKpis | null; /** The written review for this month and market, if one exists. */ review: StoredReport | null }
 
 /** The monthly read: the eight measures and the volume counts for one month against the month before, for all markets or one. */
 export async function getMonthRead(dashboardId: string, month: string, market?: string): Promise<MonthRead> {
@@ -107,7 +111,7 @@ export async function getMonthRead(dashboardId: string, month: string, market?: 
     const hasPrev = cov.months.some((x) => x.month === prevKey && x.posts > 0);
     const before = hasPrev ? await kpisFor({ start: monthStart(prevKey), end: monthEnd(prevKey), ...(market ? { market } : {}) }) : null;
     // A market can have nothing in the month before even when the brands as a whole do.
-    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null };
+    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null, review: await getStoredReport(dashboardId, month, market) };
   });
 }
 
@@ -139,8 +143,9 @@ async function listReports(dashboardId: string): Promise<{ rows: MonthReportRow[
   const cov = await getCoverage();
   const months = monthsForReports(cov.months);
   const db = await getDb();
-  const stored = await db.query<StoredReport>(`SELECT * FROM period_reports WHERE dashboard_id = $1`, [dashboardId]);
-  const byStart = new Map(stored.map((s) => [String(s.period_start).slice(0, 10), s]));
+  // The month is taken as text in SQL: Postgres hands a date column back as a Date object, the embedded database as a string.
+  const stored = await db.query<StoredReport & { start_key: string }>(`SELECT *, to_char(period_start, 'YYYY-MM-DD') AS start_key FROM period_reports WHERE dashboard_id = $1 AND market = ''`, [dashboardId]);
+  const byStart = new Map(stored.map((s) => [s.start_key, s]));
   const cache = new Map<string, MonthKpis>();
   const kpis = async (m: string) => {
     if (!cache.has(m)) cache.set(m, await kpisFor({ start: monthStart(m), end: monthEnd(m) }));
@@ -164,10 +169,10 @@ async function listReports(dashboardId: string): Promise<{ rows: MonthReportRow[
   return { rows, coveredTo: cov.coveredTo, markets: (cov.markets ?? []).map((m) => m.country) };
 }
 
-export async function getStoredReport(dashboardId: string, month: string): Promise<StoredReport | null> {
+export async function getStoredReport(dashboardId: string, month: string, market?: string): Promise<StoredReport | null> {
   await ensureReports();
   const db = await getDb();
-  const rows = await db.query<StoredReport>(`SELECT * FROM period_reports WHERE dashboard_id = $1 AND period_start = $2`, [dashboardId, monthStart(month)]);
+  const rows = await db.query<StoredReport>(`SELECT * FROM period_reports WHERE dashboard_id = $1 AND period_start = $2 AND market = $3`, [dashboardId, monthStart(month), market ?? ""]);
   return rows[0] ?? null;
 }
 
@@ -210,13 +215,13 @@ function mockReview(month: string, prev: string | null, k: MonthKpis, p: MonthKp
 }
 
 /** Builds (or rebuilds) the month in review for a dashboard and month, running every data element for both months. */
-export async function generateMonthReview(dashboardId: string, month: string, opts: { force?: boolean; automatic?: boolean } = {}): Promise<StoredReport> {
+export async function generateMonthReview(dashboardId: string, month: string, opts: { force?: boolean; automatic?: boolean; market?: string } = {}): Promise<StoredReport> {
   return runForDashboard(await getDashboard(dashboardId), () => writeReview(dashboardId, month, opts));
 }
 
-async function writeReview(dashboardId: string, month: string, { force = false, automatic = false }: { force?: boolean; automatic?: boolean } = {}): Promise<StoredReport> {
+async function writeReview(dashboardId: string, month: string, { force = false, automatic = false, market }: { force?: boolean; automatic?: boolean; market?: string } = {}): Promise<StoredReport> {
   await ensureReports();
-  const existing = await getStoredReport(dashboardId, month);
+  const existing = await getStoredReport(dashboardId, month, market);
   if (existing && !force) return existing;
   // Writing a review uses the analyst: it needs tokens (automatic reviews are skipped at zero by the caller's catch).
   await assertCanSpend();
@@ -227,8 +232,10 @@ async function writeReview(dashboardId: string, month: string, { force = false, 
   const prevMonth = monthKey(addMonths(start, -1));
   const cov = await getCoverage();
   const hasPrev = cov.months.some((x) => x.month === prevMonth && x.posts + x.comments > 0);
-  const cur: PeriodWindow = { start, end };
-  const prev: PeriodWindow | null = hasPrev ? { start: monthStart(prevMonth), end: start } : null;
+  // With a market, both months are read inside it, and the review says so.
+  const inMarket = market ? { market } : {};
+  const cur: PeriodWindow = { start, end, ...inMarket };
+  const prev: PeriodWindow | null = hasPrev ? { start: monthStart(prevMonth), end: start, ...inMarket } : null;
 
   const k = await kpisFor(cur);
   const p = prev ? await kpisFor(prev) : null;
@@ -241,17 +248,18 @@ async function writeReview(dashboardId: string, month: string, { force = false, 
     if (widgets.length >= 14) break;
   }
 
-  const meta = { kind: "month_review" as const, dashboardId, label: `Month in review: ${formatMonth(month)}`, automatic };
+  const meta = { kind: "month_review" as const, dashboardId, label: `Month in review: ${formatMonth(month)}${market ? `, ${market}` : ""}`, automatic };
   let usage: UsageLine | null = null;
   let summary: string;
   let model: string | null = null;
   if (llmMode() === "mock") {
     summary = mockReview(month, prev ? prevMonth : null, k, p, widgets);
+    if (market) summary = summary.replace(/^## (.*) in review/m, `## $1 in review: ${market}`);
     model = "demo";
     usage = await recordEstimate(meta, reviewSystem() + JSON.stringify(widgets.map((w) => [w.title, compactRows(w.rows), compactRows(w.prevRows)])), summary);
   } else {
     const user = [
-      `Dashboard: "${dashboard.name}". Focal brand: ${focalName()}. Month under review: ${formatMonth(month)} (${start} to ${end}, end exclusive).${prev ? ` Previous month: ${formatMonth(prevMonth)}.` : " No previous month available."}`,
+      `Dashboard: "${dashboard.name}". Focal brand: ${focalName()}. Month under review: ${formatMonth(month)} (${start} to ${end}, end exclusive).${market ? ` Market: ${market} only (creators in ${market}); every number below is for that market, so name the market in the heading and the lead and do not present anything as a total across markets.` : ""}${prev ? ` Previous month: ${formatMonth(prevMonth)}.` : " No previous month available."}`,
       `Headline numbers for ${focalName()}: ${JSON.stringify(k)}${p ? `; previous month: ${JSON.stringify(p)}` : ""}.`,
       "Dashboard elements (this month, then previous month; rows trimmed):",
       ...widgets.map((w) => `### ${w.title} (${w.type})\nthis month: ${JSON.stringify(compactRows(w.rows))}\nprevious month: ${JSON.stringify(compactRows(w.prevRows))}`),
@@ -267,10 +275,10 @@ async function writeReview(dashboardId: string, month: string, { force = false, 
   const db = await getDb();
   const data = { usage, kpis: k, previous: p, elements: widgets.map((w) => ({ title: w.title, rows: w.rows.length, prevRows: w.prevRows.length })) };
   const rows = await db.query<StoredReport>(
-    `INSERT INTO period_reports (dashboard_id, period_start, period_end, summary_md, model, data) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-     ON CONFLICT (dashboard_id, period_start, period_end) DO UPDATE SET summary_md = EXCLUDED.summary_md, model = EXCLUDED.model, data = EXCLUDED.data, created_at = now()
+    `INSERT INTO period_reports (dashboard_id, period_start, period_end, summary_md, model, data, market) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+     ON CONFLICT (dashboard_id, period_start, period_end, market) DO UPDATE SET summary_md = EXCLUDED.summary_md, model = EXCLUDED.model, data = EXCLUDED.data, created_at = now()
      RETURNING *`,
-    [dashboardId, start, end, summary, model, JSON.stringify(data)],
+    [dashboardId, start, end, summary, model, JSON.stringify(data), market ?? ""],
   );
   return rows[0];
 }
