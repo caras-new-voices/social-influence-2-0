@@ -89,7 +89,7 @@ export default async function MethodPage() {
 
         <section className="ds__section">
           <h2 className="im-text-header">Measured accuracy</h2>
-          <p className="im-text-description">{ACCURACY_JUDGE} Measured on {ACCURACY_DATE}. The pass mark is {PASS_MARK}%. Read anything below it as a direction, not to the point.</p>
+          <p className="im-text-description">{ACCURACY_JUDGE} Measured on {ACCURACY_DATE}; the claim tags on 19 November 2026. The pass mark is {PASS_MARK}%. Read anything below it as a direction, not to the point.</p>
           <div className="im-card" style={{ overflow: "hidden" }}>
             <table className="tbl">
               <thead><tr><th>What is read</th><th>Where</th><th>Sample</th><th className="num">Agreement</th><th>Result</th></tr></thead>

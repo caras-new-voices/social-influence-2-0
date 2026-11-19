@@ -26,8 +26,10 @@ function change(m: MonthMeasure): { text: string; size: number; dir: -1 | 0 | 1 
   const d = m.value - m.compare;
   if (Math.abs(d) < 1e-9) return { text: "no change", size: 0, dir: 0 };
   const text = m.fmt === "percent" ? `${Math.abs(d * 100).toFixed(1)} pts` : m.fmt === "ratio" ? Math.abs(d).toFixed(2) : Math.abs(d).toFixed(1);
-  // From nothing to something is the largest move there is.
-  return { text, size: m.compare ? Math.abs(d / m.compare) : 1, dir: d > 0 ? 1 : -1 };
+  // How big the move is on the measure's own scale, so a share, a ratio and a rate can be ranked together:
+  // 1 is 5 points of a share, 0.2 of a ratio, or a fifth of a rate. A rate that starts from nothing is as big as it gets.
+  const size = m.fmt === "percent" ? Math.abs(d) * 100 / 5 : m.fmt === "ratio" ? Math.abs(d) / 0.2 : m.compare ? Math.abs(d / m.compare) / 0.2 : 5;
+  return { text, size, dir: d > 0 ? 1 : -1 };
 }
 /** A month's read as held on the page; kpis is null when it could not be fetched. */
 type Read = MonthRead | "failed";
@@ -40,7 +42,7 @@ function MonthMeasures({ read, month, prev, market, retry }: { read: Read | unde
   if (read === "failed") return <p className="im-text-description rep__loading">The eight measures could not be loaded. <button className="im-btn im-btn-ghost im-btn-sm" onClick={retry}>Try again</button></p>;
   if (!read) return <p className="im-text-description rep__loading">Working out the eight measures for {month}{market ? ` in ${market}` : ""}…</p>;
   if (!read.measures.some((m) => m.value != null)) return <p className="im-text-description rep__loading">The eight measures could not be worked out for {month}{market ? ` in ${market}` : ""}: too few posts.</p>;
-  const moved = read.measures.map((m) => ({ m, c: change(m) })).filter((x) => x.c && x.c.size >= 0.02).sort((a, b) => b.c!.size - a.c!.size).slice(0, 3);
+  const moved = read.measures.map((m) => ({ m, c: change(m) })).filter((x) => x.c && x.c.size >= 0.2).sort((a, b) => b.c!.size - a.c!.size).slice(0, 3);
   return (
     <>
       <div className="rep__kpis rep__kpis--measures">
@@ -64,7 +66,7 @@ function MonthMeasures({ read, month, prev, market, retry }: { read: Read | unde
         <p className="rep__moved">
           <b>What moved most{market ? ` in ${market}` : ""}:</b>{" "}
           {!read.measures.some((m) => m.compare != null) ? `no posts in ${prev}${market ? ` in ${market}` : ""} to compare with.`
-            : moved.length ? moved.map((x, i) => `${i ? "; " : ""}${x.m.label.toLowerCase()} ${x.c!.dir > 0 ? "up" : "down"} ${x.c!.text} to ${fmtMeasure(x.m, x.m.value)}`).join("") + "." : `nothing moved by more than 2% against ${prev}.`}
+            : moved.length ? moved.map((x, i) => `${i ? "; " : ""}${x.m.label.toLowerCase()} ${x.c!.dir > 0 ? "up" : "down"} ${x.c!.text} to ${fmtMeasure(x.m, x.m.value)}`).join("") + "." : `nothing moved much against ${prev}: no share by a point, no ratio by 0.04, no rate by 4%.`}
         </p>
       )}
     </>
@@ -121,18 +123,24 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
       .catch(() => { if (live) setReads((x) => ({ ...x, [readKey]: "failed" })); });
     return () => { live = false; };
   }, [dashboard.id, open, market, readKey, reads]);
+  const current = rows.find((r) => r.month === open) ?? null;
   const read = reads[readKey];
   const retry = () => setReads((x) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== readKey)));
   const ok = read && read !== "failed" ? read : null;
+  // The review shown: this market's when one is selected, else the all-markets one.
+  const review = current ? (market ? ok?.review ?? null : current.review) : null;
   const onDashboard = (m: string) => `/dashboard/${dashboard.id}?period=${m}&compare=prev&market=${encodeURIComponent(market)}`;
 
   const generate = async (month: string, force: boolean) => {
     setBusy(month);
     try {
-      const r = await fetch(`/api/dashboards/${dashboard.id}/reports/${month}${force ? "?force=1" : ""}`, { method: "POST" });
+      const qs = new URLSearchParams({ ...(force ? { force: "1" } : {}), ...(market ? { market } : {}) }).toString();
+      const r = await fetch(`/api/dashboards/${dashboard.id}/reports/${month}${qs ? `?${qs}` : ""}`, { method: "POST" });
       const j = (await r.json()) as { report?: StoredReport; error?: string };
       if (!r.ok || !j.report) throw new Error(j.error ?? "Could not generate the review");
-      setRows((rs) => rs.map((x) => (x.month === month ? { ...x, review: j.report! } : x)));
+      // A review for one market is kept with that market's read; the month list holds the all-markets reviews.
+      if (market) setReads((x) => { const k = `${month}@${market}`; const cur = x[k]; return cur && cur !== "failed" ? { ...x, [k]: { ...cur, review: j.report! } } : x; });
+      else setRows((rs) => rs.map((x) => (x.month === month ? { ...x, review: j.report! } : x)));
       announceUsage();
       setOpen(month);
       toast(force ? "Review regenerated" : "Review ready");
@@ -143,7 +151,6 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
     }
   };
 
-  const current = rows.find((r) => r.month === open) ?? null;
   const prevLabel = (m: string) => formatMonth(monthKey(addMonths(monthStart(m), -1)), false);
 
   return (
@@ -199,10 +206,10 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
                   </p>
                 </div>
                 <div className="rep__actions no-print">
-                  {current.review ? (
+                  {review ? (
                     <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => void generate(current.month, true)} disabled={busy === current.month}>{busy === current.month ? "Regenerating…" : "Regenerate review"}</button>
                   ) : (
-                    <button className="im-btn im-btn-primary im-btn-sm" onClick={() => void generate(current.month, false)} disabled={busy === current.month}>{busy === current.month ? "Writing…" : "Write month in review"}</button>
+                    <button className="im-btn im-btn-primary im-btn-sm" onClick={() => void generate(current.month, false)} disabled={busy === current.month || (!!market && !ok)}>{busy === current.month ? "Writing…" : "Write month in review"}</button>
                   )}
                   {(markets.length > 1 || market) && (
                     <select className="rep__market" value={market} onChange={(e) => setMarket(e.target.value)} aria-label="Market">
@@ -232,15 +239,14 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
                   );
                 })}
               </div>
-              {current.review ? (
+              {review ? (
                 <div className="rep__review">
-                  {market && <p className="im-text-description">The written review below covers all markets, not {market} alone.</p>}
-                  <Markdown text={current.review.summary_md} />
-                  <p className="im-text-description rep__meta">Written {new Date(current.review.created_at).toLocaleString("en-GB")}{current.review.model ? ` · ${current.review.model}` : ""}{reviewUsage(current.review)}. Numbers above are live; the narrative is frozen at the time it was written.</p>
+                  <Markdown text={review.summary_md} />
+                  <p className="im-text-description rep__meta">Written {new Date(review.created_at).toLocaleString("en-GB")}{review.model ? ` · ${review.model}` : ""}{reviewUsage(review)}{market ? ` · ${market} only` : ""}. Numbers above are live; the narrative is frozen at the time it was written.</p>
                 </div>
               ) : (
                 <div className="rep__empty">
-                  <p className="im-text-sub-header">No review written yet</p>
+                  <p className="im-text-sub-header">No review written yet{market ? ` for ${market}` : ""}</p>
                   <p className="im-text-description">The analyst runs every element of this dashboard for {current.label}{current.previous ? ` and ${prevLabel(current.month)}` : ""} and writes a short narrative: what grew, what fell, notable comments and a suggested action.</p>
                 </div>
               )}

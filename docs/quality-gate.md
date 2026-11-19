@@ -115,6 +115,16 @@ Three rounds, each one review plus the checks, until a round found nothing.
 
 `npm run check:numbers` now covers 336 numbers, including share of voice four ways and the minimum-sample rules.
 
+### Fixes after the QA loop (19 November 2026)
+
+- **Claim tags read a second time.** A stronger model read every caption again with stricter rules: a claim needs words that say it, liking is not a claim, gentle is safety and not efficacy. A blind judge on 300 posts now confirms 96 to 100% of the claims we tag (it was 63 to 90%). We tag fewer than the judge does: we find 78 to 90% of its price, efficacy, ease and safety claims and 55% of its durability and service claims. Reading the misses, the judge counts a bare shop hashtag or a tagged retailer as a claim and we do not.
+  - **The finding changed.** Before, "service" looked praised more than claimed. That came from the weak tags. Now efficacy is the open benefit (29.5% of praise against 23.4% of claims), and safety and ease are claimed more than they are praised.
+- **Creators on two platforms** are scored once per platform, not merged under one.
+- **The written monthly review follows the market.** A review written with a market selected is about that market and kept apart from the all-markets one.
+- **"What moved most"** ranks each measure on its own scale (5 points of a share, 0.2 of a ratio, a fifth of a rate), so a tiny share no longer outranks a real move.
+- **An older fault found on the way:** on Postgres a written review did not come back in the month list after a reload. Fixed.
+- **Import tested.** Two comments imported without their post got the post's market and showed under it, and not under another market.
+
 ### Not verified
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 

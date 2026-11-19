@@ -144,9 +144,9 @@ cp AS (
   WHERE sp.username IS NOT NULL AND NOT sp.is_owned ORDER BY sp.segment_id, sp.post_id, pt.theme
 ),
 pc AS MATERIALIZED (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments GROUP BY 1, 2),
-ct AS (SELECT username, theme, count(*) AS n, row_number() OVER (PARTITION BY username ORDER BY count(*) DESC, theme) AS rk FROM cp WHERE theme IS NOT NULL AND theme NOT IN ('Other', 'Unknown') GROUP BY 1, 2),
+ct AS (SELECT username, platform, theme, count(*) AS n, row_number() OVER (PARTITION BY username, platform ORDER BY count(*) DESC, theme) AS rk FROM cp WHERE theme IS NOT NULL AND theme NOT IN ('Other', 'Unknown') GROUP BY 1, 2, 3),
 ca AS (
-  SELECT cp.username AS creator, max(cp.platform) AS platform, count(*)::int AS posts,
+  SELECT cp.username AS creator, cp.platform AS platform, count(*)::int AS posts,
          count(*) FILTER (WHERE cp.brand = focal_brand())::int AS ours, count(*) FILTER (WHERE cp.brand <> focal_brand())::int AS theirs,
          string_agg(DISTINCT cp.brand, ', ') AS brands, sum(cp.eng_s) / NULLIF(sum(cp.expected), 0) AS vs,
          bool_or(cp.is_paid AND cp.brand = focal_brand()) AS paid_by_us, bool_or(cp.is_gifted AND cp.brand = focal_brand()) AS gifted_by_us,
@@ -155,7 +155,7 @@ ca AS (
          avg((cp.budget_min + cp.budget_max) / 2.0) AS fee,
          sum((cp.budget_min + cp.budget_max) / 2.0) / NULLIF(sum(cp.engagement) FILTER (WHERE cp.budget_min IS NOT NULL AND cp.budget_max IS NOT NULL), 0) AS fee_per_eng,
          sum(pc.n) AS c_n, sum(pc.intent) AS c_intent
-  FROM cp LEFT JOIN pc ON pc.segment_id = cp.segment_id AND pc.post_id = cp.post_id GROUP BY 1 HAVING count(*) >= 2
+  FROM cp LEFT JOIN pc ON pc.segment_id = cp.segment_id AND pc.post_id = cp.post_id GROUP BY 1, 2 HAVING count(*) >= 2
 ), cr AS (
   SELECT ca.*, percent_rank() OVER (ORDER BY ca.vs) AS p_vs,
          CASE WHEN ca.fee_per_eng IS NOT NULL THEN 1 - percent_rank() OVER (PARTITION BY (ca.fee_per_eng IS NOT NULL) ORDER BY ca.fee_per_eng) END AS p_value,
@@ -168,9 +168,9 @@ ca AS (
          cr.fee, CASE WHEN cr.paid_by_rival THEN 'paid by a rival' WHEN cr.theirs > 0 THEN 'posts about a rival, unpaid' ELSE 'no rival ties' END AS avail,
          100 * (0.45 * cr.p_vs + 0.25 * coalesce(cr.p_intent, cr.p_vs) + 0.15 * coalesce(ct.n::float / cr.posts, 0) + 0.10 * coalesce(cr.p_value, 0.5) + 0.05 * CASE WHEN cr.paid_by_rival THEN 0 ELSE 1 END)
            * (0.6 + 0.4 * least(cr.posts - 2, 3) / 3.0) AS score
-  FROM cr LEFT JOIN ct ON ct.username = cr.creator AND ct.rk = 1
+  FROM cr LEFT JOIN ct ON ct.username = cr.creator AND ct.platform IS NOT DISTINCT FROM cr.platform AND ct.rk = 1
 )`;
-const SCORE_NOTE = "Creator score, out of 100: 45% is how their engagement vs norm ranks among all creators, 25% how the buying signals under their posts rank (where they have 20+ brand comments), 15% theme fit, 10% value (their modelled fee per engagement, cheapest best) and 5% availability (lost when a rival has paid them). It counts for less when a creator has few posts. Creators with 2+ posts; brand-owned accounts are left out";
+const SCORE_NOTE = "Creator score, out of 100: 45% is how their engagement vs norm ranks among all creators, 25% how the buying signals under their posts rank (where they have 20+ brand comments), 15% theme fit, 10% value (their modelled fee per engagement, cheapest best) and 5% availability (lost when a rival has paid them). It counts for less when a creator has few posts. Creators with 2+ posts on one platform, and a creator on two platforms is scored for each; brand-owned accounts are left out";
 
 const li = (parts: string) => `'<li>' || ${parts} || '</li>'`;
 const pct = (expr: string) => `round((100.0 * (${expr}))::numeric, 0)`;
@@ -766,9 +766,9 @@ FROM cs ORDER BY score DESC LIMIT 15`,
         sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
 big AS (SELECT theme, count(*) AS n FROM tags GROUP BY 1 HAVING count(*) >= ${THEME_MIN} ORDER BY 2 DESC LIMIT 8),
 c AS (
-  SELECT t.theme, t.username AS creator, max(t.platform) AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views,
+  SELECT t.theme, t.username AS creator, t.platform AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views,
          sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs, string_agg(DISTINCT t.brand, ', ') AS brands
-  FROM tags t JOIN big USING (theme) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2
+  FROM tags t JOIN big USING (theme) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2, 3
 ), tv AS (SELECT theme, sum(views) AS theme_views FROM c GROUP BY 1),
 r AS (SELECT c.*, row_number() OVER (PARTITION BY theme ORDER BY views DESC) AS rk FROM c WHERE posts >= 2)
 SELECT r.theme, r.creator, r.platform, r.posts, ${r0("100.0 * r.views / NULLIF(tv.theme_views, 0)")} AS "share of theme views %", ${r2("r.vs")} AS "engagement vs norm", r.brands AS "posts about"
@@ -783,8 +783,8 @@ FROM r JOIN big USING (theme) JOIN tv USING (theme) WHERE r.rk <= 3 ORDER BY big
         sql: `WITH ${SCORED("posts")},
 big AS (SELECT brand, product, count(*) AS n FROM sp WHERE product IS NOT NULL GROUP BY 1, 2 HAVING count(*) >= 20),
 c AS (
-  SELECT t.brand, t.product, t.username AS creator, max(t.platform) AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views, sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs
-  FROM sp t JOIN big USING (brand, product) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2, 3
+  SELECT t.brand, t.product, t.username AS creator, t.platform AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views, sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs
+  FROM sp t JOIN big USING (brand, product) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2, 3, 4
 ), tv AS (SELECT brand, product, sum(views) AS line_views FROM c GROUP BY 1, 2),
 r AS (SELECT c.*, row_number() OVER (PARTITION BY brand, product ORDER BY views DESC, creator) AS rk FROM c WHERE posts >= 2)
 SELECT r.brand, r.product, r.creator, r.platform, r.posts, ${r0("100.0 * r.views / NULLIF(tv.line_views, 0)")} AS "share of line views %", ${r2("r.vs")} AS "engagement vs norm"
@@ -808,10 +808,10 @@ GROUP BY 1 HAVING NOT bool_or(is_paid) AND NOT bool_or(is_gifted) AND NOT bool_o
         when: N_BC,
         sql: `WITH pc AS (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments WHERE brand = focal_brand() GROUP BY 1, 2),
 avg_rate AS MATERIALIZED (SELECT 1000.0 * sum(intent) / NULLIF(sum(n), 0) AS rate FROM pc)
-SELECT p.username AS creator, max(p.platform) AS platform, count(DISTINCT p.post_id)::int AS posts, sum(pc.n)::int AS "brand comments",
+SELECT p.username AS creator, p.platform AS platform, count(DISTINCT p.post_id)::int AS posts, sum(pc.n)::int AS "brand comments",
        ${r1("1000.0 * sum(pc.intent) / sum(pc.n)")} AS "intent per 1K", ${r1("(1000.0 * sum(pc.intent) / sum(pc.n)) / NULLIF((SELECT rate FROM avg_rate), 0)")} AS "times our average"
 FROM posts p JOIN pc ON pc.segment_id = p.segment_id AND pc.post_id = p.post_id
-WHERE p.brand = focal_brand() AND p.username IS NOT NULL AND NOT p.is_owned GROUP BY 1 HAVING sum(pc.n) >= 20 AND sum(pc.intent) > 0 ORDER BY 5 DESC LIMIT 12`,
+WHERE p.brand = focal_brand() AND p.username IS NOT NULL AND NOT p.is_owned GROUP BY 1, 2 HAVING sum(pc.n) >= 20 AND sum(pc.intent) > 0 ORDER BY 5 DESC LIMIT 12`,
         sample: OUR_BC,
         rationale: "Reach is easy to buy. These creators move people toward a purchase.",
       },
@@ -822,9 +822,9 @@ WHERE p.brand = focal_brand() AND p.username IS NOT NULL AND NOT p.is_owned GROU
         when: N_COMPETITORS,
         sql: `WITH ${SCORED("posts")},
 c AS (
-  SELECT username AS creator, max(platform) AS platform, count(*) FILTER (WHERE brand = focal_brand())::int AS ours, count(*) FILTER (WHERE brand <> focal_brand())::int AS theirs,
+  SELECT username AS creator, platform, count(*) FILTER (WHERE brand = focal_brand())::int AS ours, count(*) FILTER (WHERE brand <> focal_brand())::int AS theirs,
          string_agg(DISTINCT brand, ', ') FILTER (WHERE brand <> focal_brand()) AS rivals, bool_or(is_paid AND brand <> focal_brand()) AS paid_by_rival, sum(engagement) AS engagement, ${vs()} AS vs
-  FROM sp WHERE username IS NOT NULL AND NOT is_owned GROUP BY 1
+  FROM sp WHERE username IS NOT NULL AND NOT is_owned GROUP BY 1, 2
 )
 SELECT c.creator, c.platform, CASE WHEN c.ours > 0 THEN 'shared' ELSE 'rivals only' END AS relation, c.ours AS "our posts", c.theirs AS "rival posts", c.rivals,
        CASE WHEN c.paid_by_rival THEN 'yes' ELSE 'no' END AS "paid by a rival", ${r2("c.vs")} AS "engagement vs norm"
@@ -849,9 +849,9 @@ FROM sp WHERE expected IS NOT NULL AND NOT is_owned GROUP BY 1 ORDER BY 1`,
         when: N_HISTORY,
         sql: `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")},
 c AS (
-  SELECT username AS creator, max(platform) AS platform, count(*) FILTER (WHERE cur)::int AS posts,
+  SELECT username AS creator, platform, count(*) FILTER (WHERE cur)::int AS posts,
          coalesce(sum(views) FILTER (WHERE cur), 0) AS views_now, coalesce(sum(views) FILTER (WHERE NOT cur), 0) AS views_before, ${vs("cur")} AS vs
-  FROM sp WHERE brand = focal_brand() AND username IS NOT NULL AND NOT is_owned GROUP BY 1
+  FROM sp WHERE brand = focal_brand() AND username IS NOT NULL AND NOT is_owned GROUP BY 1, 2
 )
 SELECT c.creator, c.platform, c.posts, c.views_now::bigint AS "views now", c.views_before::bigint AS "views before", ${r2("c.vs")} AS "engagement vs norm"
 FROM c WHERE c.posts > 0 AND c.views_now > c.views_before AND c.vs >= 1.5 ORDER BY c.views_now - c.views_before DESC LIMIT 12`,

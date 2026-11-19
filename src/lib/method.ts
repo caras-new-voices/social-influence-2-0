@@ -26,12 +26,13 @@ export const ACCURACY: AccuracyLine[] = [
   { what: "The theme of a post", agreement: 78, sample: "measured the week before", scope: "Hair removal" },
   { what: "The product line of a post, where one is named", agreement: 94, sample: "141 posts", scope: "Hair removal" },
   { what: "The product line of a brand comment, where one is named", agreement: 93, sample: "162 comments", scope: "Hair removal" },
-  { what: "A caption claims price", agreement: 90, sample: "32 posts", scope: "Hair removal" },
-  { what: "A caption claims ease of use", agreement: 89, sample: "49 posts", scope: "Hair removal" },
-  { what: "A caption claims safety and comfort", agreement: 88, sample: "50 posts", scope: "Hair removal" },
-  { what: "A caption claims durability", agreement: 75, sample: "8 posts", scope: "Hair removal" },
-  { what: "A caption claims efficacy", agreement: 72, sample: "66 posts", scope: "Hair removal" },
-  { what: "A caption claims service and availability", agreement: 63, sample: "11 posts", scope: "Hair removal" },
+  { what: "A caption we tag as claiming price really claims it", agreement: 100, sample: "34 posts", scope: "Hair removal" },
+  { what: "A caption we tag as claiming efficacy really claims it", agreement: 100, sample: "66 posts", scope: "Hair removal" },
+  { what: "A caption we tag as claiming ease of use really claims it", agreement: 98, sample: "57 posts", scope: "Hair removal" },
+  { what: "A caption we tag as claiming safety and comfort really claims it", agreement: 100, sample: "76 posts", scope: "Hair removal" },
+  { what: "A caption we tag as claiming durability really claims it", agreement: 100, sample: "5 posts", scope: "Hair removal" },
+  { what: "A caption we tag as claiming service and availability really claims it", agreement: 96, sample: "28 posts", scope: "Hair removal" },
+  { what: "Share of the judge's claims that we also find (we read more strictly)", agreement: 78, sample: "300 posts", scope: "Hair removal" },
 ];
 
 export const MEASURES: Array<{ name: string; formula: string; note: string }> = [
