@@ -47,9 +47,9 @@ Output in the brief: 3 to 5 themes per market to build content around, with the 
 
 ## 2. Where is the white space?
 
-Output in the brief: an "own it" list with the theme, proof, who is absent and the first brief. **Built:** "The answer: the 'own it' list" and "Briefs for the white space", a full brief (creator, paid audience, keywords) for each open theme. With six brands tracked, hair removal has no open theme today, so both say so.
+Output in the brief: an "own it" list with the theme, proof, who is absent and the first brief. **Built:** "The white-space map" (the best opening of each kind on one card), "The answer: the 'own it' list", "Every theme, graded", "White space by market" and "Briefs for the white space". Hair removal has two open and two unclaimed themes.
 
-1. **What does the audience reward that no brand owns? Answered,** with one stated change. The brief's "no brand above 25%" cannot be met when fewer than six brands are tracked, so the line is 25% or one and a half times an even split, whichever is higher.
+1. **What does the audience reward that no brand owns? Answered,** with a stated change. The brief's "no brand above 25%" cannot be met with six brands, three of which hold 25% or more of all posts. A brand owns a theme when it has more than 25% of it and either one and a half times its usual share or more than half the posts. We also count a rewarded theme as unclaimed when under 15% of its posts are brand-owned or paid, and set aside themes that are under a third unprompted. Tom to confirm the three lines.
 2. **What do consumers ask about that creators don't cover? Answered.** "Content gap, in points".
 3. **Which questions go unanswered? Answered.** "Questions about the brand that nobody answered", grouped by what they ask about. Questions about the creator are now left out.
 4. **Which benefits does nobody claim? Answered.** "Benefits nobody claims": each attribute's share of the benefits claimed in captions against its share of the praise in brand comments. Captions are read by a model for the benefit they claim (hair removal only so far).
