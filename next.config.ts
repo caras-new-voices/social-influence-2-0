@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     "/api/**": ["./data/seed/**"],
     "/dashboard/**": ["./data/seed/**"],
     "/data": ["./data/seed/**"],
+    "/method": ["./data/seed/**"],
     "/": ["./data/seed/**"],
     "/usage": ["./data/seed/**"],
     "/creator/**": ["./data/seed/**"],

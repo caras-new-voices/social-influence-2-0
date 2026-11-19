@@ -68,7 +68,8 @@ export function PeriodBar({ counts }: { counts?: { posts: number; comments: numb
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canPrev, canNext, currentMonth, idx, withData.length]);
 
-  const title = state.mode === "all" ? "All time" : currentMonth ? formatMonth(currentMonth) : formatWindow(win);
+  // The market is named once, on the coverage line.
+  const title = state.mode === "all" ? "All time" : currentMonth ? formatMonth(currentMonth) : formatWindow({ start: win.start, end: win.end });
   const partial = currentMonth ? months.find((m) => m.month === currentMonth && !m.complete) : null;
   const lastInMonth = currentMonth && coverage?.lastDate && monthKey(coverage.lastDate) === currentMonth ? coverage.lastDate : null;
 

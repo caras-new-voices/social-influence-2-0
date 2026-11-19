@@ -1,7 +1,7 @@
 import { Shell } from "@/components/Shell";
 import { getCatalog } from "@/lib/catalog";
 import { getDb } from "@/lib/db";
-import { ACCURACY, ACCURACY_DATE, ACCURACY_JUDGE, LIMITS, MEASURES, PASS_MARK, THRESHOLDS } from "@/lib/method";
+import { ACCURACY_JUDGE, LIMITS, MEASURES, THRESHOLDS, readAccuracy } from "@/lib/method";
 import { ensureReady } from "@/lib/schema";
 import "@/app/data/data.css";
 import "./method.css";
@@ -10,7 +10,16 @@ export const dynamic = "force-dynamic";
 
 type CoverageRow = { industry: string; posts: number; first: string | null; last: string | null; themed: number; about_read: number; product_read: number; owned: number; comments: number; comments_read: number };
 
+/** The coverage counts scan three whole tables, so one answer is kept for ten minutes. */
+let cached: { at: number; rows: CoverageRow[] } | null = null;
 async function coverage(): Promise<CoverageRow[]> {
+  if (cached && Date.now() - cached.at < 600_000) return cached.rows;
+  const rows = await readCoverage();
+  cached = { at: Date.now(), rows };
+  return rows;
+}
+
+async function readCoverage(): Promise<CoverageRow[]> {
   await ensureReady();
   const db = await getDb();
   return db.query<CoverageRow>(`
@@ -36,6 +45,7 @@ const share = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "
 export default async function MethodPage() {
   // The page must still explain the method when the coverage cannot be read.
   const rows = await coverage().catch((e) => { console.error("[method] coverage failed:", (e as Error).message); return null; });
+  const { pass: PASS_MARK, lines: ACCURACY } = readAccuracy();
   const names = new Map(getCatalog().industries.map((i) => [i.id, i.name]));
   return (
     <Shell title="Method">
@@ -89,14 +99,14 @@ export default async function MethodPage() {
 
         <section className="ds__section">
           <h2 className="im-text-header">Measured accuracy</h2>
-          <p className="im-text-description">{ACCURACY_JUDGE} Measured on {ACCURACY_DATE}; the claim tags on 19 November 2026. The pass mark is {PASS_MARK}%. Read anything below it as a direction, not to the point.</p>
+          <p className="im-text-description">{ACCURACY_JUDGE} The pass mark is {PASS_MARK}%. Read anything below it as a direction, not to the point.</p>
           <div className="im-card" style={{ overflow: "hidden" }}>
             <table className="tbl">
-              <thead><tr><th>What is read</th><th>Where</th><th>Sample</th><th className="num">Agreement</th><th>Result</th></tr></thead>
+              <thead><tr><th>What is read</th><th>Where</th><th>Sample</th><th>Measured</th><th className="num">Agreement</th><th>Result</th></tr></thead>
               <tbody>
                 {ACCURACY.map((a) => (
-                  <tr key={a.what}>
-                    <td>{a.what}</td><td>{a.scope}</td><td>{a.sample}</td><td className="num">{a.agreement}%</td>
+                  <tr key={a.key}>
+                    <td>{a.what}</td><td>{a.scope}</td><td>{a.sample}</td><td>{a.measured}</td><td className="num">{a.agreement}%</td>
                     <td><span className={`im-badge ${a.agreement >= PASS_MARK ? "im-badge-success" : "im-badge-warning"}`}>{a.agreement >= PASS_MARK ? "Pass" : "Below the mark"}</span></td>
                   </tr>
                 ))}

@@ -190,5 +190,24 @@ for check in checks:
         for d in bad[:int(arg('--show', '3'))]: lines.append(f"    - {d}")
     lines.append("")
 open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+# The Method page shows the last measurement of each check. A run on one industry only updates the checks that
+# exist for that industry alone (the comment checks); the post checks are kept from the last run on every industry.
+POST_CHECKS = {"paid", "paid-flagged", "about-post", "affiliate"}
+places = {where for _, where, _, _, _ in results}
+unit = {"paid": "posts", "paid-flagged": "posts", "about-post": "posts", "affiliate": "posts", "earned": "creators"}
+acc = []
+for check, (right, total) in checks.items():
+    wheres = sorted({w for c, w, _, _, _ in results if c == check})
+    if ONLY and check in POST_CHECKS: continue
+    scope = "All industries" if len(wheres) > 1 else next((i["name"] for i in catalog if i["id"] == wheres[0]), wheres[0])
+    acc.append({"key": check, "what": WHAT[check], "agreement": round(1000 * right / total) / 10 if total else 0, "sample": f"{total:,} {unit.get(check, 'comments')}", "scope": scope, "measured": time.strftime("%d %B %Y").lstrip("0")})
+SEED_DIR = os.path.join(ROOT, "data", "seed")
+path = os.path.join(SEED_DIR, "accuracy.json")
+doc = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {"pass": PASS, "lines": []}
+by = {l["key"]: l for l in doc["lines"]}
+for l in acc:
+    if l["key"] in by: by[l["key"]].update({k: v for k, v in l.items() if k != "what"})   # the wording on the page stays as it was edited
+    else: doc["lines"].append(l)
+json.dump(doc, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 print(f"{'FAILED' if failed else 'all checks passed'}. Report: {OUT}. Judge tokens: {usage['in']:,} in / {usage['out']:,} out")
 raise SystemExit(1 if failed else 0)

@@ -1,0 +1,150 @@
+{
+ "note": "Written by scripts/check_accuracy.py and scripts/classify_products.py (judge, judge-claims). The Method page shows these lines.",
+ "pass": 90,
+ "lines": [
+  {
+   "what": "Paid, gifted or neither",
+   "agreement": 97.0,
+   "sample": "1,500 posts",
+   "scope": "All industries",
+   "measured": "18 November 2026",
+   "key": "paid"
+  },
+  {
+   "what": "Posts shown as paid from the caption really disclose it",
+   "agreement": 92.0,
+   "sample": "718 posts",
+   "scope": "All industries",
+   "measured": "18 November 2026",
+   "key": "paid-flagged"
+  },
+  {
+   "what": "Posts kept are about the brand they are filed under",
+   "agreement": 89.7,
+   "sample": "1,499 posts",
+   "scope": "All industries",
+   "measured": "18 November 2026",
+   "key": "about-post"
+  },
+  {
+   "what": "A comment is about the brand or category, or it is not",
+   "agreement": 89.0,
+   "sample": "300 comments",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "about-comment"
+  },
+  {
+   "what": "The right one of the six attributes on a brand comment",
+   "agreement": 87.0,
+   "sample": "150 comments",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "attribute"
+  },
+  {
+   "what": "Comments counted as buying signals are buying signals",
+   "agreement": 92.0,
+   "sample": "150 comments",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "intent"
+  },
+  {
+   "what": "Unanswered questions are about the brand",
+   "agreement": 98.0,
+   "sample": "175 comments",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "questions"
+  },
+  {
+   "what": "Earned creators: no disclosure in their captions",
+   "agreement": 94.0,
+   "sample": "108 creators",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "earned"
+  },
+  {
+   "what": "The theme of a post",
+   "agreement": 78.0,
+   "sample": "measured the week before",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "theme"
+  },
+  {
+   "what": "The product line of a post, where one is named",
+   "agreement": 94.0,
+   "sample": "141 posts",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "product-post"
+  },
+  {
+   "what": "The product line of a brand comment, where one is named",
+   "agreement": 93.0,
+   "sample": "162 comments",
+   "scope": "Hair removal",
+   "measured": "18 November 2026",
+   "key": "product-comment"
+  },
+  {
+   "what": "A caption we tag as claiming price really claims it",
+   "agreement": 100,
+   "sample": "34 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claim-price"
+  },
+  {
+   "what": "A caption we tag as claiming efficacy really claims it",
+   "agreement": 100,
+   "sample": "66 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claim-efficacy"
+  },
+  {
+   "what": "A caption we tag as claiming ease of use really claims it",
+   "agreement": 96,
+   "sample": "57 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claim-ease"
+  },
+  {
+   "what": "A caption we tag as claiming safety and comfort really claims it",
+   "agreement": 100,
+   "sample": "76 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claim-safety"
+  },
+  {
+   "what": "A caption we tag as claiming durability really claims it",
+   "agreement": 100,
+   "sample": "5 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claim-durability"
+  },
+  {
+   "what": "A caption we tag as claiming service and availability really claims it",
+   "agreement": 100,
+   "sample": "28 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claim-service"
+  },
+  {
+   "what": "Share of the judge's claims that we also find (we read more strictly)",
+   "agreement": 75,
+   "sample": "300 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "19 November 2026",
+   "key": "claims-found"
+  }
+ ]
+}
