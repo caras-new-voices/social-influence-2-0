@@ -247,6 +247,33 @@ if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")) and "W
             check(f"{title} {a}: comments praising", k, r["comments praising it"], 0)
             if gcm and all_claims: check(f"{title} {a}: gap, points", 100 * k / len(gcm) - 100 * n / all_claims, r["gap, points"], 0.004)
 
+# White space: every theme graded again from the posts (all time, like the box).
+title = "Every theme, graded: open, unclaimed, contested or owned"
+if title in got:
+    themed = [p for p in posts if p["theme"]]
+    size = {b: len(of(themed, b)) / len(themed) for b in brands}
+    few = len(brands) < 10
+    seen = set()
+    for r in got[title]:
+        t = r["theme"]; seen.add(t); g = [p for p in themed if p["theme"] == t]
+        by = sorted(((len(of(g, b)), b) for b in brands if of(g, b)), key=lambda x: (-x[0], x[1]))
+        n, leader = by[0]
+        owners = [b for k, b in by if k / len(g) > 0.25 and (not few or (k / len(g)) / size[b] >= 1.5 or k / len(g) > 0.5)]
+        led = sum(p["owned"] or p["paid"] for p in g) / len(g)
+        v = vs(g)
+        free = sum(p["earned"] for p in g) / len(g)
+        state = ("Not rewarded" if v is None or v < 1.2 else "Brand-seeded" if free < 0.33 else "Open" if not owners else "Unclaimed" if led < 0.15 else "Contested" if len(owners) >= 2
+                 else "Owned by us" if owners[0] == FOCAL else "Owned by " + owners[0])
+        check(f"white space {t}: posts", len(g), r["posts"], 0)
+        check(f"white space {t}: largest brand share %", 100 * n / len(g), r["largest brand share %"], 0.02)
+        check(f"white space {t}: its lead", (n / len(g)) / size[leader], r["its lead"], 0.01)
+        check(f"white space {t}: brand-owned or paid %", 100 * led, r["brand-owned or paid %"], 0.02)
+        check(f"white space {t}: unprompted %", 100 * free, r["unprompted %"], 0.02)
+        checks.append((leader == r["largest brand"], f"white space {t}: largest brand", leader, r["largest brand"]))
+        checks.append((state == r["state"], f"white space {t}: state", state, r["state"]))
+    expect = {t for t in {p["theme"] for p in themed} if sum(1 for p in themed if p["theme"] == t) >= 30}
+    checks.append((expect == seen, "white space: every theme with 30+ posts is graded, and no other", sorted(expect - seen)[:3], sorted(seen - expect)[:3]))
+
 # Who switches to whom: flows counted from the file, all time.
 if os.path.exists(os.path.join(SEED, "switch_labels", IND + ".json.gz")) and "Who switches to whom" in got:
     kept = {(c["segment_id"], c["comment_id"]) for c in comments}

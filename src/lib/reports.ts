@@ -12,7 +12,7 @@ import { runWidgetQuery } from "./query";
 import { datasetDoc } from "./schema-doc";
 import { ensureReady } from "./schema";
 import { isDataWidget, type WidgetSpec } from "./widgets";
-import { EIGHT_MEASURES_SQL } from "./tom8";
+import { EIGHT_MEASURES_SQL, WHITE_SPACE_SQL } from "./tom8";
 import { LABEL_TAGS, SCORED } from "./tom";
 
 /**
@@ -108,6 +108,20 @@ export interface MonthRead {
   review: StoredReport | null;
   /** The themes the team acted on, with this month against the month before. */
   acted: ActedTheme[];
+  /** White space this month: what is open, what opened since the month before, and what closed. */
+  whiteSpace: WhiteSpaceRead;
+}
+/** A theme that is open or unclaimed this month. `isNew`: it was not open the month before. `acted`: the team marked it as acted on. */
+export interface OpenTheme { theme: string; state: string; posts: number; vs: number | null; ours: number; isNew: boolean; acted: boolean }
+/** A theme that was open or unclaimed the month before and is not now, and what it is instead. */
+export interface ClosedTheme { theme: string; was: string; now: string }
+export interface WhiteSpaceRead { open: OpenTheme[]; closed: ClosedTheme[]; compared: boolean }
+
+const isOpen = (state: string | undefined) => state === "Open" || state === "Unclaimed";
+async function themeStates(window: PeriodWindow): Promise<Map<string, { state: string; posts: number; vs: number | null }>> {
+  const res = await runWidgetQuery(WHITE_SPACE_SQL, 200, window);
+  if (!res.ok) throw new Error(res.error);
+  return new Map(res.rows.map((r) => [String(r.theme), { state: String(r.state), posts: Number(r.posts) || 0, vs: r.vs == null ? null : Number(r.vs) }]));
 }
 /** One side of a theme's month: all tracked brands' posts on it, ours, and how ours did against the norm. */
 export interface ThemeMonth { posts: number; ours: number; vs: number | null }
@@ -166,14 +180,27 @@ export async function getMonthRead(dashboardId: string, month: string, market?: 
     // The themes the team acted on: this month against the month before.
     const actions = await listActions(dashboardId);
     let acted: ActedTheme[] = [];
+    const now = await themeMonths(window);
+    // White space: every theme's state this month and the month before. A theme under 30 posts in a month has no state.
+    const states = await themeStates(window);
+    const statesBefore = hasPrev ? await themeStates(prevWindow) : null;
+    const actedOn = new Set(actions.map((a) => a.theme));
+    const whiteSpace: WhiteSpaceRead = {
+      compared: !!statesBefore,
+      open: [...states].filter(([, v]) => isOpen(v.state)).map(([theme, v]) => ({
+        theme, state: v.state, posts: v.posts, vs: v.vs, ours: now.get(theme)?.ours ?? 0,
+        isNew: !!statesBefore && !isOpen(statesBefore.get(theme)?.state), acted: actedOn.has(theme),
+      })).sort((a, b) => Number(b.state === "Open") - Number(a.state === "Open") || (b.vs ?? 0) - (a.vs ?? 0)),
+      closed: statesBefore ? [...statesBefore].filter(([theme, v]) => isOpen(v.state) && !isOpen(states.get(theme)?.state))
+        .map(([theme, v]) => ({ theme, was: v.state, now: states.get(theme)?.state ?? "Too few posts this month to say" })) : [],
+    };
     if (actions.length) {
-      const now = await themeMonths(window);
       const was = hasPrev ? await themeMonths(prevWindow) : null;
       const none: ThemeMonth = { posts: 0, ours: 0, vs: null };
       acted = actions.map((a) => ({ theme: a.theme, since: a.since, now: now.get(a.theme) ?? none, before: was ? was.get(a.theme) ?? none : null }));
     }
     // A market can have nothing in the month before even when the brands as a whole do.
-    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null, review: await getStoredReport(dashboardId, month, market), acted };
+    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null, review: await getStoredReport(dashboardId, month, market), acted, whiteSpace };
   });
 }
 

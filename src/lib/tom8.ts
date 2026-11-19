@@ -281,6 +281,54 @@ SELECT CASE WHEN n.k = 0 THEN '${none}' ELSE n.k || CASE WHEN n.k = 1 THEN ' ${n
          FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme) LEFT JOIN an USING (theme) LEFT JOIN ages USING (theme) LEFT JOIN geo USING (theme) LEFT JOIN kw USING (theme)) END AS body
 FROM n`;
 
+/**
+ * White space: where the audience rewards content and no brand has moved in. Needs `tags` (posts
+ * with a theme, scored). Every theme with enough posts gets one state:
+ *  - Open: rewarded (1.2 times the norm or more) and no brand owns it.
+ *  - Unclaimed: rewarded, a brand's creators lead it, but under 15% of its posts are brand-owned or paid.
+ *  - Contested: rewarded, and two or more brands own it.
+ *  - Owned by X: one brand owns it.
+ *  - Not rewarded: under 1.2 times the norm.
+ *  - Brand-seeded: rewarded, but under a third of its posts are unprompted (the rest are paid,
+ *    gifted, sold for commission or the brands' own): brands are already all over it.
+ * A brand owns a theme when it has more than 25% of the theme's posts (the brief's line) and, when
+ * fewer than ten brands are tracked, either at least one and a half times its usual share or more
+ * than half of the theme's posts: with a handful of brands, a large one passes 25% of anything just
+ * by being large, while a majority is ownership whatever the brand's size (inside one market a
+ * single brand can be most of everything). "Lead" is the brand's share of the theme divided by its
+ * share of all themed posts.
+ * ws([by,] theme, posts, vs, brand_led, unprompted, ours, leader, lead_share, lead, owners, owner, state).
+ * `where` filters the posts; `by` adds a grouping column (a market) and runs the rule inside each.
+ */
+const OWN_SHARE = 0.25, OWN_LEAD = 1.5, OWN_MAJORITY = 0.5, FEW_BRANDS = 10, BRAND_LED = 0.15, SEEDED = 0.33;
+const WS = (where = "TRUE", by = "") => {
+  const k = by ? `${by}, ` : "";
+  return `wb AS (
+  SELECT ${k}theme, brand, count(*)::float AS n, count(*) FILTER (WHERE is_owned OR is_paid)::float AS led, count(*) FILTER (WHERE ${EARNED})::float AS free, sum(eng_s) AS e, sum(expected) AS x
+  FROM tags WHERE ${where} GROUP BY ${by ? "1, 2, 3" : "1, 2"}
+), wsz AS (SELECT ${k}brand, sum(n) / sum(sum(n)) OVER (${by ? `PARTITION BY ${by}` : ""}) AS size FROM wb GROUP BY ${by ? "1, 2" : "1"}),
+wnb AS MATERIALIZED (SELECT count(*) AS k FROM segments),
+wl AS (
+  SELECT wb.*, wb.n / sum(wb.n) OVER (PARTITION BY ${by ? `wb.${by}, ` : ""}wb.theme) AS share,
+         (wb.n / sum(wb.n) OVER (PARTITION BY ${by ? `wb.${by}, ` : ""}wb.theme)) / NULLIF(wsz.size, 0) AS lead
+  FROM wb JOIN wsz ON wsz.brand = wb.brand${by ? ` AND wsz.${by} = wb.${by}` : ""}
+), wo AS (SELECT wl.*, (wl.share > ${OWN_SHARE} AND ((SELECT k FROM wnb) >= ${FEW_BRANDS} OR wl.lead >= ${OWN_LEAD} OR wl.share > ${OWN_MAJORITY})) AS owns FROM wl),
+ws0 AS (
+  SELECT ${k}theme, sum(n) AS posts, sum(e) / NULLIF(sum(x), 0) AS vs, sum(led) / sum(n) AS brand_led, sum(free) / sum(n) AS unprompted, coalesce(sum(n) FILTER (WHERE brand = focal_brand()), 0) AS ours,
+         (array_agg(brand ORDER BY n DESC, brand))[1] AS leader, max(share) AS lead_share, (array_agg(lead ORDER BY n DESC, brand))[1] AS lead,
+         count(*) FILTER (WHERE owns) AS owners, (array_agg(brand ORDER BY n DESC, brand) FILTER (WHERE owns))[1] AS owner
+  FROM wo GROUP BY ${by ? "1, 2" : "1"}
+), ws AS (
+  SELECT ws0.*, CASE WHEN vs IS NULL OR vs < 1.2 THEN 'Not rewarded' WHEN unprompted < ${SEEDED} THEN 'Brand-seeded' WHEN owners = 0 THEN 'Open' WHEN brand_led < ${BRAND_LED} THEN 'Unclaimed' WHEN owners >= 2 THEN 'Contested'
+                     WHEN owner = focal_brand() THEN 'Owned by us' ELSE 'Owned by ' || owner END AS state
+  FROM ws0 WHERE posts >= ${THEME_MIN}
+)`;
+};
+const WS_NOTE = `Open: engagement at 1.2 times the norm or more and no brand owns the theme. Unclaimed: rewarded, and under ${BRAND_LED * 100}% of its posts are brand-owned or paid, so no brand is behind it. A brand owns a theme when it has more than ${OWN_SHARE * 100}% of its posts and, with fewer than ${FEW_BRANDS} brands tracked, either at least ${OWN_LEAD} times its usual share (its "lead") or more than half of the posts. A rewarded theme in which under a third of the posts are unprompted is brand-seeded, not white space`;
+/** Every theme's state in the period, for the monthly report: theme, state, posts, vs, owner, leader. */
+export const WHITE_SPACE_SQL = `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${WS()}
+SELECT theme, state, posts::int AS posts, vs, owner, leader FROM ws`;
+
 /** The measures for the focal brand in the period and the period before: rows of label, value, compare, fmt. */
 export const EIGHT_MEASURES_SQL = `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")}, ${LABEL_TAGS("(SELECT * FROM w WHERE cur)")},
 tot AS MATERIALIZED (SELECT count(*) FILTER (WHERE cur)::float AS cur, count(*) FILTER (WHERE NOT cur)::float AS prev, sum(coalesce(comments, 0)) FILTER (WHERE cur) AS comments FROM w),
@@ -592,58 +640,88 @@ FROM s JOIN top USING (brand, mo) ORDER BY s.mo DESC, s.eng / s.base DESC LIMIT 
     title: "2. Where is the white space?",
     widgets: [
       {
+        type: "insight", w: 12, h: 6,
+        title: "The white-space map",
+        subtitle: "The best opening of each kind this section looks for, with its proof. Each line is the top row of one of the boxes below. Culture, the seventh kind in the brief, needs a culture query we do not have yet.",
+        when: N_THEMED,
+        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${WS()}, ${CLAIM_GAP("true")},
+m_theme AS (SELECT theme, state, vs, posts FROM ws WHERE state IN ('Open', 'Unclaimed') ORDER BY (state = 'Open') DESC, vs DESC, theme LIMIT 1),
+gt AS MATERIALIZED (SELECT count(*)::float AS posts, NULLIF(sum(coalesce(comments, 0)), 0) AS comments FROM tags),
+m_gap AS (SELECT tags.theme, 100.0 * sum(coalesce(tags.comments, 0)) / max(gt.comments) - 100.0 * count(*) / max(gt.posts) AS pts FROM tags, gt GROUP BY 1 HAVING count(*) >= ${THEME_MIN} ORDER BY 2 DESC NULLS LAST, 1 LIMIT 1),
+m_q AS (SELECT coalesce(lower(${ATTR()}), 'other things about the product') AS topic, count(*) FILTER (WHERE coalesce(reply_count, 0) = 0) AS k FROM brand_comments WHERE brand = focal_brand() AND faq_topic IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 1),
+m_ben AS (SELECT attribute, ps, cs FROM j WHERE ps - cs >= 5 ORDER BY ps - cs DESC, attribute LIMIT 1),
+m_mkt AS (SELECT country, sum(coalesce(comments, 0))::float / NULLIF(count(DISTINCT influencer_id), 0) AS per_creator, count(DISTINCT influencer_id) AS creators FROM sp WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY 1 HAVING count(*) >= ${THEME_MIN} ORDER BY 2 DESC NULLS LAST, 1 LIMIT 1),
+pn AS MATERIALIZED (SELECT count(*) FILTER (WHERE brand = focal_brand())::float AS ours, count(*) FILTER (WHERE brand <> focal_brand())::float AS theirs FROM posts WHERE platform IS NOT NULL),
+m_pl AS (SELECT platform, 100.0 * count(*) FILTER (WHERE brand <> focal_brand()) / NULLIF(max(pn.theirs), 0) AS theirs, 100.0 * count(*) FILTER (WHERE brand = focal_brand()) / NULLIF(max(pn.ours), 0) AS ours
+         FROM posts, pn WHERE platform IS NOT NULL GROUP BY 1 HAVING 100.0 * count(*) FILTER (WHERE brand <> focal_brand()) / NULLIF(max(pn.theirs), 0) - 100.0 * count(*) FILTER (WHERE brand = focal_brand()) / NULLIF(max(pn.ours), 0) >= 3 ORDER BY 2 - 3 DESC, 1 LIMIT 1)
+SELECT 'Where the openings are' AS headline, '<ul>'
+  || ${li(`'<strong>A theme nobody has claimed:</strong> ' || coalesce((SELECT theme || ' (' || lower(state) || '), at ' || ${x2("vs")} || ' the norm over ' || posts::int || ' posts.' FROM m_theme), 'none in this period. Every rewarded theme has a brand behind it.')`)}
+  || ${li(`'<strong>A topic people talk about more than creators cover:</strong> ' || coalesce((SELECT theme || ', with ' || round(pts::numeric, 1) || ' points more of the comments than of the posts.' FROM m_gap WHERE pts > 0.05), 'none stands out.')`)}
+  || ${li(`'<strong>A question nobody answers:</strong> ' || coalesce((SELECT 'about ' || topic || ': ' || k || ' questions under our posts got no reply.' FROM m_q WHERE k > 0), 'no unanswered questions about the brand in the comments we have.')`)}
+  || ${li(`'<strong>A benefit nobody claims:</strong> ' || coalesce((SELECT lower(${ATTR("attribute")}) || ', ' || round(ps::numeric, 0) || '% of the praise against ' || round(cs::numeric, 0) || '% of the claims.' FROM m_ben), 'no benefit is praised 5 points more than it is claimed, or the captions here have not been read for claims.')`)}
+  || ${li(`'<strong>A market with demand and few creators:</strong> ' || coalesce((SELECT country || ', with ' || round(per_creator::numeric, 0) || ' comments per creator across ' || creators || ' creators.' FROM m_mkt), 'no market has enough posts to say.')`)}
+  || ${li(`'<strong>A platform we under-use:</strong> ' || coalesce((SELECT platform || ': ' || round(theirs::numeric, 0) || '% of rivals'' posts against ' || round(coalesce(ours, 0)::numeric, 0) || '% of ours.' FROM m_pl), 'none: our mix of platforms is within 3 points of rivals''.')`)}
+  || '</ul>' AS body`,
+        rationale: "The brief promises the brand lead a white-space map. This is it on one card: six kinds of opening, each with its proof.",
+      },
+      {
         type: "insight", w: 12, h: 5,
         title: "The answer: the \"own it\" list",
-        subtitle: "Composed from the numbers in this section: the theme, proof the audience rewards it, who is absent, and the first brief.",
+        subtitle: `Composed from the graded themes below: the theme, proof the audience rewards it, who is absent, and the first brief. ${WS_NOTE}.`,
         when: N_THEMED,
-        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${BEST_HOOK()},
-tb AS (SELECT theme, brand, count(*)::float AS n, sum(eng_s) AS eng_s, sum(expected) AS expected FROM tags GROUP BY 1, 2),
-t AS (
-  SELECT theme, sum(n) AS posts, sum(eng_s) / NULLIF(sum(expected), 0) AS vs, max(n) AS lead_n, (array_agg(brand ORDER BY n DESC))[1] AS leader,
-         coalesce(sum(n) FILTER (WHERE brand = focal_brand()), 0) AS ours
-  FROM tb GROUP BY 1
-), lim AS MATERIALIZED (SELECT greatest(0.25, 1.5 / NULLIF(count(*), 0)) AS share FROM segments),
-ws AS (SELECT t.*, bh.hook, row_number() OVER (ORDER BY t.vs DESC) AS rk FROM t CROSS JOIN lim LEFT JOIN bh USING (theme) WHERE t.posts >= ${THEME_MIN} AND t.vs >= 1.2 AND t.lead_n / t.posts <= lim.share),
-top AS (SELECT * FROM ws WHERE rk <= 4), n AS (SELECT count(*) AS k FROM top)
-SELECT CASE WHEN n.k = 0 THEN 'No open theme in this period' ELSE n.k || CASE WHEN n.k = 1 THEN ' theme' ELSE ' themes' END || ' the audience rewards and no brand owns' END AS headline,
-       CASE WHEN n.k = 0 THEN '<p>Every theme at 1.2 times the norm or more has a brand that leads it. The table below shows who.</p>'
-            ELSE (SELECT '<ul>' || string_agg(${li(`'<strong>' || top.theme || '</strong>. Proof: engagement ' || ${x2("top.vs")} || ' the norm over ' || top.posts::int || ' posts. Who is absent: the largest brand, ' || top.leader || ', has ' || ${pct("top.lead_n / top.posts")} || '% of the posts, and we have ' || ${pct("top.ours / top.posts")} || '%'
-              || CASE WHEN top.hook IS NOT NULL THEN '. First brief: a ' || lower(top.hook) || ' post on this theme' ELSE '' END || '.'`)}, '' ORDER BY top.rk) || '</ul>' FROM top) END AS body
+        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${BEST_HOOK()}, ${WS()},
+pick AS (SELECT ws.*, bh.hook, row_number() OVER (ORDER BY (ws.state = 'Open') DESC, ws.vs DESC, ws.theme) AS rk FROM ws LEFT JOIN bh USING (theme) WHERE ws.state IN ('Open', 'Unclaimed')),
+near AS (SELECT ws.*, row_number() OVER (ORDER BY ws.lead, ws.vs DESC, ws.theme) AS rk FROM ws WHERE ws.state NOT IN ('Open', 'Unclaimed', 'Not rewarded', 'Brand-seeded')),
+n AS (SELECT count(*) AS k FROM pick)
+SELECT CASE WHEN n.k = 0 THEN 'No theme is open in this period' ELSE n.k || CASE WHEN n.k = 1 THEN ' theme' ELSE ' themes' END || ' the audience rewards and no brand has claimed' END AS headline,
+       CASE WHEN n.k = 0 THEN '<p>Every theme at 1.2 times the norm or more has a brand that leads it beyond its size and puts its own or paid content behind it. The closest to open:</p>'
+              || coalesce((SELECT '<ul>' || string_agg(${li(`'<strong>' || near.theme || '</strong>: ' || near.state || '. ' || near.leader || ' has ' || ${pct("near.lead_share")} || '% of its posts, ' || ${x2("near.lead")} || ' its usual share, and ' || ${pct("near.brand_led")} || '% of the posts are brand-owned or paid.'`)}, '' ORDER BY near.rk) || '</ul>' FROM near WHERE near.rk <= 3), '<p>No theme reaches 1.2 times the norm.</p>')
+            ELSE (SELECT '<ul>' || string_agg(${li(`'<strong>' || pick.theme || '</strong> (' || lower(pick.state) || '). Proof: engagement ' || ${x2("pick.vs")} || ' the norm over ' || pick.posts::int || ' posts. Who is absent: '
+              || CASE WHEN pick.state = 'Open' THEN 'no brand owns it. The largest, ' || pick.leader || ', has ' || ${pct("pick.lead_share")} || '% of the posts, ' || ${x2("pick.lead")} || ' its usual share'
+                      ELSE 'the brands themselves. ' || pick.leader || ' has ' || ${pct("pick.lead_share")} || '% of the posts, but only ' || ${pct("pick.brand_led")} || '% of the theme is brand-owned or paid: the rest is unprompted' END
+              || '. We have ' || ${pct("pick.ours / pick.posts")} || '%'
+              || CASE WHEN pick.hook IS NOT NULL THEN '. First brief: tell it as ' || lower(pick.hook) ELSE '' END || '.'`)}, '' ORDER BY pick.rk) || '</ul>' FROM pick WHERE pick.rk <= 5) END AS body
 FROM n`,
         rationale: "The brief's output for this question: the theme, proof the audience rewards it, who is absent, and the first brief.",
       },
       {
         type: "insight", w: 12, h: 9,
         title: "Briefs for the white space",
-        subtitle: `One brief for each of the top three themes on the "own it" list: themes at 1.2 times the norm or more with ${THEME_MIN}+ posts that no brand leads. The same parts as the content briefs: how to tell it, who should tell it, where, the paid audience and its keywords.`,
+        subtitle: `One brief for each of the top three open or unclaimed themes, open first. The same parts as the content briefs: how to tell it, who should tell it, where, the paid audience and its keywords. Viewing all time, the briefs read the last 90 days, so a theme can be open here and owned over the whole period.`,
         when: N_THEMED,
         sql: BRIEFS(
-          `lead AS (SELECT theme, max(k) / NULLIF(sum(k), 0) AS lead_share FROM (SELECT theme, brand, count(*)::float AS k FROM tags WHERE cur GROUP BY 1, 2) lb GROUP BY 1),
-lim AS MATERIALIZED (SELECT greatest(0.25, 1.5 / NULLIF(count(*), 0)) AS share FROM segments),
-pick AS (SELECT c.*, row_number() OVER (ORDER BY c.vs DESC) AS rk FROM c JOIN lead USING (theme) CROSS JOIN lim WHERE c.vs >= 1.2 AND lead.lead_share <= lim.share)`,
-          "No open theme to brief in this period", "Every theme at 1.2 times the norm or more has a brand that leads it, so there is no white space to brief. The table below shows who leads.", "white-space brief",
+          `${WS("cur")},
+pick AS (SELECT c.*, row_number() OVER (ORDER BY (ws.state = 'Open') DESC, c.vs DESC, c.theme) AS rk FROM c JOIN ws USING (theme) WHERE ws.state IN ('Open', 'Unclaimed'))`,
+          "No open theme to brief in this period", "Every theme at 1.2 times the norm or more has a brand that leads it beyond its size and puts content behind it, so there is no white space to brief. The graded table below shows who.", "white-space brief",
         ),
         rationale: "The brief says each answer becomes a brief, a creator and a paid audience. This does it for the white space.",
       },
       {
-        type: "table", w: 7, h: 6,
-        title: "Rewarded, and no brand owns it",
-        subtitle: `Themes with engagement at 1.2 times the norm or more, ${THEME_MIN}+ posts, and no brand above the ownership line: 25% of the theme's posts, or one and a half times an even split when fewer than six brands are tracked.`,
-        when: N_COMPETITORS,
-        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
-tb AS (SELECT theme, brand, count(*)::float AS n, sum(eng_s) AS eng_s, sum(expected) AS expected FROM tags GROUP BY 1, 2),
-t AS (
-  SELECT theme, sum(n) AS posts, sum(eng_s) / NULLIF(sum(expected), 0) AS vs, max(n) AS lead_n, (array_agg(brand ORDER BY n DESC))[1] AS leader,
-         coalesce(sum(n) FILTER (WHERE brand = focal_brand()), 0) AS ours
-  FROM tb GROUP BY 1
-), lim AS MATERIALIZED (SELECT greatest(0.25, 1.5 / NULLIF(count(*), 0)) AS share FROM segments)
-SELECT theme, posts::int AS posts, ${r2("vs")} AS "engagement vs norm", leader AS "largest brand", ${r0("100.0 * lead_n / posts")} AS "largest brand share %", ${r0("100.0 * ours / posts")} AS "our share of posts %",
-       CASE WHEN lead_n / posts <= lim.share THEN 'open' ELSE 'owned by ' || leader END AS status
-FROM t, lim WHERE posts >= ${THEME_MIN} AND vs >= 1.2 ORDER BY (lead_n / posts <= lim.share) DESC, vs DESC LIMIT 15`,
-        rationale: "The audience rewards these. Where the status is open, no brand has claimed the theme, and each one is a brief.",
+        type: "table", w: 12, h: 7,
+        title: "Every theme, graded: open, unclaimed, contested or owned",
+        subtitle: `Themes with ${THEME_MIN}+ posts, open ones first. Posts is a count, engagement vs norm a ratio, shares are percentages of the theme's posts, and lead is the largest brand's share of the theme divided by its share of all posts (1.0 is its usual share). ${WS_NOTE}.`,
+        when: N_THEMED,
+        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${WS()}
+SELECT theme, posts::int AS posts, ${r2("vs")} AS "engagement vs norm", leader AS "largest brand", ${r0("100.0 * lead_share")} AS "largest brand share %", ${r2("lead")} AS "its lead",
+       ${r0("100.0 * brand_led")} AS "brand-owned or paid %", ${r0("100.0 * unprompted")} AS "unprompted %", ${r0("100.0 * ours / posts")} AS "our share of posts %", state
+FROM ws ORDER BY CASE state WHEN 'Open' THEN 0 WHEN 'Unclaimed' THEN 1 WHEN 'Contested' THEN 2 WHEN 'Not rewarded' THEN 5 WHEN 'Brand-seeded' THEN 4 ELSE 3 END, vs DESC NULLS LAST, theme`,
+        rationale: "Where each conversation stands: free to take, running without a brand, fought over, or somebody's already.",
       },
       {
-        type: "bar", w: 5, h: 6,
+        type: "table", w: 12, h: 6,
+        title: "White space by market",
+        subtitle: `The same grading run inside each of the five largest markets: the themes that are open or unclaimed there, with ${THEME_MIN}+ posts in that market. A theme owned overall can be open in one market. Shares are percentages of the theme's posts in the market.`,
+        when: N_THEMED,
+        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
+mk AS MATERIALIZED (SELECT country, count(*) AS n FROM tags WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5),
+${WS("country IN (SELECT country FROM mk)", "country")}
+SELECT ws.country AS market, ws.theme, ws.state, ws.posts::int AS posts, ${r2("ws.vs")} AS "engagement vs norm", ws.leader AS "largest brand", ${r0("100.0 * ws.lead_share")} AS "largest brand share %",
+       ${r0("100.0 * ws.brand_led")} AS "brand-owned or paid %", ${r0("100.0 * ws.ours / ws.posts")} AS "our share of posts %"
+FROM ws JOIN mk USING (country) WHERE ws.state IN ('Open', 'Unclaimed') ORDER BY mk.n DESC, ws.country, (ws.state = 'Open') DESC, ws.vs DESC, ws.theme`,
+        rationale: "White space is local. A market where nobody has claimed a rewarded theme is where to brief first.",
+      },
+      {
+        type: "bar", w: 12, h: 6,
         title: "Content gap, in points",
         subtitle: `A theme's share of all comments minus its share of posts (themes with ${THEME_MIN}+ posts). Above zero: people talk about it more than creators post about it.`,
         when: N_THEMED,

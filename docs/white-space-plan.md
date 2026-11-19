@@ -1,6 +1,6 @@
 # Plan: making white space show in the report
 
-Written 19 November 2026. A plan only: nothing here is built yet.
+Written 19 November 2026 as a plan, and built the same day. Two rules were added during the build: a brand with more than half of a theme's posts owns it whatever its size, and a rewarded theme that is under a third unprompted is "brand-seeded" and not white space. See `docs/quality-gate.md`.
 
 ## The problem
 

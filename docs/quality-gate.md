@@ -146,7 +146,20 @@ Built after a line-by-line rating of the product against Tom's brief (6.5 out of
 - **Audience match** is in the creator score, against a target audience set under Brands.
 - A bug caught in testing: with no target set, audience match read 100% for creators with audience data. Fixed before merge.
 
+### White space (19 November 2026)
+
+The white-space list was empty because the brief's "no brand above 25%" cannot pass with six brands. Rebuilt per `docs/white-space-plan.md`.
+
+- **Result on hair removal:** two open themes (shaving routine and how-to; method comparison) and two unclaimed (hauls, gift sets and empties; men's and unisex grooming).
+- **Two changes made while testing, beyond the plan:**
+  - A brand with more than half of a theme's posts owns it whatever its size. Without this, a brand that is most of one market read as owning nothing there.
+  - A rewarded theme that is under a third unprompted is "brand-seeded", not white space. The hand read found "testing panels and gifted products" passing as open while 88% of it is gifted or paid.
+- **Hand read:** 30 posts across the five themes first listed. All five are real conversations. One was removed by the rule above.
+- **The arithmetic:** the number check grades every theme again from the raw files: 502 numbers, and 312 inside the United Kingdom.
+- **Monthly report:** shows the open and unclaimed themes of the month, what is new, what closed and who took it, and which ones the team acted on.
+
 ### Not verified
+- The white-space thresholds (1.5 times usual share, half the posts, 15% brand-led, a third unprompted) are mine. Tom has not confirmed them.
 - The switching flows are small (391 comments in all). Most pairs rest on 3 to 20 comments.
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 

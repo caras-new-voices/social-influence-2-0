@@ -51,6 +51,10 @@ export const THRESHOLDS: Array<[string, string]> = [
   ["Smallest sample behind a comment measure", "200 brand comments"],
   ["Smallest market offered in the market filter", "30 posts"],
   ["Open or crowded benefit", "5 points between share of praise and share of claims"],
+  ["A brand owns a theme", "More than 25% of the theme's posts and, with fewer than ten brands tracked, either at least 1.5 times its usual share or more than half of the posts"],
+  ["Open theme (white space)", "Engagement vs norm of 1.2 or more, 30+ posts, and no brand owns it"],
+  ["Unclaimed theme (white space)", "Rewarded the same way, and under 15% of its posts are brand-owned or paid"],
+  ["Brand-seeded theme (not white space)", "Rewarded, but under a third of its posts are unprompted"],
 ];
 
 export const LIMITS: string[] = [

@@ -250,6 +250,25 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
               </header>
               <h3 className="rep__sub">The eight measures{market ? ` in ${market}` : ""}</h3>
               <MonthMeasures read={read} month={current.label} prev={current.previous ? prevLabel(current.month) : null} market={market} retry={retry} />
+              <h3 className="rep__sub">White space{market ? ` in ${market}` : ""}: themes the audience rewards and no brand has claimed</h3>
+              <div className="rep__acted">
+                {!ok && read !== "failed" && <p className="im-text-description">Working it out…</p>}
+                {ok && ok.whiteSpace.open.length === 0 && <p className="im-text-description">None this month. A theme needs 30 posts in the month, engagement at 1.2 times the norm, and no brand that owns it or puts its own or paid content behind it.</p>}
+                {ok && ok.whiteSpace.open.length > 0 && (
+                  <ul>
+                    {ok.whiteSpace.open.map((t) => (
+                      <li key={t.theme}>
+                        <b>{t.theme}</b> ({t.state.toLowerCase()}){t.isNew && <span className="im-badge im-badge-primary rep__tag">new this month</span>}{t.acted && <span className="im-badge im-badge-success rep__tag">we acted on it</span>}
+                        : {t.vs == null ? "" : `${t.vs.toFixed(2)}× the norm over `}{t.posts} posts, {t.ours} of them ours.
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {ok && ok.whiteSpace.closed.length > 0 && (
+                  <p><b>Closed since {current.previous ? prevLabel(current.month) : "the month before"}:</b> {ok.whiteSpace.closed.map((c, i) => `${i ? "; " : ""}${c.theme} (was ${c.was.toLowerCase()}, now ${c.now.charAt(0).toLowerCase()}${c.now.slice(1)})`).join("")}.</p>
+                )}
+                {ok && !ok.whiteSpace.compared && ok.whiteSpace.open.length > 0 && <p className="im-text-description">No month before to compare with, so nothing is marked new.</p>}
+              </div>
               <h3 className="rep__sub">Themes we acted on{market ? ` in ${market}` : ""}: did they move?</h3>
               <div className="rep__acted">
                 {ok && ok.acted.length === 0 && <p className="im-text-description">None marked yet. When a brief is used, mark its theme here. Each month then shows whether our posts, our share of the theme and our engagement moved.</p>}
