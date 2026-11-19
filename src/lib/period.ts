@@ -167,6 +167,8 @@ export function periodToParams(p: PeriodState): Record<string, string> {
     else if (p.compare.start && p.compare.end) out.compare = `${p.compare.start}..${p.compare.end}`;
   }
   if (p.market) out.market = p.market;
+  // All markets chosen on purpose is written too, so a link or a reload does not fall back to a saved market.
+  else if (p.market === null && out.period !== "all") out.market = "";
   return out;
 }
 
@@ -191,6 +193,8 @@ export function periodFromParams(params: { get(name: string): string | null }): 
   }
   const market = params.get("market");
   if (market) state.market = market.slice(0, 80);
+  // "market=" with nothing after it says all markets on purpose; no market parameter at all leaves it to the caller.
+  else if (market === "") state.market = null;
   return state;
 }
 

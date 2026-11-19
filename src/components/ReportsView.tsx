@@ -21,19 +21,23 @@ function fmtMeasure(m: MonthMeasure, v: number | null): string {
   return v.toFixed(1);
 }
 /** The change from the month before, in the measure's own unit: points for a share, a difference for a ratio or a rate. */
-function change(m: MonthMeasure): { text: string; size: number; up: boolean } | null {
+function change(m: MonthMeasure): { text: string; size: number; dir: -1 | 0 | 1 } | null {
   if (m.value == null || m.compare == null) return null;
   const d = m.value - m.compare;
+  if (Math.abs(d) < 1e-9) return { text: "no change", size: 0, dir: 0 };
   const text = m.fmt === "percent" ? `${Math.abs(d * 100).toFixed(1)} pts` : m.fmt === "ratio" ? Math.abs(d).toFixed(2) : Math.abs(d).toFixed(1);
-  return { text, size: m.compare ? Math.abs(d / m.compare) : 0, up: d >= 0 };
+  // From nothing to something is the largest move there is.
+  return { text, size: m.compare ? Math.abs(d / m.compare) : 1, dir: d > 0 ? 1 : -1 };
 }
 /** A month's read as held on the page; kpis is null when it could not be fetched. */
-type Read = Omit<MonthRead, "kpis"> & { kpis: MonthKpis | null };
-const FAILED: Read = { measures: [], kpis: null, previous: null };
+type Read = MonthRead | "failed";
+/** What a card says when a measure has no month-before figure by design. */
+const NO_COMPARE: Record<string, string> = { Momentum: "posts against the month before", "Content gap": "the largest gap of any theme" };
 const LOWER_IS_BETTER = new Set(["Objections per 1K"]);
 
 /** The eight measures for the month against the month before, and the three that moved most. */
-function MonthMeasures({ read, month, prev, market }: { read: Read | undefined; month: string; prev: string | null; market: string }) {
+function MonthMeasures({ read, month, prev, market, retry }: { read: Read | undefined; month: string; prev: string | null; market: string; retry: () => void }) {
+  if (read === "failed") return <p className="im-text-description rep__loading">The eight measures could not be loaded. <button className="im-btn im-btn-ghost im-btn-sm" onClick={retry}>Try again</button></p>;
   if (!read) return <p className="im-text-description rep__loading">Working out the eight measures for {month}{market ? ` in ${market}` : ""}…</p>;
   if (!read.measures.some((m) => m.value != null)) return <p className="im-text-description rep__loading">The eight measures could not be worked out for {month}{market ? ` in ${market}` : ""}: too few posts.</p>;
   const moved = read.measures.map((m) => ({ m, c: change(m) })).filter((x) => x.c && x.c.size >= 0.02).sort((a, b) => b.c!.size - a.c!.size).slice(0, 3);
@@ -42,24 +46,25 @@ function MonthMeasures({ read, month, prev, market }: { read: Read | undefined; 
       <div className="rep__kpis rep__kpis--measures">
         {read.measures.map((m) => {
           const c = change(m);
-          const good = c ? (LOWER_IS_BETTER.has(m.label) ? !c.up : c.up) : true;
+          const good = c ? (LOWER_IS_BETTER.has(m.label) ? c.dir < 0 : c.dir > 0) : true;
           return (
             <div className="rep__kpi" key={m.label}>
               <span className="rep__kpilabel">{m.label}</span>
               <b>{fmtMeasure(m, m.value)}</b>
               <span className="rep__kpiprev">
-                {c ? <span className={`rep__delta ${good ? "rep__delta--up" : "rep__delta--down"}`}>{c.up ? "▲" : "▼"} {c.text}</span> : <span className="rep__delta rep__delta--na">–</span>}
+                {c && c.dir !== 0 ? <span className={`rep__delta ${good ? "rep__delta--up" : "rep__delta--down"}`}>{c.dir > 0 ? "▲" : "▼"} {c.text}</span> : <span className="rep__delta rep__delta--na">{c ? "no change" : NO_COMPARE[m.label] ?? "–"}</span>}
                 {m.compare != null && <span className="im-text-description"> vs {fmtMeasure(m, m.compare)}</span>}
               </span>
             </div>
           );
         })}
       </div>
-      {read.kpis && read.kpis.posts < 30 && <p className="im-text-description rep__loading">Only {read.kpis.posts} of our posts in {month}{market ? ` in ${market}` : ""}: too few to read these closely.</p>}
+      {read.kpis.posts < 30 && <p className="im-text-description rep__loading">Only {read.kpis.posts} of our posts in {month}{market ? ` in ${market}` : ""}: too few to read these closely.</p>}
       {prev && (
         <p className="rep__moved">
           <b>What moved most{market ? ` in ${market}` : ""}:</b>{" "}
-          {moved.length ? moved.map((x, i) => `${i ? "; " : ""}${x.m.label.toLowerCase()} ${x.c!.up ? "up" : "down"} ${x.c!.text} to ${fmtMeasure(x.m, x.m.value)}`).join("") + "." : `nothing moved by more than 2% against ${prev}.`}
+          {!read.measures.some((m) => m.compare != null) ? `no posts in ${prev}${market ? ` in ${market}` : ""} to compare with.`
+            : moved.length ? moved.map((x, i) => `${i ? "; " : ""}${x.m.label.toLowerCase()} ${x.c!.dir > 0 ? "up" : "down"} ${x.c!.text} to ${fmtMeasure(x.m, x.m.value)}`).join("") + "." : `nothing moved by more than 2% against ${prev}.`}
         </p>
       )}
     </>
@@ -97,13 +102,13 @@ function reviewUsage(review: StoredReport): string {
 }
 
 /** Month-by-month report index for one dashboard, with the stored month-in-review. */
-export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord; initial: Initial }) {
+export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: DashboardRecord; initial: Initial; initialMarket?: string }) {
   const toast = useToast();
   const [rows, setRows] = useState<MonthReportRow[]>(initial.rows);
-  const [open, setOpen] = useState<string | null>(initial.rows.find((r) => r.review)?.month ?? initial.rows.find((r) => r.kpis.posts >= 30)?.month ?? initial.rows[0]?.month ?? null);
+  const [open, setOpen] = useState<string | null>(initial.rows.find((r) => r.complete && r.kpis.posts >= 30)?.month ?? initial.rows.find((r) => r.kpis.posts >= 30)?.month ?? initial.rows[0]?.month ?? null);
   const [busy, setBusy] = useState<string | null>(null);
   const markets = initial.markets ?? [];
-  const [market, setMarket] = useState("");
+  const [market, setMarket] = useState(() => (initialMarket && markets.includes(initialMarket) ? initialMarket : ""));
   // The monthly read per month and market, fetched when first looked at.
   const [reads, setReads] = useState<Record<string, Read>>({});
   const readKey = open ? `${open}@${market}` : "";
@@ -112,12 +117,14 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
     let live = true;
     fetch(`/api/dashboards/${dashboard.id}/reports/${open}/read${market ? `?market=${encodeURIComponent(market)}` : ""}`)
       .then((r) => r.json())
-      .then((j: MonthRead & { error?: string }) => { if (live) setReads((x) => ({ ...x, [readKey]: j.error || !j.measures ? FAILED : j })); })
-      .catch(() => { if (live) setReads((x) => ({ ...x, [readKey]: FAILED })); });
+      .then((j: MonthRead & { error?: string }) => { if (live) setReads((x) => ({ ...x, [readKey]: j.error || !j.measures ? "failed" : j })); })
+      .catch(() => { if (live) setReads((x) => ({ ...x, [readKey]: "failed" })); });
     return () => { live = false; };
   }, [dashboard.id, open, market, readKey, reads]);
   const read = reads[readKey];
-  const onDashboard = (m: string) => `/dashboard/${dashboard.id}?period=${m}&compare=prev${market ? `&market=${encodeURIComponent(market)}` : ""}`;
+  const retry = () => setReads((x) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== readKey)));
+  const ok = read && read !== "failed" ? read : null;
+  const onDashboard = (m: string) => `/dashboard/${dashboard.id}?period=${m}&compare=prev&market=${encodeURIComponent(market)}`;
 
   const generate = async (month: string, force: boolean) => {
     setBusy(month);
@@ -160,7 +167,7 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
       <div className="rep">
         <aside className="rep__list" aria-label="Months">
           <div className="rep__listhead">
-            <span className="im-micro-label">Months with data</span>
+            <span className="im-micro-label">Months with data, all markets</span>
             <span className="im-text-description">{initial.coveredTo ? `Data delivered to ${formatDate(initial.coveredTo)}` : ""}</span>
           </div>
           {rows.map((r) => (
@@ -197,7 +204,7 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
                   ) : (
                     <button className="im-btn im-btn-primary im-btn-sm" onClick={() => void generate(current.month, false)} disabled={busy === current.month}>{busy === current.month ? "Writing…" : "Write month in review"}</button>
                   )}
-                  {markets.length > 1 && (
+                  {(markets.length > 1 || market) && (
                     <select className="rep__market" value={market} onChange={(e) => setMarket(e.target.value)} aria-label="Market">
                       <option value="">All markets</option>
                       {markets.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -207,16 +214,16 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
                 </div>
               </header>
               <h3 className="rep__sub">The eight measures{market ? ` in ${market}` : ""}</h3>
-              <MonthMeasures read={read} month={current.label} prev={current.previous ? prevLabel(current.month) : null} market={market} />
+              <MonthMeasures read={read} month={current.label} prev={current.previous ? prevLabel(current.month) : null} market={market} retry={retry} />
               <h3 className="rep__sub">Volume{market ? ` in ${market}` : ""}: counts, not rates</h3>
               <div className="rep__kpis">
                 {KPI_COLS.map((c) => {
-                  const k = (market ? read?.kpis : current.kpis) ?? (market ? null : current.kpis);
-                  const before = market ? read?.previous : current.previous;
+                  const k = market ? ok?.kpis ?? null : current.kpis;
+                  const before = market ? ok?.previous : current.previous;
                   return (
                     <div className="rep__kpi" key={c.key}>
                       <span className="rep__kpilabel">{c.label}</span>
-                      <b>{k ? fmtKpi(k[c.key], c.fmt) : "…"}</b>
+                      <b>{k ? fmtKpi(k[c.key], c.fmt) : read === "failed" ? "–" : "…"}</b>
                       <span className="rep__kpiprev">
                         <Delta now={k ? k[c.key] : null} before={before?.[c.key]} invert={c.invert} />
                         {before && <span className="im-text-description"> vs {fmtKpi(before[c.key], c.fmt)}</span>}
@@ -227,6 +234,7 @@ export function ReportsView({ dashboard, initial }: { dashboard: DashboardRecord
               </div>
               {current.review ? (
                 <div className="rep__review">
+                  {market && <p className="im-text-description">The written review below covers all markets, not {market} alone.</p>}
                   <Markdown text={current.review.summary_md} />
                   <p className="im-text-description rep__meta">Written {new Date(current.review.created_at).toLocaleString("en-GB")}{current.review.model ? ` · ${current.review.model}` : ""}{reviewUsage(current.review)}. Numbers above are live; the narrative is frozen at the time it was written.</p>
                 </div>

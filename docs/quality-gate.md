@@ -92,6 +92,27 @@ Theme accuracy was measured last week: 78% for hair removal, the lowest of the t
 - **Paid audience** is an average over the creators whose audience is known, 539 of 3,332 profiles in hair removal. It is hidden under five creators.
 - **Monthly read** uses the dashboard's own eight-measures query, so the two cannot disagree. A month with under 30 of our posts says so.
 
+### QA loop on the market filter, products and monthly read (19 November 2026)
+
+Three rounds, each one review plus the checks, until a round found nothing.
+
+- **Round 1.** Two reviewers read the three merges. The number check learned `--market` and now recalculates inside a market. The AI analyst was asked six questions and each answer was compared with the database. Found and fixed:
+  - the analyst's period tool dropped the market, and it reported all-time numbers as "July";
+  - the analyst showed posts with no product line as a line called "Unknown";
+  - a failed monthly read was shown as "too few posts" and never retried;
+  - a notification link dropped the saved market, and a market that fell off the list could not be cleared;
+  - "Show all time instead" did nothing when only a market was set;
+  - comments imported on their own got no market, so the market filter would drop them;
+  - the paid audience counted a creator twice when they post for two brands;
+  - a brief could quote praise for a rival as "in their words", and recommend "listing or sale advert" as the way to tell a story;
+  - share of creators was a share of the sum of each brand's creators, not of all creators;
+  - the number check passed with nothing compared when a box failed.
+- **Round 2.** A third reviewer read only the fixes. Found and fixed: "all markets" chosen on purpose was lost on a reload or on the way back from Reports; a failed volume query read as a month with nothing in it; the checking script's own crash paths.
+- **Round 3.** Nothing found. The number check passes in eight combinations of brand and market (142 to 336 numbers each), on Postgres and on the embedded database. The template check passes for all ten industries and every brand.
+- **Hand read.** 37 posts: the 10 product lines I read were right; of 27 claim tags, one was doubtful and several could not be judged from the cut caption.
+
+`npm run check:numbers` now covers 336 numbers, including share of voice four ways and the minimum-sample rules.
+
 ### Not verified
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 

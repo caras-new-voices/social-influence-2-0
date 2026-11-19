@@ -212,7 +212,7 @@ export function WidgetCard({
             <b>{empty ? `Nothing in ${formatWindow(win)} for this element` : `Not enough ${spec.sample!.unit} in ${formatWindow(win)}`}</b>
             {!empty && <span>{sample} of the {spec.sample!.min} needed for a reliable read.</span>}
             <div className="row" style={{ gap: "0.4rem", justifyContent: "center" }}>
-              {onSetPeriod && <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => onSetPeriod("all")}>Show all time instead</button>}
+              {onSetPeriod && (win.start || win.end) && <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => onSetPeriod("all")}>Show all time instead</button>}
               {!empty && <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => setShowAnyway(true)}>Show anyway</button>}
             </div>
           </div>

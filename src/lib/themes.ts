@@ -280,7 +280,13 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
         `SELECT count(*)::int AS n FROM posts_raw WHERE is_paid_source IS NULL AND segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
         [ind.industry],
       );
-      if ((await getMeta(db, flagsKey)) === flagsBase && !stale[0]?.n) return true;
+      // Comments that arrived after the last run have no market yet (a comment takes its post's): the market filter would drop them.
+      const unplaced = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM comments_raw c JOIN posts_raw p ON p.segment_id = c.segment_id AND p.post_id = c.post_id
+          WHERE c.country IS DISTINCT FROM p.country AND c.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
+        [ind.industry],
+      );
+      if ((await getMeta(db, flagsKey)) === flagsBase && !stale[0]?.n && !unplaced[0]?.n) return true;
       if (spent()) return false;
       // One instance at a time: the corrections reset columns before filling them, so two runs must not
       // overlap, and a run that dies must not leave the key saying "applied". The claim expires after five minutes.
