@@ -111,6 +111,8 @@ Three rounds, each one review plus the checks, until a round found nothing.
 - **Round 3.** Nothing found. The number check passes in eight combinations of brand and market (142 to 336 numbers each), on Postgres and on the embedded database. The template check passes for all ten industries and every brand.
 - **Hand read.** 37 posts: the 10 product lines I read were right; of 27 claim tags, one was doubtful and several could not be judged from the cut caption.
 
+- **On live after the merge.** The number check passes for three combinations and the template check for two brands. The browser walk showed the period and market save taking about 11 seconds while the boxes load, so leaving sooner could lose it. The save now survives leaving the page.
+
 `npm run check:numbers` now covers 336 numbers, including share of voice four ways and the minimum-sample rules.
 
 ### Not verified
