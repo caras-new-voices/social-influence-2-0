@@ -127,10 +127,12 @@ const GRID = (who: string) => `g AS (
  * left out, 2+ posts): engagement vs norm, theme fit (share of their posts in their main theme),
  * and buying signals in the brand comments under their posts. Performance and buying signals are
  * taken as the creator's rank among all scored creators (0 to 1), so one viral post cannot max the
- * score. Score out of 100 = 50% performance + 30% buying signals (performance again when they
- * have under 20 brand comments) + 20% theme fit, scaled down for creators with few posts (60% at
- * 2 posts, full at 5). Audience match is shown where known and not scored: few creators have it.
- * cs(creator, platform, posts, ours, theirs, brands, vs, theme, fit, intent_k, rel, paid_by_us, score).
+ * score. Score out of 100 = 45% performance + 25% buying signals (performance again when they
+ * have under 20 brand comments) + 15% theme fit + 10% value (how their modelled fee per engagement
+ * ranks, cheapest best) + 5% availability (nothing unless a rival has paid them), scaled down for
+ * creators with few posts (60% at 2 posts, full at 5). Audience match is shown where known and
+ * not scored: few creators have it.
+ * cs(creator, platform, posts, ours, theirs, brands, vs, theme, fit, intent_k, rel, fee, avail, score).
  */
 const CREATOR_SCORE = `${SCORED("posts")},
 cp AS (
@@ -146,34 +148,33 @@ ca AS (
          string_agg(DISTINCT cp.brand, ', ') AS brands, sum(cp.eng_s) / NULLIF(sum(cp.expected), 0) AS vs,
          bool_or(cp.is_paid AND cp.brand = focal_brand()) AS paid_by_us, bool_or(cp.is_gifted AND cp.brand = focal_brand()) AS gifted_by_us,
          bool_or(cp.is_affiliate AND cp.brand = focal_brand()) AS affiliate_of_ours,
+         bool_or(cp.is_paid AND cp.brand <> focal_brand()) AS paid_by_rival,
+         avg((cp.budget_min + cp.budget_max) / 2.0) AS fee,
+         sum((cp.budget_min + cp.budget_max) / 2.0) / NULLIF(sum(cp.engagement) FILTER (WHERE cp.budget_min IS NOT NULL), 0) AS fee_per_eng,
          sum(pc.n) AS c_n, sum(pc.intent) AS c_intent
   FROM cp LEFT JOIN pc ON pc.segment_id = cp.segment_id AND pc.post_id = cp.post_id GROUP BY 1 HAVING count(*) >= 2
 ), cr AS (
   SELECT ca.*, percent_rank() OVER (ORDER BY ca.vs) AS p_vs,
+         CASE WHEN ca.fee_per_eng IS NOT NULL THEN 1 - percent_rank() OVER (PARTITION BY (ca.fee_per_eng IS NOT NULL) ORDER BY ca.fee_per_eng) END AS p_value,
          CASE WHEN ca.c_n >= 20 THEN percent_rank() OVER (PARTITION BY (ca.c_n >= 20) ORDER BY ca.c_intent / NULLIF(ca.c_n, 0)) END AS p_intent
   FROM ca WHERE ca.vs IS NOT NULL
 ), cs AS MATERIALIZED (
   SELECT cr.creator, cr.platform, cr.posts, cr.ours, cr.theirs, cr.brands, cr.vs, ct.theme, ct.n::float / cr.posts AS fit,
          CASE WHEN cr.c_n >= 20 THEN 1000.0 * cr.c_intent / cr.c_n END AS intent_k,
          CASE WHEN cr.ours = 0 THEN 'rivals only' WHEN cr.paid_by_us THEN 'paid by us' WHEN cr.affiliate_of_ours THEN 'sells us for commission' WHEN cr.gifted_by_us THEN 'gifted by us' ELSE 'unpaid' END AS rel,
-         100 * (0.5 * cr.p_vs + 0.3 * coalesce(cr.p_intent, cr.p_vs) + 0.2 * coalesce(ct.n::float / cr.posts, 0)) * (0.6 + 0.4 * least(cr.posts - 2, 3) / 3.0) AS score
+         cr.fee, CASE WHEN cr.paid_by_rival THEN 'paid by a rival' WHEN cr.theirs > 0 THEN 'posts about a rival, unpaid' ELSE 'no rival ties' END AS avail,
+         100 * (0.45 * cr.p_vs + 0.25 * coalesce(cr.p_intent, cr.p_vs) + 0.15 * coalesce(ct.n::float / cr.posts, 0) + 0.10 * coalesce(cr.p_value, 0.5) + 0.05 * CASE WHEN cr.paid_by_rival THEN 0 ELSE 1 END)
+           * (0.6 + 0.4 * least(cr.posts - 2, 3) / 3.0) AS score
   FROM cr LEFT JOIN ct ON ct.username = cr.creator AND ct.rk = 1
 )`;
-const SCORE_NOTE = "Creator score, out of 100: half is how their engagement vs norm ranks among all creators, 30% how the buying signals under their posts rank (where they have 20+ brand comments), 20% theme fit. It counts for less when a creator has few posts. Creators with 2+ posts; brand-owned accounts are left out";
+const SCORE_NOTE = "Creator score, out of 100: 45% is how their engagement vs norm ranks among all creators, 25% how the buying signals under their posts rank (where they have 20+ brand comments), 15% theme fit, 10% value (their modelled fee per engagement, cheapest best) and 5% availability (lost when a rival has paid them). It counts for less when a creator has few posts. Creators with 2+ posts; brand-owned accounts are left out";
 
 const li = (parts: string) => `'<li>' || ${parts} || '</li>'`;
 const pct = (expr: string) => `round((100.0 * (${expr}))::numeric, 0)`;
 const x2 = (expr: string) => `to_char(round((${expr})::numeric, 2), 'FM990.00') || '×'`;
 
-export const TOM8_SECTIONS: StarterSection[] = [
-  {
-    title: "The eight measures",
-    widgets: [
-      {
-        type: "kpi", w: 12, h: 3,
-        title: "Our eight measures",
-        subtitle: `${VERSUS}. Shares are percentages, vs norm is a ratio (1.0 is the norm), intent, praise and objections are per 1,000 brand comments, and content gap is in points. Creator score, the eighth measure, is per creator in section 4.`,
-        sql: `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")}, ${LABEL_TAGS("(SELECT * FROM w WHERE cur)")},
+/** The measures for the focal brand in the period and the period before: rows of label, value, compare, fmt. */
+export const EIGHT_MEASURES_SQL = `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")}, ${LABEL_TAGS("(SELECT * FROM w WHERE cur)")},
 tot AS MATERIALIZED (SELECT count(*) FILTER (WHERE cur)::float AS cur, count(*) FILTER (WHERE NOT cur)::float AS prev, sum(coalesce(comments, 0)) FILTER (WHERE cur) AS comments FROM w),
 us AS MATERIALIZED (
   SELECT count(*) FILTER (WHERE cur)::float AS cur, count(*) FILTER (WHERE NOT cur)::float AS prev,
@@ -196,7 +197,17 @@ UNION ALL SELECT 'Earned share', us.earned / NULLIF(us.cur, 0), us.earned_prev /
 UNION ALL SELECT 'Purchase intent per 1K', 1000 * cm.intent / NULLIF(cm.n, 0), 1000 * cm.intent_prev / NULLIF(cm.n_prev, 0), 'decimal' FROM cm WHERE cm.n >= ${COMMENT_MIN}
 UNION ALL SELECT 'Praise per 1K', 1000 * cm.praise / NULLIF(cm.n, 0), 1000 * cm.praise_prev / NULLIF(cm.n_prev, 0), 'decimal' FROM cm WHERE cm.n >= ${COMMENT_MIN}
 UNION ALL SELECT 'Objections per 1K', 1000 * cm.obj / NULLIF(cm.n, 0), 1000 * cm.obj_prev / NULLIF(cm.n_prev, 0), 'decimal' FROM cm WHERE cm.n >= ${COMMENT_MIN}
-UNION ALL SELECT 'Content gap', top_gap.pts, NULL, 'points' FROM top_gap WHERE top_gap.pts > 0.05`,
+UNION ALL SELECT 'Content gap', top_gap.pts, NULL, 'points' FROM top_gap WHERE top_gap.pts > 0.05`;
+
+export const TOM8_SECTIONS: StarterSection[] = [
+  {
+    title: "The eight measures",
+    widgets: [
+      {
+        type: "kpi", w: 12, h: 3,
+        title: "Our eight measures",
+        subtitle: `${VERSUS}. Shares are percentages, vs norm is a ratio (1.0 is the norm), intent, praise and objections are per 1,000 brand comments, and content gap is in points. Creator score, the eighth measure, is per creator in section 4.`,
+        sql: EIGHT_MEASURES_SQL,
         rationale: "The same numbers every month, calculated one way, so a change is a change and not a new definition.",
       },
       {
@@ -299,7 +310,7 @@ FROM n`,
       {
         type: "insight", w: 12, h: 10,
         title: "Content briefs for the top three themes",
-        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the words to use and the objection to answer. Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
+        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the audience to put paid behind it, the words to use and the objection to answer. Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
         when: N_THEMED,
         sql: `WITH ${THEMES}, ${BEST_HOOK("sp.cur")},
 pick AS (SELECT c.*, row_number() OVER (ORDER BY (status = 'winning') DESC, (status = 'early signal') DESC, vs DESC NULLS LAST) AS rk FROM c WHERE status IN ('winning', 'early signal', 'above norm')),
@@ -323,6 +334,21 @@ fmt AS (
   FROM brand_comments c JOIN tp ON tp.segment_id = c.segment_id AND tp.post_id = c.post_id
 ), quote AS (SELECT DISTINCT ON (theme) theme, left(text, 150) AS said FROM bc WHERE sentiment = 'positive' AND attribute IS NOT NULL AND length(text) >= 25 ORDER BY theme, ours DESC, likes DESC),
 obj AS (SELECT DISTINCT ON (theme) theme, attribute, n FROM (SELECT theme, attribute, count(*) AS n FROM bc WHERE attribute IS NOT NULL AND ${NEGATIVE} GROUP BY 1, 2) q WHERE n >= 3 ORDER BY theme, n DESC),
+ai AS MATERIALIZED (
+  SELECT DISTINCT tp.theme, i.segment_id, i.influencer_id, i.audience_female, i.audience_ages, i.audience_countries
+  FROM tp JOIN influencers i ON i.segment_id = tp.segment_id AND i.influencer_id = tp.influencer_id
+  WHERE NOT tp.is_owned AND i.audience_female IS NOT NULL AND jsonb_typeof(i.audience_ages) = 'object'
+), an AS (SELECT theme, count(*)::float AS k, avg(audience_female) AS female FROM ai GROUP BY 1 HAVING count(*) >= 5),
+ages AS (
+  SELECT theme, string_agg(band || ' (' || ${pct("w")} || '%)', ' and ' ORDER BY w DESC) AS bands
+  FROM (SELECT ai.theme, e.key AS band, sum(e.value::float) / an.k AS w, row_number() OVER (PARTITION BY ai.theme ORDER BY sum(e.value::float) DESC) AS rk
+        FROM ai JOIN an USING (theme), jsonb_each_text(ai.audience_ages) e GROUP BY ai.theme, e.key, an.k) y WHERE rk <= 2 GROUP BY 1
+), geo AS (
+  SELECT theme, string_agg(country || ' (' || ${pct("w")} || '%)', ', ' ORDER BY w DESC) AS places
+  FROM (SELECT ai.theme, c.value ->> 'name' AS country, sum((c.value ->> 'weight')::float) / an.k AS w, row_number() OVER (PARTITION BY ai.theme ORDER BY sum((c.value ->> 'weight')::float) DESC) AS rk
+        FROM ai JOIN an USING (theme), jsonb_array_elements(CASE WHEN jsonb_typeof(ai.audience_countries) = 'array' THEN ai.audience_countries ELSE '[]'::jsonb END) c
+        WHERE c.value ->> 'name' IS NOT NULL GROUP BY ai.theme, c.value ->> 'name', an.k) z WHERE rk <= 3 GROUP BY 1
+),
 n AS (SELECT count(*) AS k FROM top)
 SELECT CASE WHEN n.k = 0 THEN 'No theme is above the norm in this period' ELSE n.k || CASE WHEN n.k = 1 THEN ' content brief' ELSE ' content briefs' END END AS headline,
        CASE WHEN n.k = 0 THEN '<p>No theme with ${THEME_MIN} or more posts earns 1.2 times the norm, so there is nothing to brief yet. Try a longer period or all markets.</p>'
@@ -333,10 +359,11 @@ SELECT CASE WHEN n.k = 0 THEN 'No theme is above the norm in this period' ELSE n
          || CASE WHEN bh.hook IS NOT NULL OR fmt.format IS NOT NULL THEN ${li(`'<strong>How to tell it:</strong> ' || CASE WHEN bh.hook IS NOT NULL THEN 'told as ' || lower(bh.hook) || ' (' || ${x2("bh.hvs")} || ' the norm)' ELSE '' END || CASE WHEN bh.hook IS NOT NULL AND fmt.format IS NOT NULL THEN ', ' ELSE '' END || CASE WHEN fmt.format IS NOT NULL THEN 'best on ' || fmt.format || ' (' || ${x2("fmt.fvs")} || ')' ELSE '' END || '.'`)} ELSE '' END
          || CASE WHEN crr.names IS NOT NULL THEN ${li(`'<strong>Who should tell it:</strong> ' || crr.names || '. The figure is engagement vs norm on their posts in this theme.'`)} ELSE '' END
          || CASE WHEN mk.markets IS NOT NULL THEN ${li(`'<strong>Where:</strong> ' || mk.markets || '.'`)} ELSE '' END
+         || CASE WHEN an.k IS NOT NULL THEN ${li(`'<strong>Paid audience:</strong> ' || CASE WHEN an.female >= 0.5 THEN ${pct("an.female")} || '% women' ELSE ${pct("1 - an.female")} || '% men' END || coalesce(', mostly aged ' || ages.bands, '') || coalesce(', in ' || geo.places, '') || '. The average audience of the ' || an.k::int || ' creators behind this theme whose audience is known.'`)} ELSE '' END
          || CASE WHEN quote.said IS NOT NULL THEN ${li(`'<strong>In their words:</strong> “' || quote.said || '”'`)} ELSE '' END
          || CASE WHEN obj.attribute IS NOT NULL THEN ${li(`'<strong>Objection to answer:</strong> ' || lower(${ATTR("obj.attribute")}) || ' (' || obj.n || ' comments).'`)} ELSE '' END
          || '</ul>', '' ORDER BY top.rk)
-         FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme)) END AS body
+         FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme) LEFT JOIN an USING (theme) LEFT JOIN ages USING (theme) LEFT JOIN geo USING (theme)) END AS body
 FROM n`,
         rationale: "The brief says every answer becomes a brief, a creator and an audience. This is the first draft of each.",
       },
@@ -721,9 +748,9 @@ FROM n`,
       {
         type: "table", w: 12, h: 7,
         title: "Creator score: the top creators across the tracked brands",
-        subtitle: `${SCORE_NOTE}. Relation says whether a post of theirs about us was paid or gifted.`,
+        subtitle: `${SCORE_NOTE}. Relation says whether a post of theirs about us was paid or gifted. The fee is the supplier's modelled fee per post in US dollars, an estimate and not a quote.`,
         sql: `WITH ${CREATOR_SCORE}
-SELECT creator, platform, posts, brands AS "posts about", rel AS "relation to us", ${r2("vs")} AS "engagement vs norm", theme AS "main theme", ${r0("100.0 * fit")} AS "theme fit %", ${r1("intent_k")} AS "intent per 1K", ${r0("score")} AS "creator score"
+SELECT creator, platform, posts, brands AS "posts about", rel AS "relation to us", ${r2("vs")} AS "engagement vs norm", theme AS "main theme", ${r0("100.0 * fit")} AS "theme fit %", ${r1("intent_k")} AS "intent per 1K", ${r0("fee")} AS "est. fee per post $", avail AS availability, ${r0("score")} AS "creator score"
 FROM cs ORDER BY score DESC LIMIT 15`,
         rationale: "The eighth measure: who is worth working with, scored one way for every creator.",
       },
@@ -963,7 +990,7 @@ FROM brand_comments WHERE brand = focal_brand() AND use_case_segment IS NOT NULL
       {
         type: "text", w: 12, h: 6,
         title: "Reading it every month, and what it cannot show yet",
-        content: `**Every month.** The measures are calculated the same way each month. Set the period bar to a month and switch on Compare to see what moved. Counts change by a percent, shares by percentage points. The Reports page keeps a written review per month.
+        content: `**Every month.** The measures are calculated the same way each month. Set the period bar to a month and switch on Compare to see what moved. Counts change by a percent, shares by percentage points. The Reports page opens each month with the eight measures and what moved most, for all markets or one, and keeps a written review per month.
 
 **What is checked.** Paid posts are found from the caption (#ad, Anzeige, Publi and the like) as well as the platform's flag. Shop and commission posts are counted on their own, as affiliate. Comments are read one by one to tell whether they are about the brand or about the creator. Posts not about the brand are left out. The list of brand-owned accounts is a draft for you to confirm.
 
@@ -973,7 +1000,9 @@ FROM brand_comments WHERE brand = focal_brand() AND use_case_segment IS NOT NULL
 - **Audience** age and gender are known for some creators only, so audience match is shown and not scored.
 - **Comments** exist for some industries only. Without them, sections 3 and 5 and the comment measures are left out.
 - **Minimum samples:** 30 posts behind a theme and 200 brand comments behind a comment measure. Smaller cells are hidden, not shown as zero.
-- **Purchase intent is a signal, not sales.** Proving the link needs your own sales data.`,
+- **Purchase intent is a signal, not sales.** Proving the link needs your own sales data.
+
+**Method.** The Method page in the left menu has every definition, the coverage per industry and the measured accuracy of each reading.`,
       },
     ],
   },

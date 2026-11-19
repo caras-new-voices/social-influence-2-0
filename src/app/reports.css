@@ -40,3 +40,9 @@
   .rep__kpi { break-inside: avoid; }
   body { background: #fff; }
 }
+
+.rep__sub { font-size: 13px; font-weight: 600; margin: 0 0 0.5rem; color: var(--Base-07, inherit); }
+.rep__kpis--measures { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 0.75rem; }
+.rep__moved { font-size: 13.5px; line-height: 1.5; margin: 0 0 1.5rem; padding: 0.6rem 0.8rem; border-radius: 0.6rem; background: var(--Base-01); border: 1px solid var(--Base-03); }
+.rep__loading { margin: 0 0 1.5rem; }
+.rep__market { height: 30px; border: 1px solid var(--Base-04); border-radius: 0.5rem; background: var(--Base-00); font: inherit; font-size: 12.5px; padding: 0 0.5rem; max-width: 170px; }
