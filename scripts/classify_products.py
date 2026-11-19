@@ -11,7 +11,9 @@ claims. The supplied data has brands only.
 
 lines: reads a sample of each brand's captions and drafts that brand's product lines. Written to
 data/seed/products/<industry>.json and docs/product-lines-draft.md for a person to confirm. Edit
-the JSON by hand, then run posts and comments again.
+the JSON by hand, then delete <work-dir>/products-posts-<industry>.jsonl and
+products-comments-<industry>.jsonl and run posts, comments and compile again: answers already in
+the work files are not asked again, and compile refuses names that are no longer in the list.
 
 posts: for every caption, the one product line it is mainly about (or none, or several), and which
 of the six attributes it claims as a benefit of the product.
@@ -282,10 +284,20 @@ def compile_all():
         names = sorted({n for ls in valid.values() for n in ls})
         idx = {n: i + 2 for i, n in enumerate(names)}          # 0 none, 1 several, 2.. a line
         code = lambda n: 1 if n == SEVERAL else idx.get(n, 0)
+        crows = read_rows(os.path.join(WORK, f"products-comments-{ind['id']}.jsonl"))
+        # Answers naming a line that is no longer in the list mean the list was edited after the read.
+        gone = sorted({r[2] for r in prows + crows if r[2] not in (NONE, SEVERAL) and r[2] not in idx})
+        if gone: print(f"{ind['id']}: the work files name product lines that are not in the list ({', '.join(gone[:6])}). Delete the products-*.jsonl work files and read again. Not compiled."); continue
+        labels_path = os.path.join(SEED, "comment_labels", ind["id"] + ".json.gz")
+        if os.path.exists(labels_path):
+            cl = gz(labels_path)
+            # Only comments of brands that have product lines are read.
+            readable = {(c["segment_id"], c["comment_id"]) for c in gz(os.path.join(SEED, "comments.json.gz")) if c["brand"] in lines}
+            wanted = sum(1 for r in cl["rows"] if cl["about"][r[2]] in ("brand", "category") and (r[0], r[1]) in readable)
+            if len(crows) < 0.98 * wanted: print(f"comments {ind['id']}: only {len(crows)} of {wanted} brand comments read, not compiled"); continue
         mask = lambda claims: sum(1 << ATTRIBUTES.index(a) for a in claims if a in ATTRIBUTES)
         # Only posts with a product or a claim are stored; `read` says how many were looked at.
         posts = [[r[0], r[1], code(r[2]), mask(r[3])] for r in prows if code(r[2]) or mask(r[3])]
-        crows = read_rows(os.path.join(WORK, f"products-comments-{ind['id']}.jsonl"))
         comments = [[r[0], r[1], code(r[2])] for r in crows if code(r[2])]
         doc = {"industry": ind["id"], "model": MODEL, "products": [NONE, SEVERAL] + names, "attributes": ATTRIBUTES,
                "read_posts": len(prows), "read_comments": len(crows), "posts": posts, "comments": comments}

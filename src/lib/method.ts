@@ -36,7 +36,7 @@ export const ACCURACY: AccuracyLine[] = [
 
 export const MEASURES: Array<{ name: string; formula: string; note: string }> = [
   { name: "Share of voice", formula: "Our posts ÷ all tracked brands' posts", note: "Also shown by views, creators and engagements. The category is the tracked brands, not the whole market." },
-  { name: "Engagement vs norm", formula: "Engagements ÷ expected engagements", note: "Expected is reach times the tracked brands' engagement rate for that platform and creator size. Reach is views, or followers for Instagram image posts and posts without views. The norm is fixed over all time, so a month can be compared with another." },
+  { name: "Engagement vs norm", formula: "Engagements ÷ expected engagements", note: "Expected is reach times the tracked brands' engagement rate for that platform and creator size. Reach is views, or followers for Instagram image posts and posts without views. The norm is fixed over all time, so a month can be compared with another. With a market selected, the norm is that market's own." },
   { name: "Momentum", formula: "Posts in the period ÷ posts in the period before, minus 1", note: "Viewing all time, it is the last 90 days against the 90 before. A calendar month is compared with the month before." },
   { name: "Earned share", formula: "Earned posts ÷ all our posts", note: "Earned means not from our own accounts, not paid, not sold for commission and not gifted." },
   { name: "Purchase intent", formula: "Buying-signal comments per 1,000 brand comments", note: "A buying signal asks where to get it, the price or a code, or says they will buy or just bought." },

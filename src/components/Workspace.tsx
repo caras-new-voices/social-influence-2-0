@@ -76,7 +76,12 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   // The URL wins (shareable links), then the saved dashboard period, then all time. useSearchParams is
   // known on the server too, so the first render matches on both sides.
   const searchParams = useSearchParams();
-  const [period, setPeriodState] = useState<PeriodState>(() => periodFromParams(searchParams) ?? dashboard.period ?? ALL_TIME);
+  const [period, setPeriodState] = useState<PeriodState>(() => {
+    const fromUrl = periodFromParams(searchParams);
+    if (!fromUrl) return dashboard.period ?? ALL_TIME;
+    // A link that names a period but no market (a notification, an older shared link) keeps the dashboard's saved market.
+    return fromUrl.market === undefined && dashboard.period?.market ? { ...fromUrl, market: dashboard.period.market } : fromUrl;
+  });
   const periodSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setPeriod = useCallback((next: PeriodState) => {
     setPeriodState(next);
@@ -301,7 +306,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           </span>
           <button className="im-btn im-btn-secondary" onClick={() => setBrandDraft(currentScope)} title="Choose the company and competitors this dashboard shows">Brands</button>
           <button className="im-btn im-btn-secondary" onClick={() => setAdding(true)}>+ Add element</button>
-          <Link className="im-btn im-btn-secondary" href={`/dashboard/${dashboard.id}/reports`} title="Month-by-month reports and the month in review">Reports</Link>
+          <Link className="im-btn im-btn-secondary" href={`/dashboard/${dashboard.id}/reports?market=${encodeURIComponent(period.market ?? "")}`} title="Month-by-month reports and the month in review">Reports</Link>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Export")}>Export</button>
           <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Sharing")}>Share</button>
           <button className="im-btn im-btn-primary" onClick={() => void save()} disabled={saving || !dirty}>{saving ? "Saving…" : "Save"}</button>
@@ -317,7 +322,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           prefill={prefill}
           onPrefillConsumed={() => setPrefill(undefined)}
           ask={ask}
-          onSetPeriod={setPeriod}
+          onSetPeriod={(next) => setPeriod({ ...next, market: next.market ?? period.market ?? null })}
         />
         <div className="ws__canvas">
           <NewDataBanner dashboardId={dashboard.id} />

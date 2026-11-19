@@ -34,7 +34,8 @@ const month = (ym: string | null) => (ym ? new Date(`${ym}-01T00:00:00Z`).toLoca
 const share = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "–");
 
 export default async function MethodPage() {
-  const rows = await coverage();
+  // The page must still explain the method when the coverage cannot be read.
+  const rows = await coverage().catch((e) => { console.error("[method] coverage failed:", (e as Error).message); return null; });
   const names = new Map(getCatalog().industries.map((i) => [i.id, i.name]));
   return (
     <Shell title="Method">
@@ -66,12 +67,13 @@ export default async function MethodPage() {
 
         <section className="ds__section">
           <h2 className="im-text-header">Coverage</h2>
-          <p className="im-text-description">What is loaded for each industry, and how much of it has been read by a model. A market is the creator&apos;s country, and a comment takes the market of its post.</p>
+          <p className="im-text-description">What is loaded for each industry, and how much of it has been read by a model. Posts counts every post loaded, including the ones later judged not to be about the brand, which dashboards leave out. A market is the creator&apos;s country, and a comment takes the market of its post.</p>
           <div className="im-card" style={{ overflow: "auto" }}>
             <table className="tbl">
               <thead><tr><th>Industry</th><th className="num">Posts</th><th>From</th><th>To</th><th className="num">Theme read by a model</th><th className="num">Checked: about the brand</th><th className="num">From brand-owned accounts</th><th className="num">Product or claim found</th><th className="num">Comments</th><th className="num">Comments read</th></tr></thead>
               <tbody>
-                {rows.map((r) => (
+                {rows === null && <tr><td colSpan={10}>The coverage could not be read just now. Reload the page to try again.</td></tr>}
+                {(rows ?? []).map((r) => (
                   <tr key={r.industry}>
                     <td>{names.get(r.industry) ?? r.industry}</td>
                     <td className="num">{r.posts.toLocaleString("en-US")}</td><td>{month(r.first)}</td><td>{month(r.last)}</td>
@@ -101,7 +103,7 @@ export default async function MethodPage() {
               </tbody>
             </table>
           </div>
-          <p className="im-text-description">The arithmetic is checked separately: 291 numbers on the default dashboard are worked out a second time from the raw files, without the dashboard&apos;s own queries, and must match.</p>
+          <p className="im-text-description">The arithmetic is checked separately: 336 numbers on the default dashboard are worked out a second time from the raw files, without the dashboard&apos;s own queries, and must match.</p>
         </section>
 
         <section className="ds__section">

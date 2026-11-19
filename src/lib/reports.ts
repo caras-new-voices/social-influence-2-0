@@ -100,16 +100,22 @@ export async function getMonthRead(dashboardId: string, month: string, market?: 
     const prevKey = monthKey(addMonths(monthStart(month), -1));
     const res = await runWidgetQuery(EIGHT_MEASURES_SQL, 20, window);
     const num = (v: unknown) => (v == null ? null : Number.isFinite(Number(v)) ? Number(v) : null);
-    const measures: MonthMeasure[] = res.ok ? res.rows.map((r) => ({ label: String(r.label), value: num(r.value), compare: num(r.compare), fmt: String(r.fmt) as MonthMeasure["fmt"] })) : [];
+    // A failed query is an error, not a month with too few posts.
+    if (!res.ok) throw new Error(res.error);
+    const measures: MonthMeasure[] = res.rows.map((r) => ({ label: String(r.label), value: num(r.value), compare: num(r.compare), fmt: String(r.fmt) as MonthMeasure["fmt"] }));
     const cov = await getCoverage();
     const hasPrev = cov.months.some((x) => x.month === prevKey && x.posts > 0);
-    return { measures, kpis: await kpisFor(window), previous: hasPrev ? await kpisFor({ start: monthStart(prevKey), end: monthEnd(prevKey), ...(market ? { market } : {}) }) : null };
+    const before = hasPrev ? await kpisFor({ start: monthStart(prevKey), end: monthEnd(prevKey), ...(market ? { market } : {}) }) : null;
+    // A market can have nothing in the month before even when the brands as a whole do.
+    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null };
   });
 }
 
 async function kpisFor(window: PeriodWindow): Promise<MonthKpis> {
   const res = await runWidgetQuery(KPI_SQL, 5, window);
-  const r = res.ok ? res.rows[0] ?? {} : {};
+  // A failed query is an error: zeros would read as a month with nothing in it.
+  if (!res.ok) throw new Error(res.error);
+  const r = res.rows[0] ?? {};
   const n = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
   return {
     posts: n(r.posts), creators: n(r.creators), engagement: n(r.engagement), views: n(r.views), comments: n(r.comments),

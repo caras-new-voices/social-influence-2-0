@@ -44,8 +44,8 @@ const THEME_NOTE = "A theme is what a post is about, from a fixed list for the i
 
 /** Posts whose caption has been read for a product line or a claimed benefit. */
 const N_PRODUCTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE product IS NOT NULL`, min: 50, what: "posts filed under a product line" };
-const N_CLAIMS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE claims IS NOT NULL`, min: 50, what: "posts read for the benefit they claim" };
-const N_OUR_CLAIMS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE claims IS NOT NULL AND brand = focal_brand()`, min: 30, what: "of our posts read for the benefit they claim" };
+const N_CLAIMS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE claims IS NOT NULL`, min: 50, what: "posts that claim a benefit" };
+const N_OUR_CLAIMS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE claims IS NOT NULL AND brand = focal_brand()`, min: 30, what: "of our posts that claim a benefit" };
 const PRODUCT_NOTE = "A product line is read from the caption (posts) or from the comment next to its caption (brand comments), from a drafted list per brand. Posts and comments that name no line are left out";
 /**
  * What creators claim against what the audience praises, per attribute. j(attribute, claims, praise, cs, ps):
@@ -92,13 +92,16 @@ c AS MATERIALIZED (
 )`;
 const STATUS_NOTE = "Winning: growing, and engagement at 1.2 times the norm or more. Early signal: 1.5 times the norm while momentum is under 20%. Peaking: growing 50% or more with engagement below the norm";
 
-/** The hook with the best engagement vs norm in each theme (5+ posts, at the norm or above): bh(theme, hook, hvs). Needs `sp`. */
+/**
+ * The hook with the best engagement vs norm in each theme (5+ posts, at the norm or above): bh(theme, hook, hvs). Needs `sp`.
+ * A shop listing or a giveaway is not a way to tell a story, so neither is recommended.
+ */
 const BEST_HOOK = (where = "TRUE") => `bh AS MATERIALIZED (
   SELECT DISTINCT ON (theme) theme, hook, hvs FROM (
     SELECT pt.theme, ph.hook, sum(sp.eng_s) / NULLIF(sum(sp.expected), 0) AS hvs, count(*) AS n
     FROM sp JOIN post_themes pt ON pt.segment_id = sp.segment_id AND pt.post_id = sp.post_id AND pt.is_primary
             JOIN post_hooks ph ON ph.segment_id = sp.segment_id AND ph.post_id = sp.post_id
-    WHERE ${where}
+    WHERE ${where} AND ph.hook NOT IN ('Listing or sale advert', 'Giveaway or competition')
     GROUP BY 1, 2 HAVING count(*) >= 5
   ) x WHERE hvs >= 1 ORDER BY theme, hvs DESC
 )`;
@@ -150,7 +153,7 @@ ca AS (
          bool_or(cp.is_affiliate AND cp.brand = focal_brand()) AS affiliate_of_ours,
          bool_or(cp.is_paid AND cp.brand <> focal_brand()) AS paid_by_rival,
          avg((cp.budget_min + cp.budget_max) / 2.0) AS fee,
-         sum((cp.budget_min + cp.budget_max) / 2.0) / NULLIF(sum(cp.engagement) FILTER (WHERE cp.budget_min IS NOT NULL), 0) AS fee_per_eng,
+         sum((cp.budget_min + cp.budget_max) / 2.0) / NULLIF(sum(cp.engagement) FILTER (WHERE cp.budget_min IS NOT NULL AND cp.budget_max IS NOT NULL), 0) AS fee_per_eng,
          sum(pc.n) AS c_n, sum(pc.intent) AS c_intent
   FROM cp LEFT JOIN pc ON pc.segment_id = cp.segment_id AND pc.post_id = cp.post_id GROUP BY 1 HAVING count(*) >= 2
 ), cr AS (
@@ -247,10 +250,10 @@ FROM a WHERE a.posts > 0 ORDER BY (a.brand = focal_brand()) DESC, a.posts DESC`,
       {
         type: "table", w: 6, h: 5,
         title: "Share of voice, four ways",
-        subtitle: "Each brand's share of the tracked brands' posts, views, creators and engagements, in percent. A brand with a small share of posts and a large share of views is being carried by a few big posts.",
+        subtitle: "Each brand's share of the tracked brands' posts, views, creators and engagements, in percent. It covers the whole period shown, so when viewing all time it differs from the share of voice above, which is the last 90 days. Views are counted where the platform gives them. A creator who posts about two brands counts for both, so the creator shares can add up to more than 100. A brand with a small share of posts and a large share of views is being carried by a few big posts.",
         sql: `WITH t AS (
   SELECT brand, count(*)::float AS posts, sum(coalesce(views, 0)) AS views, count(DISTINCT influencer_id)::float AS creators, sum(coalesce(engagement, 0)) AS eng FROM posts GROUP BY 1
-), tot AS MATERIALIZED (SELECT sum(posts) AS posts, sum(views) AS views, sum(creators) AS creators, sum(eng) AS eng FROM t)
+), tot AS MATERIALIZED (SELECT sum(posts) AS posts, sum(views) AS views, (SELECT count(DISTINCT influencer_id)::float FROM posts) AS creators, sum(eng) AS eng FROM t)
 SELECT t.brand, ${r1("100.0 * t.posts / NULLIF(tot.posts, 0)")} AS "share of posts %", ${r1("100.0 * t.views / NULLIF(tot.views, 0)")} AS "share of views %",
        ${r1("100.0 * t.creators / NULLIF(tot.creators, 0)")} AS "share of creators %", ${r1("100.0 * t.eng / NULLIF(tot.eng, 0)")} AS "share of engagements %"
 FROM t, tot ORDER BY (t.brand = focal_brand()) DESC, t.posts DESC`,
@@ -310,7 +313,7 @@ FROM n`,
       {
         type: "insight", w: 12, h: 10,
         title: "Content briefs for the top three themes",
-        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the audience to put paid behind it, the words to use and the objection to answer. Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
+        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the audience to put paid behind it, the words of people under our own posts and the objection to answer. Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
         when: N_THEMED,
         sql: `WITH ${THEMES}, ${BEST_HOOK("sp.cur")},
 pick AS (SELECT c.*, row_number() OVER (ORDER BY (status = 'winning') DESC, (status = 'early signal') DESC, vs DESC NULLS LAST) AS rk FROM c WHERE status IN ('winning', 'early signal', 'above norm')),
@@ -332,12 +335,13 @@ fmt AS (
 ), bc AS MATERIALIZED (
   SELECT tp.theme, (tp.brand = focal_brand()) AS ours, c.text, coalesce(c.likes, 0) AS likes, c.sentiment, c.attribute, c.objection_category
   FROM brand_comments c JOIN tp ON tp.segment_id = c.segment_id AND tp.post_id = c.post_id
-), quote AS (SELECT DISTINCT ON (theme) theme, left(text, 150) AS said FROM bc WHERE sentiment = 'positive' AND attribute IS NOT NULL AND length(text) >= 25 ORDER BY theme, ours DESC, likes DESC),
+), quote AS (SELECT DISTINCT ON (theme) theme, left(text, 150) AS said FROM bc WHERE ours AND sentiment = 'positive' AND attribute IS NOT NULL AND length(text) >= 25 ORDER BY theme, likes DESC, text),
 obj AS (SELECT DISTINCT ON (theme) theme, attribute, n FROM (SELECT theme, attribute, count(*) AS n FROM bc WHERE attribute IS NOT NULL AND ${NEGATIVE} GROUP BY 1, 2) q WHERE n >= 3 ORDER BY theme, n DESC),
 ai AS MATERIALIZED (
-  SELECT DISTINCT tp.theme, i.segment_id, i.influencer_id, i.audience_female, i.audience_ages, i.audience_countries
+  SELECT DISTINCT ON (tp.theme, i.influencer_id) tp.theme, i.influencer_id, i.audience_female, i.audience_ages, i.audience_countries
   FROM tp JOIN influencers i ON i.segment_id = tp.segment_id AND i.influencer_id = tp.influencer_id
   WHERE NOT tp.is_owned AND i.audience_female IS NOT NULL AND jsonb_typeof(i.audience_ages) = 'object'
+  ORDER BY tp.theme, i.influencer_id, i.segment_id
 ), an AS (SELECT theme, count(*)::float AS k, avg(audience_female) AS female FROM ai GROUP BY 1 HAVING count(*) >= 5),
 ages AS (
   SELECT theme, string_agg(band || ' (' || ${pct("w")} || '%)', ' and ' ORDER BY w DESC) AS bands
@@ -361,7 +365,7 @@ SELECT CASE WHEN n.k = 0 THEN 'No theme is above the norm in this period' ELSE n
          || CASE WHEN mk.markets IS NOT NULL THEN ${li(`'<strong>Where:</strong> ' || mk.markets || '.'`)} ELSE '' END
          || CASE WHEN an.k IS NOT NULL THEN ${li(`'<strong>Paid audience:</strong> ' || CASE WHEN an.female >= 0.5 THEN ${pct("an.female")} || '% women' ELSE ${pct("1 - an.female")} || '% men' END || coalesce(', mostly aged ' || ages.bands, '') || coalesce(', in ' || geo.places, '') || '. The average audience of the ' || an.k::int || ' creators behind this theme whose audience is known.'`)} ELSE '' END
          || CASE WHEN quote.said IS NOT NULL THEN ${li(`'<strong>In their words:</strong> “' || quote.said || '”'`)} ELSE '' END
-         || CASE WHEN obj.attribute IS NOT NULL THEN ${li(`'<strong>Objection to answer:</strong> ' || lower(${ATTR("obj.attribute")}) || ' (' || obj.n || ' comments).'`)} ELSE '' END
+         || CASE WHEN obj.attribute IS NOT NULL THEN ${li(`'<strong>Objection to answer:</strong> ' || lower(coalesce(${ATTR("obj.attribute")}, obj.attribute)) || ' (' || obj.n || ' comments).'`)} ELSE '' END
          || '</ul>', '' ORDER BY top.rk)
          FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme) LEFT JOIN an USING (theme) LEFT JOIN ages USING (theme) LEFT JOIN geo USING (theme)) END AS body
 FROM n`,
@@ -542,11 +546,11 @@ FROM q LEFT JOIN top USING (topic) GROUP BY q.topic, top.example ORDER BY 3 DESC
       {
         type: "table", w: 12, h: 5,
         title: "Benefits nobody claims",
-        subtitle: "For each product attribute across the tracked brands: its share of the benefits creators claim in captions, against its share of the praise in brand comments. Open: the audience praises it at least 5 points more than creators claim it. Crowded: claimed at least 5 points more than praised. Counts are posts and comments; shares are percentages.",
+        subtitle: "For each product attribute across the tracked brands: its share of the benefits claimed in captions (every post, adverts and the brands' own included), against its share of the praise in brand comments. Open: the audience praises it at least 5 points more than creators claim it. Crowded: claimed at least 5 points more than praised. Counts are posts and comments; shares are percentages.",
         when: N_CLAIMS,
         sql: `WITH ${CLAIM_GAP("true")}
 SELECT ${ATTR("j.attribute")} AS attribute, j.claims::int AS "posts claiming it", ${r1("j.cs")} AS "share of claims %", j.praise::int AS "comments praising it", ${r1("j.ps")} AS "share of praise %", ${r1("j.ps - j.cs")} AS "gap, points",
-       CASE WHEN j.ps - j.cs >= 5 THEN 'Open' WHEN j.ps - j.cs <= -5 THEN 'Crowded' ELSE 'In line' END AS read
+       CASE WHEN j.ps - j.cs >= 5 THEN 'Open' WHEN j.ps - j.cs <= -5 THEN 'Crowded' WHEN j.ps IS NULL OR j.cs IS NULL THEN 'Too little to say' ELSE 'In line' END AS read
 FROM j ORDER BY j.ps - j.cs DESC NULLS LAST`,
         sample: { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE attribute IS NOT NULL AND ${POSITIVE}`, min: COMMENT_MIN, unit: "comments praising an attribute" },
         rationale: "The brief asks which benefits nobody claims. A benefit the audience praises unprompted and creators rarely claim is white space for the message.",
@@ -683,7 +687,7 @@ FROM pp LEFT JOIN pc USING (brand, product) WHERE pp.posts >= 20 ORDER BY (pp.br
         when: N_OUR_CLAIMS,
         sql: `WITH ${CLAIM_GAP("brand = focal_brand()")}
 SELECT ${ATTR("j.attribute")} AS attribute, j.claims::int AS "our posts claiming it", ${r1("j.cs")} AS "share of our claims %", j.praise::int AS "comments praising it", ${r1("j.ps")} AS "share of our praise %", ${r1("j.ps - j.cs")} AS "gap, points",
-       CASE WHEN j.ps - j.cs >= 5 THEN 'Say it more' WHEN j.ps - j.cs <= -5 THEN 'Over-said' ELSE 'In line' END AS read
+       CASE WHEN j.ps - j.cs >= 5 THEN 'Say it more' WHEN j.ps - j.cs <= -5 THEN 'Over-said' WHEN j.ps IS NULL OR j.cs IS NULL THEN 'Too little to say' ELSE 'In line' END AS read
 FROM j ORDER BY j.ps - j.cs DESC NULLS LAST`,
         sample: { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE brand = focal_brand() AND attribute IS NOT NULL AND ${POSITIVE}`, min: COMMENT_MIN, unit: "comments praising an attribute of ours" },
         rationale: "The brief's last question on what people say: is the message in our content the one the audience gives back?",

@@ -455,12 +455,14 @@ async function executeTool(
     if (i.compare_start && i.compare_end) next.compare = { mode: "custom", start: i.compare_start, end: i.compare_end };
     else if (i.compare && i.compare !== "none") next.compare = { mode: i.compare };
     else next.compare = null;
+    // The period tool does not touch the market: it stays as it was.
+    if (window?.market) next.market = window.market;
     const parsedState = PeriodStateSchema.safeParse(next);
     if (!parsedState.success) return { content: `Invalid period: ${parsedState.error.message}`, isError: true };
     emit({ type: "period", period: parsedState.data });
     const w = resolveWindow(parsedState.data);
     const c = resolveCompare(parsedState.data);
-    return { content: `Dashboard period set to ${formatWindow(w)}${c ? `, compared with ${formatWindow(c)}` : ""}. Queries you run from now on in this turn still use the previous period; mention the change to the person.`, isError: false };
+    return { content: `Dashboard period set to ${formatWindow(w)}${c ? `, compared with ${formatWindow(c)}` : ""}.${window?.market ? ` The market stays ${window.market}.` : ""} Queries you run from now on in this turn use the new period; mention the change to the person.`, isError: false };
   }
   if (name === "run_sql") {
     const parsed = RunSqlInput.safeParse(input);
@@ -483,7 +485,7 @@ async function executeTool(
     const widget = materialize(proposal, existing);
     let data: Row[] = [];
     if (widget.sql) {
-      const res = await runWidgetQuery(widget.sql, 500, widget.period === "all" ? null : window);
+      const res = await runWidgetQuery(widget.sql, 500, widget.period === "all" ? (window?.market ? { market: window.market } : null) : window);
       if (!res.ok) {
         emit({ type: "query", sql: widget.sql, ok: false, error: res.error });
         return { content: `The widget SQL failed: ${res.error}. Fix it and propose again.`, isError: true };
@@ -613,7 +615,7 @@ async function* providerTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]
   });
   const history = await loadHistory(input.sessionId ?? "");
   const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
-  const window = resolveWindow(input.period);
+  let window = resolveWindow(input.period);
   const messages: MsgParam[] = [...history, { role: "user", content: [{ type: "text", text: userApiText }] }];
   await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "user", content: input.userText, proposals: null, api_content: [{ type: "text", text: userApiText }] });
 
@@ -691,7 +693,11 @@ async function* providerTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[]
         const toolEvents: ChatEvent[] = [];
         meter.tools++;
         const r = await executeTool(tu.name, tu.input, existingWidgets, (e) => toolEvents.push(e), proposals, window);
-        for (const e of toolEvents) yield e;
+        for (const e of toolEvents) {
+          // After set_period the rest of the turn reads the new period, so numbers are never reported under the wrong label.
+          if (e.type === "period") window = resolveWindow(e.period);
+          yield e;
+        }
         results.push({ type: "tool_result", tool_use_id: tu.id, content: r.content, is_error: r.isError });
       }
       pending.push({
@@ -968,7 +974,7 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[], 
   const client = new OpenAI({ apiKey: openAiKey(), maxRetries: 2, timeout: 180_000 });
   const history = await loadOpenAiHistory(input.sessionId ?? "");
   const userApiText = `${input.instruction ?? input.userText}\n\n${await contextBlock(input.widgets, input.period)}`;
-  const window = resolveWindow(input.period);
+  let window = resolveWindow(input.period);
   const userMsg: OaiMessage = { role: "user", content: userApiText };
   const messages: OaiMessage[] = [{ role: "system", content: systemPrompt() }, ...history, userMsg];
   await storeMessage(input.dashboardId, input.sessionId ?? null, { role: "user", content: input.userText, proposals: null, api_content: { provider: "openai", message: userMsg } });
@@ -1052,7 +1058,10 @@ async function* openAiTurn(input: ChatTurnInput, existingWidgets: WidgetSpec[], 
         const r = parsedArgs === null
           ? { content: "INVALID_JSON: tool arguments could not be parsed; call the tool again.", isError: true }
           : (meter.tools++, await executeTool(c.name, parsedArgs, existingWidgets, (e) => toolEvents.push(e), proposals, window));
-        for (const e of toolEvents) yield e;
+        for (const e of toolEvents) {
+          if (e.type === "period") window = resolveWindow(e.period);
+          yield e;
+        }
         const toolMsg: OaiMessage = { role: "tool", tool_call_id: c.id, content: r.content };
         messages.push(toolMsg);
         pending.push({ role: "user", content: "", proposals: null, api_content: { provider: "openai", message: toolMsg } });

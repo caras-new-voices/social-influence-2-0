@@ -85,8 +85,8 @@ export function PeriodBar({ counts }: { counts?: { posts: number; comments: numb
     const c = resolveCompare(state);
     if (!c) return "Compare";
     if (state.compare.mode === "previous") return `vs ${isWholeMonth(c.start!, c.end!) ? formatMonth(monthKey(c.start!), false) : "previous period"}`;
-    if (state.compare.mode === "same_last_year") return `vs ${formatWindow(c)}`;
-    return `vs ${formatWindow(c)}`;
+    // The market is named once, on the coverage line.
+    return `vs ${formatWindow({ start: c.start, end: c.end })}`;
   })();
 
   return (
@@ -105,7 +105,7 @@ export function PeriodBar({ counts }: { counts?: { posts: number; comments: numb
         {compareWindow && <span className="period__cmp">· compared with {formatWindow({ start: compareWindow.start, end: compareWindow.end })}</span>}
       </div>
       <div className="period__actions">
-        {markets.length > 1 && (
+        {(markets.length > 1 || state.market) && (
           <select
             className={`im-select period__market ${state.market ? "is-set" : ""}`}
             value={state.market ?? ""}
