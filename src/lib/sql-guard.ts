@@ -25,7 +25,8 @@ export function guardSql(raw: string): { ok: true; sql: string } | { ok: false; 
   if (m) return { ok: false, reason: `Query contains a forbidden keyword: ${m[1]}.` };
   // The raw tables hold every industry; queries go through the views, which keep to the dashboard's brands.
   if (/\b(posts|comments|segments|influencers|post_labels)_raw\b/i.test(stripLiterals(cleaned))) return { ok: false, reason: "Use the posts, comments, influencers and segments tables." };
-  if (cleaned.length > 12000) return { ok: false, reason: "Query is too long." };
+  // The composed briefs are the longest queries (about 14,000 characters).
+  if (cleaned.length > 20000) return { ok: false, reason: "Query is too long." };
   return { ok: true, sql: cleaned };
 }
 

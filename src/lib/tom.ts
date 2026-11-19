@@ -71,7 +71,7 @@ const HASH_TAGS = (src = "posts") => `tags AS (
   WHERE p.text LIKE '%#%'
 )`;
 /** True for a hashtag that is a conversation: not platform filler, not a number, not a tracked brand's name. Apply after grouping by theme. */
-const HASH_OK = (col = "theme") => `${col} NOT IN (${FILLER.map((f) => `'${f}'`).join(", ")}) AND ${col} !~ '^(fyp|foryou|viral|explore)' AND ${col} !~ '^[0-9_]+$'
+export const HASH_OK = (col = "theme") => `${col} NOT IN (${FILLER.map((f) => `'${f}'`).join(", ")}) AND ${col} !~ '^(fyp|foryou|viral|explore)' AND ${col} !~ '^[0-9_]+$'
     AND NOT EXISTS (SELECT 1 FROM segments bk WHERE length(regexp_replace(lower(bk.brand), '[^a-z0-9]', '', 'g')) >= 3
       AND (${col} LIKE '%' || regexp_replace(lower(bk.brand), '[^a-z0-9]', '', 'g') || '%' OR (length(${col}) >= 6 AND regexp_replace(lower(bk.brand), '[^a-z0-9]', '', 'g') LIKE '%' || ${col} || '%')))
     AND NOT EXISTS (SELECT 1 FROM segments bw, regexp_split_to_table(lower(bw.brand), '[^a-z0-9]+') AS word WHERE length(word) >= 6 AND ${col} LIKE '%' || word || '%')`;

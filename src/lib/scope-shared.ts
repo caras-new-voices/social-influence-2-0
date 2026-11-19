@@ -4,10 +4,23 @@ import { z } from "zod";
  * A dashboard's brand scope: the industry it looks at, which brand is "us" and which of the
  * industry's other brands are the competitors. Brands left out are invisible to the dashboard.
  */
+/** Who the brand wants to reach. Any part may be left out; creators are matched on the parts that are set. */
+export const TargetAudienceSchema = z.object({
+  gender: z.enum(["women", "men"]).nullable().optional(),
+  ages: z.array(z.string().min(1).max(12)).max(8).optional(),
+  markets: z.array(z.string().min(1).max(80)).max(12).optional(),
+});
+export type TargetAudience = z.infer<typeof TargetAudienceSchema>;
+/** The age bands the creator audience data uses. */
+export const AGE_BANDS = ["13-17", "18-24", "25-34", "35-44", "45-64", "65-"];
+export const hasTarget = (t: TargetAudience | null | undefined): boolean => !!t && (!!t.gender || !!t.ages?.length || !!t.markets?.length);
+
 export const DashboardScopeSchema = z.object({
   industry: z.string().min(1).max(80),
   focal: z.string().min(1).max(200),
   competitors: z.array(z.string().min(1).max(200)).max(60).default([]),
+  /** The audience to match creators against (creator score). */
+  target: TargetAudienceSchema.nullable().optional(),
 });
 export type DashboardScope = z.infer<typeof DashboardScopeSchema>;
 
@@ -18,7 +31,10 @@ export function scopeBrands(scope: DashboardScope): string[] {
 
 /** A stable string for cache keys and equality checks. */
 export function scopeKey(scope: DashboardScope | null | undefined): string {
-  return scope ? `${scope.industry}|${scope.focal}|${[...scope.competitors].sort().join(",")}` : "";
+  if (!scope) return "";
+  const t = scope.target;
+  const target = hasTarget(t) ? `|${t!.gender ?? ""}/${[...(t!.ages ?? [])].sort().join(",")}/${[...(t!.markets ?? [])].sort().join(",")}` : "";
+  return `${scope.industry}|${scope.focal}|${[...scope.competitors].sort().join(",")}${target}`;
 }
 
 /** One brand as the catalogue describes it. */

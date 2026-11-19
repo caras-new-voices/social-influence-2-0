@@ -39,7 +39,7 @@ export const MEASURES: Array<{ name: string; formula: string; note: string }> = 
   { name: "Purchase intent", formula: "Buying-signal comments per 1,000 brand comments", note: "A buying signal asks where to get it, the price or a code, or says they will buy or just bought." },
   { name: "Praise and objections", formula: "Positive, and negative, comments per 1,000 brand comments", note: "Split by six attributes: price, efficacy, ease, durability, safety, service." },
   { name: "Content gap", formula: "A theme's share of comments minus its share of posts, in points", note: "Above zero, the audience talks about it more than creators cover it." },
-  { name: "Creator score", formula: "45% engagement vs norm, 25% buying signals, 15% theme fit, 10% value, 5% availability", note: "Each part is the creator's rank among all creators. Value is the modelled fee per engagement. Availability is lost when a rival has paid them. Creators with fewer than five posts are scaled down." },
+  { name: "Creator score", formula: "40% engagement vs norm, 20% buying signals, 15% theme fit, 10% audience match, 10% value, 5% availability", note: "Performance, buying signals and value are the creator's rank among all creators. Audience match is the share of their audience inside the target audience set on the dashboard, and a neutral half when none is set or their audience is not known. Value is the modelled fee per engagement. Availability is lost when a rival has paid them. Creators with fewer than five posts are scaled down." },
 ];
 
 export const THRESHOLDS: Array<[string, string]> = [

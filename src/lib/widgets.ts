@@ -22,7 +22,7 @@ export const WidgetSpecSchema = z.object({
   title: z.string().min(1).max(120),
   subtitle: z.string().max(240).optional(),
   /** Read-only SQL (Postgres) returning the rows to render. Required for data widgets. */
-  sql: z.string().max(12000).optional(),
+  sql: z.string().max(20000).optional(),
   /** Column used for the x axis / category (bar, line, stacked_bar, segmented). */
   x: z.string().optional(),
   /** Value column. Default "value". */

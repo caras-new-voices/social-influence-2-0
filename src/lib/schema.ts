@@ -202,6 +202,9 @@ CREATE OR REPLACE FUNCTION focal_brand() RETURNS text LANGUAGE sql STABLE AS $f$
 CREATE OR REPLACE FUNCTION period_start() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_start', true), '')::timestamptz $f$;
 CREATE OR REPLACE FUNCTION period_end() RETURNS timestamptz LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.period_end', true), '')::timestamptz $f$;
 CREATE OR REPLACE FUNCTION in_market(c text) RETURNS boolean LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.market', true), '') IS NULL OR c = current_setting('app.market', true) $f$;
+CREATE OR REPLACE FUNCTION target_gender() RETURNS text LANGUAGE sql STABLE AS $f$ SELECT nullif(current_setting('app.target_gender', true), '') $f$;
+CREATE OR REPLACE FUNCTION target_ages() RETURNS text[] LANGUAGE sql STABLE AS $f$ SELECT string_to_array(nullif(current_setting('app.target_ages', true), ''), chr(31)) $f$;
+CREATE OR REPLACE FUNCTION target_markets() RETURNS text[] LANGUAGE sql STABLE AS $f$ SELECT string_to_array(nullif(current_setting('app.target_markets', true), ''), chr(31)) $f$;
 CREATE VIEW posts_all AS SELECT * FROM posts_raw WHERE in_scope(brand) AND about IS DISTINCT FROM 'no' AND in_market(country);
 CREATE VIEW comments_all AS SELECT * FROM comments_raw WHERE in_scope(brand) AND in_market(country);
 CREATE VIEW influencers AS SELECT * FROM influencers_raw WHERE in_scope(brand);
@@ -216,7 +219,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-8";
+const VIEWS_VERSION = "scoped-9";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -244,6 +247,9 @@ ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS country text;
 ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS product text;
 ALTER TABLE posts_raw ADD COLUMN IF NOT EXISTS claims text[];
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS product text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_kind text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_from text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_to text;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */

@@ -20,6 +20,7 @@ import { Shell } from "./Shell";
 import { useToast } from "./Toast";
 import { WidgetEditor } from "./WidgetEditor";
 import { BrandPicker } from "./BrandPicker";
+import { TargetAudience } from "./TargetAudience";
 import { useConfirm } from "./Confirm";
 import { useWorkspace } from "./WorkspaceProvider";
 import { scopeKey, type DashboardScope } from "@/lib/scope-shared";
@@ -386,7 +387,8 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           <div className="modal modal--picker" role="dialog" aria-modal="true" aria-label="Brands on this dashboard">
             <div className="modal__head"><h3 className="im-text-header">Brands on this dashboard</h3><button className="im-btn im-btn-ghost im-btn-sm" onClick={() => setBrandDraft(null)} disabled={savingBrands}>Close</button></div>
             <div className="modal__body">
-              <BrandPicker value={brandDraft} onChange={setBrandDraft} />
+              <BrandPicker value={brandDraft} onChange={(next) => setBrandDraft({ ...next, target: brandDraft.target })} />
+              <TargetAudience value={brandDraft.target} scope={{ industry: brandDraft.industry, focal: brandDraft.focal, competitors: brandDraft.competitors }} onChange={(target) => setBrandDraft({ ...brandDraft, target })} />
             </div>
             <div className="modal__foot">
               <button className="im-btn im-btn-secondary" onClick={() => setBrandDraft(null)} disabled={savingBrands}>Cancel</button>

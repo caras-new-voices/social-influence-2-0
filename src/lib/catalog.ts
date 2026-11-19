@@ -4,7 +4,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { makeBrands, setWorkspace, type Workspace } from "./brands";
 import type { Db, Row } from "./db";
-import { DashboardScopeSchema, scopeBrands, type CatalogBrand, type CatalogIndustry, type DashboardScope } from "./scope-shared";
+import { DashboardScopeSchema, scopeBrands, type CatalogBrand, type CatalogIndustry, type DashboardScope, AGE_BANDS, hasTarget } from "./scope-shared";
 
 /**
  * The catalogue: every industry in the database and the brands tracked in each, with their
@@ -51,7 +51,9 @@ export function normalizeScope(input: unknown): DashboardScope | null {
   const names = new Set(ind.brands.map((b) => b.name));
   if (!names.has(parsed.data.focal)) return null;
   const competitors = [...new Set(parsed.data.competitors)].filter((c) => names.has(c) && c !== parsed.data.focal);
-  return { industry: ind.id, focal: parsed.data.focal, competitors };
+  const t = parsed.data.target;
+  const target = hasTarget(t) ? { gender: t!.gender ?? null, ages: (t!.ages ?? []).filter((a) => AGE_BANDS.includes(a)), markets: t!.markets ?? [] } : undefined;
+  return { industry: ind.id, focal: parsed.data.focal, competitors, ...(target ? { target } : {}) };
 }
 
 function safeJson(s: string): unknown {
