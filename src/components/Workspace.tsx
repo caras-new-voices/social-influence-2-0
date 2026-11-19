@@ -83,6 +83,9 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     return fromUrl.market === undefined && dashboard.period?.market ? { ...fromUrl, market: dashboard.period.market } : fromUrl;
   });
   const periodSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The market as it is right now: the analyst's period tool keeps it, even if the person changed it while the answer was being written.
+  const marketRef = useRef<string | null>(period.market ?? null);
+  useEffect(() => { marketRef.current = period.market ?? null; }, [period.market]);
   const setPeriod = useCallback((next: PeriodState) => {
     setPeriodState(next);
     // Mirror in the URL without a navigation, and persist with the dashboard (debounced, no dirty flag).
@@ -323,7 +326,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           prefill={prefill}
           onPrefillConsumed={() => setPrefill(undefined)}
           ask={ask}
-          onSetPeriod={(next) => setPeriod({ ...next, market: next.market ?? period.market ?? null })}
+          onSetPeriod={(next) => setPeriod({ ...next, market: marketRef.current })}
         />
         <div className="ws__canvas">
           <NewDataBanner dashboardId={dashboard.id} />

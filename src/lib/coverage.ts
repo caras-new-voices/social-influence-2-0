@@ -8,13 +8,15 @@ import { ensureReady } from "./schema";
  * What the dataset covers for the current scope's brands, computed from the data and the import log. Used by the period bar,
  * the analyst's dataset description and the new-period detection. Never hardcoded.
  */
-export async function getCoverage(): Promise<Coverage> {
+export async function getCoverage(market?: string): Promise<Coverage> {
   await ensureReady();
   const db = await getDb();
+  // With a market, the dates, totals and months are that market's. The list of markets is always the whole list.
+  const win = market ? { market } : null;
   const [d] = await readScoped<{ first: string | null; last: string | null; posts: number; comments: number }>(`
     SELECT least((SELECT min(published_at) FROM posts_all), (SELECT min(published_at) FROM comments_all)) AS first,
            greatest((SELECT max(published_at) FROM posts_all), (SELECT max(published_at) FROM comments_all)) AS last,
-           (SELECT count(*)::int FROM posts_all) AS posts, (SELECT count(*)::int FROM comments_all) AS comments`);
+           (SELECT count(*)::int FROM posts_all) AS posts, (SELECT count(*)::int FROM comments_all) AS comments`, [], win);
   // Imports feed the live industry only; the other industries are fixed snapshots.
   const live = getWorkspace().industry?.live !== false;
   const [imp] = live ? await db.query<{ covered_to: string | null }>(`SELECT max(covers_to)::text AS covered_to FROM imports WHERE status = 'done'`) : [{ covered_to: null }];
@@ -24,7 +26,7 @@ export async function getCoverage(): Promise<Coverage> {
        UNION SELECT DISTINCT to_char(date_trunc('month', published_at), 'YYYY-MM') FROM comments_all WHERE published_at IS NOT NULL) m
       LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM posts_all GROUP BY 1) p ON p.month = m.month
       LEFT JOIN (SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS n FROM comments_all GROUP BY 1) c ON c.month = m.month
-    ORDER BY 1`);
+    ORDER BY 1`, [], win);
   const markets = await readScoped<{ country: string; posts: number }>(
     `SELECT country, count(*)::int AS posts FROM posts_all WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY 1 HAVING count(*) >= 30 ORDER BY 2 DESC LIMIT 40`,
   );

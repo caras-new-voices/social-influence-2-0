@@ -1,39 +1,35 @@
+import fs from "node:fs";
+import path from "node:path";
+
 /**
  * The measured accuracy of each thing a model or a rule reads from the data, for the Method page.
- * Figures come from the reports in docs/ (accuracy-report*.md). Update them when a check is run again.
+ * The figures are in data/seed/accuracy.json, which the checks write (scripts/check_accuracy.py and
+ * scripts/classify_products.py judge and judge-claims), so the page shows the last measurement.
  */
 export interface AccuracyLine {
+  key: string;
   what: string;
   /** Agreement with the judge, in percent. */
   agreement: number;
   sample: string;
   scope: string;
+  /** The day it was measured. */
+  measured: string;
 }
 
-export const ACCURACY_DATE = "18 November 2026";
 export const ACCURACY_JUDGE = "A stronger model reads a random sample without seeing our answer. This is agreement between two models, not a human check.";
-export const PASS_MARK = 90;
 
-export const ACCURACY: AccuracyLine[] = [
-  { what: "Paid, gifted or neither", agreement: 97, sample: "1,500 posts", scope: "All industries" },
-  { what: "Posts shown as paid from the caption really disclose it", agreement: 92, sample: "718 posts", scope: "All industries" },
-  { what: "Posts kept are about the brand they are filed under", agreement: 89.7, sample: "1,499 posts", scope: "All industries" },
-  { what: "A comment is about the brand or category, or it is not", agreement: 89, sample: "300 comments", scope: "Hair removal" },
-  { what: "The right one of the six attributes on a brand comment", agreement: 87, sample: "150 comments", scope: "Hair removal" },
-  { what: "Comments counted as buying signals are buying signals", agreement: 92, sample: "150 comments", scope: "Hair removal" },
-  { what: "Unanswered questions are about the brand", agreement: 98, sample: "175 comments", scope: "Hair removal" },
-  { what: "Earned creators: no disclosure in their captions", agreement: 94, sample: "108 creators", scope: "Hair removal" },
-  { what: "The theme of a post", agreement: 78, sample: "measured the week before", scope: "Hair removal" },
-  { what: "The product line of a post, where one is named", agreement: 94, sample: "141 posts", scope: "Hair removal" },
-  { what: "The product line of a brand comment, where one is named", agreement: 93, sample: "162 comments", scope: "Hair removal" },
-  { what: "A caption we tag as claiming price really claims it", agreement: 100, sample: "34 posts", scope: "Hair removal" },
-  { what: "A caption we tag as claiming efficacy really claims it", agreement: 100, sample: "66 posts", scope: "Hair removal" },
-  { what: "A caption we tag as claiming ease of use really claims it", agreement: 98, sample: "57 posts", scope: "Hair removal" },
-  { what: "A caption we tag as claiming safety and comfort really claims it", agreement: 100, sample: "76 posts", scope: "Hair removal" },
-  { what: "A caption we tag as claiming durability really claims it", agreement: 100, sample: "5 posts", scope: "Hair removal" },
-  { what: "A caption we tag as claiming service and availability really claims it", agreement: 96, sample: "28 posts", scope: "Hair removal" },
-  { what: "Share of the judge's claims that we also find (we read more strictly)", agreement: 78, sample: "300 posts", scope: "Hair removal" },
-];
+/** The accuracy lines and the pass mark, read from the seed folder. Empty when the file is missing. */
+export function readAccuracy(): { pass: number; lines: AccuracyLine[] } {
+  try {
+    const file = path.join(process.env.SEED_DIR ?? path.join(process.cwd(), "data", "seed"), "accuracy.json");
+    const doc = JSON.parse(fs.readFileSync(file, "utf8")) as { pass?: number; lines?: AccuracyLine[] };
+    return { pass: doc.pass ?? 90, lines: doc.lines ?? [] };
+  } catch {
+    return { pass: 90, lines: [] };
+  }
+}
+
 
 export const MEASURES: Array<{ name: string; formula: string; note: string }> = [
   { name: "Share of voice", formula: "Our posts ÷ all tracked brands' posts", note: "Also shown by views, creators and engagements. The category is the tracked brands, not the whole market." },

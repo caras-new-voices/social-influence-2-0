@@ -313,7 +313,7 @@ FROM n`,
       {
         type: "insight", w: 12, h: 10,
         title: "Content briefs for the top three themes",
-        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the audience to put paid behind it, the words of people under our own posts and the objection to answer. Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
+        subtitle: "One brief per theme, composed from the numbers on this dashboard: why now, our gap, how to tell it, who should tell it, where, the audience to put paid behind it, the words of people under our own posts and the objection to answer (one raised in 5 or more brand comments). Set a market on the period bar to get the briefs for that market. Ask AI can turn any of them into a full creative brief.",
         when: N_THEMED,
         sql: `WITH ${THEMES}, ${BEST_HOOK("sp.cur")},
 pick AS (SELECT c.*, row_number() OVER (ORDER BY (status = 'winning') DESC, (status = 'early signal') DESC, vs DESC NULLS LAST) AS rk FROM c WHERE status IN ('winning', 'early signal', 'above norm')),
@@ -336,7 +336,7 @@ fmt AS (
   SELECT tp.theme, (tp.brand = focal_brand()) AS ours, c.text, coalesce(c.likes, 0) AS likes, c.sentiment, c.attribute, c.objection_category
   FROM brand_comments c JOIN tp ON tp.segment_id = c.segment_id AND tp.post_id = c.post_id
 ), quote AS (SELECT DISTINCT ON (theme) theme, left(text, 150) AS said FROM bc WHERE ours AND sentiment = 'positive' AND attribute IS NOT NULL AND length(text) >= 25 ORDER BY theme, likes DESC, text),
-obj AS (SELECT DISTINCT ON (theme) theme, attribute, n FROM (SELECT theme, attribute, count(*) AS n FROM bc WHERE attribute IS NOT NULL AND ${NEGATIVE} GROUP BY 1, 2) q WHERE n >= 3 ORDER BY theme, n DESC),
+obj AS (SELECT DISTINCT ON (theme) theme, attribute, n FROM (SELECT theme, attribute, count(*) AS n FROM bc WHERE attribute IS NOT NULL AND ${NEGATIVE} GROUP BY 1, 2) q WHERE n >= 5 ORDER BY theme, n DESC, attribute),
 ai AS MATERIALIZED (
   SELECT DISTINCT ON (tp.theme, i.influencer_id) tp.theme, i.influencer_id, i.audience_female, i.audience_ages, i.audience_countries
   FROM tp JOIN influencers i ON i.segment_id = tp.segment_id AND i.influencer_id = tp.influencer_id
@@ -359,7 +359,7 @@ SELECT CASE WHEN n.k = 0 THEN 'No theme is above the norm in this period' ELSE n
        ELSE (SELECT string_agg(
          '<h3>' || top.rk || '. ' || top.theme || '</h3><ul>'
          || ${li(`'<strong>Why now:</strong> engagement ' || ${x2("top.vs")} || ' the norm over ' || top.posts::int || ' posts' || CASE WHEN top.mom IS NOT NULL THEN ', posts ' || CASE WHEN top.mom >= 0 THEN 'up ' ELSE 'down ' END || ${pct("abs(top.mom)")} || '%' ELSE '' END || ' (' || top.status || ').'`)}
-         || ${li(`'<strong>Our gap:</strong> we have ' || ${pct("top.ours / top.posts")} || '% of its posts against ' || ${pct("top.share")} || '% of all posts.'`)}
+         || ${li(`'<strong>Our gap:</strong> we have ' || ${pct("top.ours / top.posts")} || '% of its posts against ' || ${pct("top.share")} || '% of all posts in the same period.'`)}
          || CASE WHEN bh.hook IS NOT NULL OR fmt.format IS NOT NULL THEN ${li(`'<strong>How to tell it:</strong> ' || CASE WHEN bh.hook IS NOT NULL THEN 'told as ' || lower(bh.hook) || ' (' || ${x2("bh.hvs")} || ' the norm)' ELSE '' END || CASE WHEN bh.hook IS NOT NULL AND fmt.format IS NOT NULL THEN ', ' ELSE '' END || CASE WHEN fmt.format IS NOT NULL THEN 'best on ' || fmt.format || ' (' || ${x2("fmt.fvs")} || ')' ELSE '' END || '.'`)} ELSE '' END
          || CASE WHEN crr.names IS NOT NULL THEN ${li(`'<strong>Who should tell it:</strong> ' || crr.names || '. The figure is engagement vs norm on their posts in this theme.'`)} ELSE '' END
          || CASE WHEN mk.markets IS NOT NULL THEN ${li(`'<strong>Where:</strong> ' || mk.markets || '.'`)} ELSE '' END

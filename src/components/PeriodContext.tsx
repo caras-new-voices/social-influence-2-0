@@ -24,13 +24,14 @@ export function usePeriod(): PeriodContextValue {
 
 const coverageCache = new Map<string, Promise<Coverage>>();
 /** Coverage of the page's brands (the workspace scope). `force` drops what was cached for every scope. */
-export function fetchCoverage(force = false): Promise<Coverage> {
+export function fetchCoverage(force = false, market?: string | null): Promise<Coverage> {
   if (force) coverageCache.clear();
   const scope = getWorkspace().scope ?? null;
-  const key = scopeKey(scope);
+  const key = `${scopeKey(scope)}@${market ?? ""}`;
   let p = coverageCache.get(key);
   if (!p) {
-    p = fetch(`/api/coverage${scope ? `?scope=${encodeURIComponent(JSON.stringify(scope))}` : ""}`).then((r) => r.json() as Promise<Coverage>);
+    const qs = new URLSearchParams({ ...(scope ? { scope: JSON.stringify(scope) } : {}), ...(market ? { market } : {}) }).toString();
+    p = fetch(`/api/coverage${qs ? `?${qs}` : ""}`).then((r) => r.json() as Promise<Coverage>);
     coverageCache.set(key, p);
     p.catch(() => coverageCache.delete(key));
   }
@@ -40,13 +41,17 @@ export function fetchCoverage(force = false): Promise<Coverage> {
 export function PeriodProvider({ state, onChange, children }: { state: PeriodState; onChange: (next: PeriodState) => void; children: ReactNode }) {
   const [coverage, setCoverage] = useState<Coverage | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+  const market = state.market ?? null;
   useEffect(() => {
-    fetchCoverage().then(setCoverage).catch(() => {});
+    // The dates, the totals and the month picker follow the market; the last answer stays on screen until the new one arrives.
+    let live = true;
+    const show = (c: Coverage) => { if (live) setCoverage(c); };
+    fetchCoverage(false, market).then(show).catch(() => {});
     // Fired by the period-events poller when an import landed: refresh coverage and every element.
-    const onData = () => { fetchCoverage(true).then(setCoverage).catch(() => {}); setDataVersion((v) => v + 1); };
+    const onData = () => { fetchCoverage(true, market).then(show).catch(() => {}); setDataVersion((v) => v + 1); };
     window.addEventListener("si:data-updated", onData);
-    return () => window.removeEventListener("si:data-updated", onData);
-  }, []);
+    return () => { live = false; window.removeEventListener("si:data-updated", onData); };
+  }, [market]);
   const value = useMemo<PeriodContextValue>(
     () => ({ state, dataVersion, window: resolveWindow(state), compareWindow: resolveCompare(state), setState: onChange, coverage }),
     [state, dataVersion, onChange, coverage],

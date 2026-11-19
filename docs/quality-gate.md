@@ -125,6 +125,14 @@ Three rounds, each one review plus the checks, until a round found nothing.
 - **An older fault found on the way:** on Postgres a written review did not come back in the month list after a reload. Fixed.
 - **Import tested.** Two comments imported without their post got the post's market and showed under it, and not under another market.
 
+### Small fixes sweep (19 November 2026)
+
+- With a market selected, the dates, totals and month picker on the period bar are that market's.
+- The market is named once on the period bar.
+- A brief says its share figures are for the same period, and names an objection only when 5 or more brand comments raise it.
+- The accuracy figures on the Method page come from `data/seed/accuracy.json`, which `check_accuracy.py` and `classify_products.py` write, with the day each was measured. The page's coverage counts are kept for ten minutes.
+- The analyst's period tool keeps the market as it is at that moment, even if it was changed while the answer was being written.
+
 ### Not verified
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 

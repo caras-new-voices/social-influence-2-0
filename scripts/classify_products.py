@@ -127,6 +127,18 @@ def caption(text, n=600):
     t = text or ""
     return t if len(t) <= n else t[: n - 180] + " [...] " + t[-150:]
 
+def save_accuracy(lines):
+    """Writes measured lines into data/seed/accuracy.json, which the Method page shows. Lines are matched by key."""
+    path = os.path.join(SEED, "accuracy.json")
+    doc = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {"pass": 90, "lines": []}
+    by = {l["key"]: l for l in doc["lines"]}
+    for l in lines:
+        if l["key"] in by: by[l["key"]].update(l)      # the wording on the page stays as it was edited
+        else: doc["lines"].append(l)
+    json.dump(doc, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+TODAY = time.strftime("%d %B %Y").lstrip("0")
+
 # ---------------------------------------------------------------- lines: draft each brand's product lines
 
 def lines_system(ind):
@@ -276,6 +288,14 @@ def run_judge_claims(ind):
         f = {k for k in got if a in mine[k]}; j = {k for k in got if a in got[k]}
         out.append(f"- Claim \"{a}\": ours {len(f)}, judge {len(j)}, both {len(f & j)}. The judge confirms {100 * len(f & j) // max(1, len(f))}% of ours, and we find {100 * len(f & j) // max(1, len(j))}% of the judge's. The two agree on {100 * sum((a in mine[k]) == (a in got[k]) for k in got) // max(1, len(got))}% of posts.")
     out.append(f"- Posts where every claim is the same: {sum(mine[k] == got[k] for k in got)} of {len(got)} ({100 * sum(mine[k] == got[k] for k in got) // max(1, len(got))}%).")
+    NAMES = {"price": "price", "efficacy": "efficacy", "ease": "ease of use", "durability": "durability", "safety": "safety and comfort", "service": "service and availability"}
+    acc, ours_n, judge_n = [], 0, 0
+    for a in ATTRIBUTES:
+        f = {k for k in got if a in mine[k]}; j = {k for k in got if a in got[k]}
+        ours_n += len(f & j); judge_n += len(j)
+        acc.append({"key": "claim-" + a, "what": f"A caption we tag as claiming {NAMES[a]} really claims it", "agreement": round(100 * len(f & j) / max(1, len(f))), "sample": f"{len(f)} posts", "scope": ind["name"], "measured": TODAY})
+    acc.append({"key": "claims-found", "what": "Share of the judge's claims that we also find (we read more strictly)", "agreement": round(100 * ours_n / max(1, judge_n)), "sample": f"{len(got)} posts", "scope": ind["name"], "measured": TODAY})
+    save_accuracy(acc)
     path = os.path.join(ROOT, "docs", "accuracy-report-products.md")
     text = open(path, encoding="utf-8").read().split("\n## Claimed benefits after the stricter second reading")[0].rstrip("\n") + "\n" + "\n".join(out) + "\n"
     open(path, "w", encoding="utf-8").write(text)
@@ -428,6 +448,9 @@ def run_judge(ind):
         cnamed_ok = [k for k in cnamed if cgot[k] == cfirst[k][2]]
         out += [f"- Comment product line: the judge agrees on {len(csame)} of {len(cgot)} comments ({100 * len(csame) // max(1, len(cgot))}%).",
                 f"- Where the first reading named a product line for a comment, the judge names the same one on {len(cnamed_ok)} of {len(cnamed)} ({100 * len(cnamed_ok) // max(1, len(cnamed))}%)."]
+    acc = [{"key": "product-post", "what": "The product line of a post, where one is named", "agreement": round(100 * len(named_ok) / max(1, len(named))), "sample": f"{len(named)} posts", "scope": ind["name"], "measured": TODAY}]
+    if cfirst: acc.append({"key": "product-comment", "what": "The product line of a brand comment, where one is named", "agreement": round(100 * len(cnamed_ok) / max(1, len(cnamed))), "sample": f"{len(cnamed)} comments", "scope": ind["name"], "measured": TODAY})
+    save_accuracy(acc)
     text = "\n".join(["# Accuracy of the product and claim tags", "", "Written by `scripts/classify_products.py judge`. Two models agreeing is not proof, but where they disagree a person should look.", ""] + out) + "\n"
     open(os.path.join(ROOT, "docs", "accuracy-report-products.md"), "w", encoding="utf-8").write(text)
     print(text)

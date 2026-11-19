@@ -21,10 +21,10 @@ Judge: gpt-5.5, reading blind with the same instructions. First reading: gpt-5.4
 
 Second reading: gpt-5.4 on every caption. Judge: gpt-5.5, blind, same instructions, 300 posts.
 
-- Claim "price": ours 34, judge 42, both 34. The judge confirms 100% of ours, and we find 80% of the judge's. The two agree on 97% of posts.
-- Claim "efficacy": ours 66, judge 82, both 66. The judge confirms 100% of ours, and we find 80% of the judge's. The two agree on 94% of posts.
-- Claim "ease": ours 57, judge 71, both 56. The judge confirms 98% of ours, and we find 78% of the judge's. The two agree on 94% of posts.
-- Claim "durability": ours 5, judge 9, both 5. The judge confirms 100% of ours, and we find 55% of the judge's. The two agree on 98% of posts.
-- Claim "safety": ours 76, judge 84, both 76. The judge confirms 100% of ours, and we find 90% of the judge's. The two agree on 97% of posts.
-- Claim "service": ours 28, judge 49, both 27. The judge confirms 96% of ours, and we find 55% of the judge's. The two agree on 92% of posts.
-- Posts where every claim is the same: 235 of 300 (78%).
+- Claim "price": ours 34, judge 49, both 34. The judge confirms 100% of ours, and we find 69% of the judge's. The two agree on 95% of posts.
+- Claim "efficacy": ours 66, judge 85, both 66. The judge confirms 100% of ours, and we find 77% of the judge's. The two agree on 93% of posts.
+- Claim "ease": ours 57, judge 69, both 55. The judge confirms 96% of ours, and we find 79% of the judge's. The two agree on 94% of posts.
+- Claim "durability": ours 5, judge 11, both 5. The judge confirms 100% of ours, and we find 45% of the judge's. The two agree on 98% of posts.
+- Claim "safety": ours 76, judge 87, both 76. The judge confirms 100% of ours, and we find 87% of the judge's. The two agree on 96% of posts.
+- Claim "service": ours 28, judge 50, both 28. The judge confirms 100% of ours, and we find 56% of the judge's. The two agree on 92% of posts.
+- Posts where every claim is the same: 226 of 300 (75%).
