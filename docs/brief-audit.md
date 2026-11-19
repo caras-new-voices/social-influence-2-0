@@ -19,7 +19,7 @@ Totals for the 39 sub-questions: 26 answered, 9 approximations, 4 not possible y
 - **Purchase intent. Answered.** Buying-signal comments per 1,000 brand comments, against rivals.
 - **Praise and objections. Answered.** Positive and negative comments per 1,000 brand comments, by the brief's six attributes.
 - **Content gap. Answered.** A theme's share of comments minus its share of posts.
-- **Creator score. Approximation.** Engagement vs norm, theme fit and purchase intent are scored. Audience match is shown, not scored, because few creators have audience data.
+- **Creator score. Approximation.** Engagement vs norm, purchase intent, theme fit, cost (modelled fees) and availability (whether a rival has paid them) are scored. Audience match is shown, not scored, because few creators have audience data and there is no target audience to match against.
 
 Minimum samples are the brief's: 30 posts per theme and 200 comments behind a comment measure.
 
@@ -69,7 +69,7 @@ Output in the brief: for each brand and product, 3 things to amplify, 3 to answe
 6. **What should the copy say? Answered.** "What the copy should say": the most-liked product comments per attribute.
 7. **Are we saying what people value? Answered.** "Are we saying what people value?": what posts about us claim against what our audience praises.
 
-Putting paid behind it: "Who reaches our buyer" shows the audience of our creators where known. Paid audience profiles are not built.
+Putting paid behind it: each content brief in section 1 has a "Paid audience" line (gender, age bands and countries of the audience behind the theme, where known), and "Who reaches our buyer" shows the audience of our creators. Interest targeting is not in the data.
 
 ## 4. Which creators win in each conversation?
 

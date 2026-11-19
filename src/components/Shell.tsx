@@ -105,6 +105,7 @@ export function Shell({ title, actions, children, titleSlot }: { title: string; 
         <span className="im-micro-label sidebar__section">Workspace</span>
         {item("Dashboards", Icon.grid, "/", active("/"))}
         {item("Dataset", Icon.data, "/data", active("/data"))}
+        {item("Method", Icon.news, "/method", active("/method"))}
         {item("Usage", Icon.usage, "/usage", active("/usage"))}
         <span className="im-micro-label sidebar__section">Other workspaces</span>
         {item("Discovery", Icon.search)}

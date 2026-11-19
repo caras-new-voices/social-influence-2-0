@@ -12,6 +12,7 @@ import { runWidgetQuery } from "./query";
 import { datasetDoc } from "./schema-doc";
 import { ensureReady } from "./schema";
 import { isDataWidget, type WidgetSpec } from "./widgets";
+import { EIGHT_MEASURES_SQL } from "./tom8";
 
 /**
  * Monthly reports: one row per complete month with headline numbers and the delta versus the
@@ -87,6 +88,25 @@ SELECT
   (SELECT count(*)::int FROM comments WHERE brand = focal_brand() AND purchase_intent_type IS NOT NULL) AS intent_comments,
   (SELECT count(*)::int FROM comments WHERE brand = focal_brand() AND objection_category IS NOT NULL) AS objections`;
 
+/** One of the eight measures for a month: its value, the month before, and how to show it. */
+export interface MonthMeasure { label: string; value: number | null; compare: number | null; fmt: "percent" | "ratio" | "decimal" | "points" }
+export interface MonthRead { measures: MonthMeasure[]; kpis: MonthKpis; previous: MonthKpis | null }
+
+/** The monthly read: the eight measures and the volume counts for one month against the month before, for all markets or one. */
+export async function getMonthRead(dashboardId: string, month: string, market?: string): Promise<MonthRead> {
+  return runForDashboard(await getDashboard(dashboardId), async () => {
+    await ensureReports();
+    const window: PeriodWindow = { start: monthStart(month), end: monthEnd(month), ...(market ? { market } : {}) };
+    const prevKey = monthKey(addMonths(monthStart(month), -1));
+    const res = await runWidgetQuery(EIGHT_MEASURES_SQL, 20, window);
+    const num = (v: unknown) => (v == null ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    const measures: MonthMeasure[] = res.ok ? res.rows.map((r) => ({ label: String(r.label), value: num(r.value), compare: num(r.compare), fmt: String(r.fmt) as MonthMeasure["fmt"] })) : [];
+    const cov = await getCoverage();
+    const hasPrev = cov.months.some((x) => x.month === prevKey && x.posts > 0);
+    return { measures, kpis: await kpisFor(window), previous: hasPrev ? await kpisFor({ start: monthStart(prevKey), end: monthEnd(prevKey), ...(market ? { market } : {}) }) : null };
+  });
+}
+
 async function kpisFor(window: PeriodWindow): Promise<MonthKpis> {
   const res = await runWidgetQuery(KPI_SQL, 5, window);
   const r = res.ok ? res.rows[0] ?? {} : {};
@@ -104,11 +124,11 @@ function monthsForReports(months: MonthCoverage[]): MonthCoverage[] {
 }
 
 /** One row per month of the dashboard's brands, with headline numbers and any stored review. */
-export async function listMonthReports(dashboardId: string): Promise<{ rows: MonthReportRow[]; coveredTo: string | null }> {
+export async function listMonthReports(dashboardId: string): Promise<{ rows: MonthReportRow[]; coveredTo: string | null; markets: string[] }> {
   return runForDashboard(await getDashboard(dashboardId), () => listReports(dashboardId));
 }
 
-async function listReports(dashboardId: string): Promise<{ rows: MonthReportRow[]; coveredTo: string | null }> {
+async function listReports(dashboardId: string): Promise<{ rows: MonthReportRow[]; coveredTo: string | null; markets: string[] }> {
   await ensureReports();
   const cov = await getCoverage();
   const months = monthsForReports(cov.months);
@@ -135,7 +155,7 @@ async function listReports(dashboardId: string): Promise<{ rows: MonthReportRow[
       review: byStart.get(monthStart(m.month)) ?? null,
     });
   }
-  return { rows, coveredTo: cov.coveredTo };
+  return { rows, coveredTo: cov.coveredTo, markets: (cov.markets ?? []).map((m) => m.country) };
 }
 
 export async function getStoredReport(dashboardId: string, month: string): Promise<StoredReport | null> {

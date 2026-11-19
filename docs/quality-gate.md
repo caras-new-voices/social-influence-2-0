@@ -86,6 +86,12 @@ Theme accuracy was measured last week: 78% for hair removal, the lowest of the t
   - 43% of posts name no product line, so the product boxes cover the rest.
 - **The arithmetic.** `npm run check:numbers` now recomputes 291 numbers, including the product and claims boxes. All match.
 
+### Paid audience, creator score, monthly read and method page (19 November 2026)
+
+- **Creator score** now counts cost and availability. Fees are the supplier's model, so cost carries 10% only.
+- **Paid audience** is an average over the creators whose audience is known, 539 of 3,332 profiles in hair removal. It is hidden under five creators.
+- **Monthly read** uses the dashboard's own eight-measures query, so the two cannot disagree. A month with under 30 of our posts says so.
+
 ### Not verified
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 

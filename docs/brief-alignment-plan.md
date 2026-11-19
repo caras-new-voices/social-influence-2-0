@@ -41,13 +41,16 @@ One new read of the captions and comments (`scripts/classify_products.py`) added
 
 Cost: one classifier run over 6,137 hair removal posts and 7,609 brand comments, a few dollars. The other nine industries have not been read: their product and claim boxes stay hidden.
 
-## Phase 3: after that
+## Phase 3: built
 
-- **3. Paid audience.** A profile per theme from the creators behind it (audience market, age, gender where known) and the conversation's own words, added to each brief.
-- **7. Creator score.** Add cost (modelled fees) and availability (works with a rival, paid by a rival) to the score. Audience match once there is a target audience to match against.
-- **8. The monthly read.** Make the Reports page lead with what moved in the eight measures, per market.
-- **9. Themes on earned posts only.** A question for Tom: should "which conversations are winning" count the brand's own posts and adverts?
-- **10. A method page** in the product with coverage, the measured accuracy figures and the fixed norms, for the data lead.
+- **3. Paid audience.** Each content brief has a "Paid audience" line: the average audience of the creators behind the theme whose audience is known (gender, the two largest age bands, the three largest countries). Shown when five or more such creators stand behind the theme. Interest targeting is not in the data.
+- **7. Creator score.** Now 45% engagement vs norm, 25% buying signals, 15% theme fit, 10% value (modelled fee per engagement, cheapest best) and 5% availability (lost when a rival has paid the creator). The table shows the estimated fee per post and the availability. Audience match is still shown and not scored: there is no target audience to match against.
+- **8. The monthly read.** The Reports page opens each month with the eight measures against the month before and a line on what moved most. A market select gives the same read for one market.
+- **10. A method page** in the left menu: every definition, the fixed lines and minimum samples, coverage per industry, the measured accuracy of each reading, and the limits. The accuracy figures live in `src/lib/method.ts`.
+
+## Open question for Tom
+
+- **9. Themes on earned posts only.** Should "which conversations are winning" count the brand's own posts and adverts? Not built either way until he answers.
 
 ## Needs data we do not have
 
