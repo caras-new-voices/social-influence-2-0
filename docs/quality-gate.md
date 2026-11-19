@@ -133,7 +133,21 @@ Three rounds, each one review plus the checks, until a round found nothing.
 - The accuracy figures on the Method page come from `data/seed/accuracy.json`, which `check_accuracy.py` and `classify_products.py` write, with the day each was measured. The page's coverage counts are kept for ten minutes.
 - The analyst's period tool keeps the market as it is at that moment, even if it was changed while the answer was being written.
 
+### Closing the gaps to the brief (19 November 2026)
+
+Built after a line-by-line rating of the product against Tom's brief (6.5 out of 10 for hair removal).
+
+- **Per product:** amplify, answer and attack by product, the priority grid by product, and objections by product over time. Only five product lines have the 200 brand comments a comment measure needs.
+- **Top 10 lists** per theme, per product and per rival.
+- **Every answer is a brief:** the white space and the amplify, answer and attack list now get a creator and a paid audience too. Each theme brief adds keywords from the conversation and how to activate the creators in paid.
+- **Per theme and per market:** the hook and format that win in each theme, the top themes of the five largest markets side by side, and where each theme grew first.
+- **Switching** read from the comments by a model: the judge sees the same direction in 91% of the comments we count, and agrees on 95% of the ones we do not.
+- **The loop:** a theme can be marked as acted on, and each month's read says whether our posts, our share and our engagement on it moved.
+- **Audience match** is in the creator score, against a target audience set under Brands.
+- A bug caught in testing: with no target set, audience match read 100% for creators with audience data. Fixed before merge.
+
 ### Not verified
+- The switching flows are small (391 comments in all). Most pairs rest on 3 to 20 comments.
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.
 
 - No person outside this build has checked a sample. The model checks and my own read are above; Tom or the team has not looked.

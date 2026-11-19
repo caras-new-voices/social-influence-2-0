@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatNumber } from "@/lib/format";
 import { addDays, addMonths, formatDate, formatMonth, monthKey, monthStart } from "@/lib/period";
-import type { MonthKpis, MonthMeasure, MonthRead, MonthReportRow, StoredReport } from "@/lib/reports";
+import type { ActedTheme, MonthKpis, MonthMeasure, MonthRead, MonthReportRow, StoredReport, ThemeMonth } from "@/lib/reports";
 import type { DashboardRecord } from "@/lib/widgets";
 import { Shell } from "./Shell";
 import { useToast } from "./Toast";
@@ -36,6 +36,16 @@ type Read = MonthRead | "failed";
 /** What a card says when a measure has no month-before figure by design. */
 const NO_COMPARE: Record<string, string> = { Momentum: "posts against the month before", "Content gap": "the largest gap of any theme" };
 const LOWER_IS_BETTER = new Set(["Objections per 1K"]);
+
+const sharePct = (t: ThemeMonth) => (t.posts ? `${Math.round((100 * t.ours) / t.posts)}%` : "–");
+const vsText = (t: ThemeMonth) => (t.vs == null ? "–" : `${t.vs.toFixed(2)}×`);
+/** How a theme the team acted on did this month against the month before, in one sentence. */
+function actedLine(a: ActedTheme, prev: string | null): string {
+  const n = a.now, b = a.before;
+  if (!n.ours && !(b && b.ours)) return `we had no posts on it${prev ? ` this month or in ${prev}` : " this month"}. The theme had ${n.posts} posts in all.`;
+  const was = (now: string, before: string | null) => (before == null ? now : `${now} (${before} in ${prev})`);
+  return `${was(`${n.ours} of our posts`, b ? String(b.ours) : null)}, ${was(`${sharePct(n)} of the theme's posts`, b ? sharePct(b) : null)}, engagement vs norm on ours ${was(vsText(n), b ? vsText(b) : null)}.`;
+}
 
 /** The eight measures for the month against the month before, and the three that moved most. */
 function MonthMeasures({ read, month, prev, market, retry }: { read: Read | undefined; month: string; prev: string | null; market: string; retry: () => void }) {
@@ -126,6 +136,24 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
   const current = rows.find((r) => r.month === open) ?? null;
   const read = reads[readKey];
   const retry = () => setReads((x) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== readKey)));
+  // Themes the team acted on: the list to pick from, and marking or unmarking one.
+  const [themes, setThemes] = useState<string[]>([]);
+  const [pick, setPick] = useState("");
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/dashboards/${dashboard.id}/actions`).then((r) => r.json()).then((j: { themes?: string[] }) => { if (live) setThemes(j.themes ?? []); }).catch(() => {});
+    return () => { live = false; };
+  }, [dashboard.id]);
+  const mark = async (theme: string, remove: boolean) => {
+    try {
+      const r = await fetch(`/api/dashboards/${dashboard.id}/actions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme, remove }) });
+      if (!r.ok) throw new Error(((await r.json()) as { error?: string }).error ?? "Could not save");
+      setPick("");
+      setReads({});   // every month's read lists the acted themes: fetch them again
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
   const ok = read && read !== "failed" ? read : null;
   // The review shown: this market's when one is selected, else the all-markets one.
   const review = current ? (market ? ok?.review ?? null : current.review) : null;
@@ -222,6 +250,29 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
               </header>
               <h3 className="rep__sub">The eight measures{market ? ` in ${market}` : ""}</h3>
               <MonthMeasures read={read} month={current.label} prev={current.previous ? prevLabel(current.month) : null} market={market} retry={retry} />
+              <h3 className="rep__sub">Themes we acted on{market ? ` in ${market}` : ""}: did they move?</h3>
+              <div className="rep__acted">
+                {ok && ok.acted.length === 0 && <p className="im-text-description">None marked yet. When a brief is used, mark its theme here. Each month then shows whether our posts, our share of the theme and our engagement moved.</p>}
+                {ok && ok.acted.length > 0 && (
+                  <ul>
+                    {ok.acted.map((a) => (
+                      <li key={a.theme}>
+                        <b>{a.theme}</b> <span className="im-text-description">(acted on {formatDate(a.since)})</span>: {actedLine(a, current.previous ? prevLabel(current.month) : null)}
+                        <button className="im-btn im-btn-ghost im-btn-sm no-print" onClick={() => void mark(a.theme, true)} aria-label={`Stop following ${a.theme}`} title="Stop following this theme">×</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {themes.length > 0 && (
+                  <div className="rep__actedadd no-print">
+                    <select className="rep__market rep__market--wide" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Theme we acted on">
+                      <option value="">Mark a theme we acted on…</option>
+                      {themes.filter((t) => !ok?.acted.some((a) => a.theme === t)).map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button className="im-btn im-btn-secondary im-btn-sm" disabled={!pick} onClick={() => void mark(pick, false)}>Mark</button>
+                  </div>
+                )}
+              </div>
               <h3 className="rep__sub">Volume{market ? ` in ${market}` : ""}: counts, not rates</h3>
               <div className="rep__kpis">
                 {KPI_COLS.map((c) => {

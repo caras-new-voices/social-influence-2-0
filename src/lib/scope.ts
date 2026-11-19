@@ -46,7 +46,12 @@ export function currentScope(): DashboardScope | null {
 export function scopeSettings(): Record<string, string> {
   const scope = currentScope();
   if (!scope) return {};
-  return { "app.brands": scopeBrands(scope).join("\u001f"), "app.focal_brand": scope.focal };
+  const t = scope.target;
+  return {
+    "app.brands": scopeBrands(scope).join("\u001f"), "app.focal_brand": scope.focal,
+    // The target audience, for audience match in the creator score. Empty means not set.
+    "app.target_gender": t?.gender ?? "", "app.target_ages": (t?.ages ?? []).join("\u001f"), "app.target_markets": (t?.markets ?? []).join("\u001f"),
+  };
 }
 
 /** The scope a request asked for (a JSON string or an object), or the default when it is missing or not valid. Call after ensureReady(). */

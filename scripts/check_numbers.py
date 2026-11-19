@@ -247,6 +247,20 @@ if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")) and "W
             check(f"{title} {a}: comments praising", k, r["comments praising it"], 0)
             if gcm and all_claims: check(f"{title} {a}: gap, points", 100 * k / len(gcm) - 100 * n / all_claims, r["gap, points"], 0.004)
 
+# Who switches to whom: flows counted from the file, all time.
+if os.path.exists(os.path.join(SEED, "switch_labels", IND + ".json.gz")) and "Who switches to whom" in got:
+    kept = {(c["segment_id"], c["comment_id"]) for c in comments}
+    flows = defaultdict(lambda: [0, 0])
+    for seg, cid, kind, frm, to in gz("switch_labels", IND + ".json.gz")["rows"]:
+        if (seg, cid) in kept: flows[(frm, to)][0 if kind == "switched" else 1] += 1
+    rows = got["Who switches to whom"]
+    for r in rows:
+        f = flows.get((r["from"], r["to"]), [0, 0])
+        check(f"switch {r['from']} to {r['to']}: say they switched", f[0], r["say they switched"], 0)
+        check(f"switch {r['from']} to {r['to']}: say it is better", f[1], r["say it is better"], 0)
+    big = {k for k, v in flows.items() if sum(v) >= 3}
+    if len(rows) < 30: checks.append((big == {(r["from"], r["to"]) for r in rows}, "switching flows shown are exactly those with 3+ comments", len(big), len(rows)))
+
 bad = [c for c in checks if not c[0]]
 for ok, name, mine, theirs in bad: print(f"  DIFFERENT {name}: recalculated {mine}, dashboard shows {theirs}")
 print(f"{len(checks) - len(bad)} of {len(checks)} numbers match ({BASE}, {FOCAL} against {len(brands) - 1} competitors, all time{', ' + MARKET + ' only' if MARKET else ''})")

@@ -13,6 +13,7 @@ import { datasetDoc } from "./schema-doc";
 import { ensureReady } from "./schema";
 import { isDataWidget, type WidgetSpec } from "./widgets";
 import { EIGHT_MEASURES_SQL } from "./tom8";
+import { LABEL_TAGS, SCORED } from "./tom";
 
 /**
  * Monthly reports: one row per complete month with headline numbers and the delta versus the
@@ -34,7 +35,14 @@ CREATE TABLE IF NOT EXISTS period_reports (
 -- A review is written per market ('' is all markets), so the key includes it.
 ALTER TABLE period_reports ADD COLUMN IF NOT EXISTS market text NOT NULL DEFAULT '';
 ALTER TABLE period_reports DROP CONSTRAINT IF EXISTS period_reports_dashboard_id_period_start_period_end_key;
-CREATE UNIQUE INDEX IF NOT EXISTS period_reports_key ON period_reports (dashboard_id, period_start, period_end, market);`;
+CREATE UNIQUE INDEX IF NOT EXISTS period_reports_key ON period_reports (dashboard_id, period_start, period_end, market);
+-- Themes the team acted on (a brief was used), so each month's read can say whether they moved.
+CREATE TABLE IF NOT EXISTS brief_actions (
+  dashboard_id text NOT NULL,
+  theme text NOT NULL,
+  acted_on date NOT NULL DEFAULT current_date,
+  PRIMARY KEY (dashboard_id, theme)
+);`;
 
 let ready: Promise<void> | null = null;
 async function ensureReports() {
@@ -94,7 +102,51 @@ SELECT
 
 /** One of the eight measures for a month: its value, the month before, and how to show it. */
 export interface MonthMeasure { label: string; value: number | null; compare: number | null; fmt: "percent" | "ratio" | "decimal" | "points" }
-export interface MonthRead { measures: MonthMeasure[]; kpis: MonthKpis; previous: MonthKpis | null; /** The written review for this month and market, if one exists. */ review: StoredReport | null }
+export interface MonthRead {
+  measures: MonthMeasure[]; kpis: MonthKpis; previous: MonthKpis | null;
+  /** The written review for this month and market, if one exists. */
+  review: StoredReport | null;
+  /** The themes the team acted on, with this month against the month before. */
+  acted: ActedTheme[];
+}
+/** One side of a theme's month: all tracked brands' posts on it, ours, and how ours did against the norm. */
+export interface ThemeMonth { posts: number; ours: number; vs: number | null }
+export interface ActedTheme { theme: string; since: string; now: ThemeMonth; before: ThemeMonth | null }
+
+const THEME_MONTH_SQL = `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}
+SELECT theme, count(*)::int AS posts, count(*) FILTER (WHERE brand = focal_brand())::int AS ours,
+       sum(eng_s) FILTER (WHERE brand = focal_brand()) / NULLIF(sum(expected) FILTER (WHERE brand = focal_brand()), 0) AS vs
+FROM tags GROUP BY 1`;
+
+async function themeMonths(window: PeriodWindow): Promise<Map<string, ThemeMonth>> {
+  const res = await runWidgetQuery(THEME_MONTH_SQL, 200, window);
+  if (!res.ok) throw new Error(res.error);
+  return new Map(res.rows.map((r) => [String(r.theme), { posts: Number(r.posts) || 0, ours: Number(r.ours) || 0, vs: r.vs == null ? null : Number(r.vs) }]));
+}
+
+/** The themes a dashboard's team acted on, oldest first. */
+export async function listActions(dashboardId: string): Promise<Array<{ theme: string; since: string }>> {
+  await ensureReports();
+  const db = await getDb();
+  return db.query<{ theme: string; since: string }>(`SELECT theme, to_char(acted_on, 'YYYY-MM-DD') AS since FROM brief_actions WHERE dashboard_id = $1 ORDER BY acted_on, theme`, [dashboardId]);
+}
+
+/** The themes the dashboard's brands have posts on, for the picker. */
+export async function themeOptions(dashboardId: string): Promise<string[]> {
+  return runForDashboard(await getDashboard(dashboardId), async () => {
+    const res = await runWidgetQuery(`SELECT theme, count(*) AS n FROM post_themes WHERE is_primary AND theme NOT IN ('Other', 'Unknown') GROUP BY 1 ORDER BY 2 DESC`, 200);
+    return res.ok ? res.rows.map((r) => String(r.theme)) : [];
+  });
+}
+
+/** Marks a theme as acted on (it must be one of the dashboard's themes), or with `remove` takes the mark away. */
+export async function setAction(dashboardId: string, theme: string, remove = false): Promise<void> {
+  await ensureReports();
+  const db = await getDb();
+  if (remove) { await db.query(`DELETE FROM brief_actions WHERE dashboard_id = $1 AND theme = $2`, [dashboardId, theme]); return; }
+  if (!(await themeOptions(dashboardId)).includes(theme)) throw new Error("Not a theme of this dashboard");
+  await db.query(`INSERT INTO brief_actions (dashboard_id, theme) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [dashboardId, theme]);
+}
 
 /** The monthly read: the eight measures and the volume counts for one month against the month before, for all markets or one. */
 export async function getMonthRead(dashboardId: string, month: string, market?: string): Promise<MonthRead> {
@@ -109,9 +161,19 @@ export async function getMonthRead(dashboardId: string, month: string, market?: 
     const measures: MonthMeasure[] = res.rows.map((r) => ({ label: String(r.label), value: num(r.value), compare: num(r.compare), fmt: String(r.fmt) as MonthMeasure["fmt"] }));
     const cov = await getCoverage();
     const hasPrev = cov.months.some((x) => x.month === prevKey && x.posts > 0);
-    const before = hasPrev ? await kpisFor({ start: monthStart(prevKey), end: monthEnd(prevKey), ...(market ? { market } : {}) }) : null;
+    const prevWindow: PeriodWindow = { start: monthStart(prevKey), end: monthEnd(prevKey), ...(market ? { market } : {}) };
+    const before = hasPrev ? await kpisFor(prevWindow) : null;
+    // The themes the team acted on: this month against the month before.
+    const actions = await listActions(dashboardId);
+    let acted: ActedTheme[] = [];
+    if (actions.length) {
+      const now = await themeMonths(window);
+      const was = hasPrev ? await themeMonths(prevWindow) : null;
+      const none: ThemeMonth = { posts: 0, ours: 0, vs: null };
+      acted = actions.map((a) => ({ theme: a.theme, since: a.since, now: now.get(a.theme) ?? none, before: was ? was.get(a.theme) ?? none : null }));
+    }
     // A market can have nothing in the month before even when the brands as a whole do.
-    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null, review: await getStoredReport(dashboardId, month, market) };
+    return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null, review: await getStoredReport(dashboardId, month, market), acted };
   });
 }
 
