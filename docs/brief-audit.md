@@ -8,7 +8,7 @@ Each line has one of three results:
 - **Approximation:** built, with a stated difference.
 - **Not possible yet:** the data does not hold what it needs. Nothing is faked.
 
-Totals for the 39 sub-questions: 30 answered, 5 approximations, 4 not possible yet. "Answered" here means built as the brief describes it on the data we hold; several rest on thin samples, which each line says.
+Totals for the 39 sub-questions, counted strictly against the brief's wording on 19 November 2026: 29 answered, 6 approximations, 4 not possible yet. "Answered" means built as the brief describes it on the data we hold; several rest on thin samples, which each line says. By question: 1 has 7 of 7 answered, 2 has 4 of 7, 3 has 7 of 7, 4 has 7 of 9, 5 has 4 of 9.
 
 ## The eight measures
 
@@ -91,7 +91,7 @@ Also added, because Tom called it out: "Earned creators: posting about us, never
 
 Output in the brief: the product priority grid. **Built:** "The answer: fix, protect, start talking about" and "Product priority grid".
 
-1. **What do people wish existed? Answered.** "What people wish existed". Requests to the creator are left out.
+1. **What do people wish existed? Approximation.** "What people wish existed", grouped by kind of request. The brief asks for it by product and attribute. Requests to the creator are left out.
 2. **What is breaking, and is it getting worse? Answered.** By attribute over time, and "What is breaking, by product" by product line over time.
 3. **How do people actually use it? Answered.** "How people actually use it".
 4. **What should we fix, protect or start talking about? Answered.** The grid.

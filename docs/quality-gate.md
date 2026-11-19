@@ -158,6 +158,15 @@ The white-space list was empty because the brief's "no brand above 25%" cannot p
 - **The arithmetic:** the number check grades every theme again from the raw files: 502 numbers, and 312 inside the United Kingdom.
 - **Monthly report:** shows the open and unclaimed themes of the month, what is new, what closed and who took it, and which ones the team acted on.
 
+### Second rating against the brief (19 November 2026)
+
+Rated again line by line after the white-space build, with the live dashboard run box by box: 63 data boxes for hair removal, none empty and none under its minimum sample; 29 for an industry without comments.
+
+- Hair removal: about 8 out of 10 (6.5 on the first rating). The other nine industries: about 5 (4 before).
+- Sub-questions: 29 answered, 6 approximations, 4 not possible.
+- Lowest parts: the Culture lens (not built), what the data lead is promised (coverage, an API, three readings under 90%), breadth beyond hair removal, and the length of the dashboard for a senior reader.
+- The ratings are the builder's own. Nobody outside the build has rated it.
+
 ### Not verified
 - The white-space thresholds (1.5 times usual share, half the posts, 15% brand-led, a third unprompted) are mine. Tom has not confirmed them.
 - The switching flows are small (391 comments in all). Most pairs rest on 3 to 20 comments.
