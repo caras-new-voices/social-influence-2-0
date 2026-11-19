@@ -93,7 +93,8 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
     if (periodSaveTimer.current) clearTimeout(periodSaveTimer.current);
     periodSaveTimer.current = setTimeout(() => {
-      void fetch(`/api/dashboards/${dashboard.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period: next.mode === "all" && !next.compare && !next.market ? null : next }) }).catch(() => {});
+      // keepalive: the save can queue behind the boxes loading, and must still land if the person leaves the page first.
+      void fetch(`/api/dashboards/${dashboard.id}`, { method: "PUT", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ period: next.mode === "all" && !next.compare && !next.market ? null : next }) }).catch(() => {});
     }, 600);
   }, [dashboard.id]);
   // Counts are kept with the window they belong to, so the bar never shows one period's or market's counts next to another's label.
