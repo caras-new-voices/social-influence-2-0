@@ -113,12 +113,21 @@ function systemPrompt(): string {
   const ws = getWorkspace();
   return `You are the analyst inside the Social Influence workspace, an IMAI product. You help a brand team${ws.company ? ` at ${ws.company}` : ""} understand creator content and audience reactions about ${focalName()} and its competitors (${competitorNames().join(", ")}), and you help them build a dashboard.
 
-You have three tools:
+You have four tools:
+- read_element: read what an element already on the dashboard shows, by its id. The elements are the agreed answers, worked out one fixed way and checked. Use it first whenever the question is one the dashboard answers (see Dashboard first below).
 - run_sql: run a read-only Postgres SELECT against the dataset and read the rows. It runs within the dashboard's current period (see Time periods below).
 - propose_widget: propose a dashboard element (a saved query plus a rendering recipe). The person sees a preview card and decides whether to add it. You cannot add widgets yourself.
 - set_period: change the dashboard's global period (a month, a date range, or all time) and optionally the comparison period. Use it when the person asks to look at a month or range, or to compare periods ("show me June versus May"); every element on the dashboard follows it. Do not use it for a one-off question you can answer with posts_all.
 
 ${datasetDoc()}
+
+## Dashboard first
+The dashboard context in each message lists the elements with their ids and titles. They are calculated one fixed way, so the person sees the same answer on the page and from you.
+- When a question is one an element already answers, call read_element on it BEFORE any query of your own, and give that answer. This holds above all for the elements titled "The answer: ..." (which themes to build content around, the white space, what to amplify, answer and attack, which creators to brief, what to fix or protect), for the eight measures, the graded themes, the creator score and the content briefs.
+- Give the element's answer as it stands: the same items, in the same order, with the same numbers. Do not drop, swap or re-rank an item because a query of yours would rank it differently.
+- Then add to it with your own queries where that helps: a cut the element does not show, a verbatim, a different market. What you add goes under the element's items or after them, clearly as an addition, and never replaces one.
+- Never give a different list or number for the same question because you defined it differently. If a query of yours disagrees with an element, report the element's figure and say in one line what your query measures differently.
+- If the dashboard has no element for the question, answer from your own queries as usual.
 
 ## How to work
 - Ground every claim in a query. Never guess numbers. Run the queries you need (usually 1 to 3) before answering; keep result sets small by aggregating in SQL. For examples of verbatim comments select at most 8 rows and use left(text, 220).
@@ -170,6 +179,15 @@ const SetPeriodInput = z.object({
 const ProposeInput = ProposedWidgetSchema.extend({ replaces_widget_id: z.string().optional() });
 
 const TOOLS: Anthropic.Beta.BetaToolUnion[] = [
+  {
+    name: "read_element",
+    description: "Read what one element of the dashboard shows right now, in the dashboard's period and market: its rows, or for a written element its headline and text. Use the element's id from the dashboard context.",
+    input_schema: {
+      type: "object",
+      properties: { widget_id: { type: "string", description: "The id of the element, as listed in the dashboard context." } },
+      required: ["widget_id"],
+    },
+  },
   {
     name: "run_sql",
     description: "Run a read-only Postgres SELECT against the social listening dataset and return up to 500 rows as JSON. Aggregate in SQL; keep result sets small.",
@@ -463,6 +481,25 @@ async function executeTool(
     const w = resolveWindow(parsedState.data);
     const c = resolveCompare(parsedState.data);
     return { content: `Dashboard period set to ${formatWindow(w)}${c ? `, compared with ${formatWindow(c)}` : ""}.${window?.market ? ` The market stays ${window.market}.` : ""} Queries you run from now on in this turn use the new period; mention the change to the person.`, isError: false };
+  }
+  if (name === "read_element") {
+    const id = typeof (input as { widget_id?: unknown })?.widget_id === "string" ? (input as { widget_id: string }).widget_id : "";
+    const w = existing.find((x) => x.id === id) ?? existing.find((x) => x.title.toLowerCase() === id.toLowerCase());
+    if (!w) return { content: `No element with that id. The elements are: ${existing.filter((x) => x.type !== "section").slice(0, 80).map((x) => `${x.id} (${x.title})`).join("; ")}`, isError: true };
+    emit({ type: "status", text: `Reading "${w.title}"` });
+    if (!w.sql) return { content: `"${w.title}" is a ${w.type} element with this text: ${(w.content ?? "").slice(0, 3000)}`, isError: false };
+    // The element's own period wins, as on the page: one pinned to all time ignores the dates and keeps the market.
+    const res = await runWidgetQuery(w.sql, 200, w.period === "all" ? (window?.market ? { market: window.market } : null) : window);
+    if (!res.ok) return { content: `The element could not be read: ${res.error}`, isError: true };
+    // Written elements carry HTML: hand over the words.
+    const plain = (v: unknown) => (typeof v === "string" ? v.replace(/<li>/g, "\n- ").replace(/<h3>/g, "\n## ").replace(/<[^>]+>/g, " ").replace(/[ \t]+/g, " ").trim() : v);
+    const rows = res.rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, plain(v)])));
+    // A written element is one row of headline and text: hand it over whole, not cut like a table cell.
+    if (rows.length === 1 && typeof rows[0].body === "string") {
+      return { content: `"${w.title}"${w.subtitle ? ` (${w.subtitle.slice(0, 400)})` : ""}\nHeadline: ${String(rows[0].headline ?? "")}\n${String(rows[0].body).slice(0, 6000)}`, isError: false };
+    }
+    const { text, shown } = truncateRows(rows);
+    return { content: `"${w.title}"${w.subtitle ? ` (${w.subtitle.slice(0, 400)})` : ""}: ${res.rows.length} rows${shown < res.rows.length ? `, showing ${shown}` : ""}:\n${text}`, isError: false };
   }
   if (name === "run_sql") {
     const parsed = RunSqlInput.safeParse(input);
