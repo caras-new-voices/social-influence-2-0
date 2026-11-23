@@ -433,3 +433,19 @@
 .target__chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 12.5px; padding: 0.2rem 0.55rem; border: 1px solid var(--Base-04); border-radius: 999px; cursor: pointer; background: var(--Base-00); }
 .target__chip.is-on { border-color: var(--Primary-600); background: var(--Primary-100, #f1ecff); }
 .target__chip input { margin: 0; }
+
+/* Summary and full view */
+.viewswitch { display: flex; align-items: center; gap: 0.25rem; margin: 0.75rem 0 0.25rem; flex-wrap: wrap; }
+.viewswitch button { border: 1px solid var(--Base-04); background: var(--Base-00); padding: 0.35rem 0.85rem; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--Base-07, inherit); }
+.viewswitch button:first-child { border-radius: 0.6rem 0 0 0.6rem; }
+.viewswitch button:nth-child(2) { border-radius: 0 0.6rem 0.6rem 0; border-left: 0; }
+.viewswitch button.is-on { background: var(--Primary-600); border-color: var(--Primary-600); color: #fff; }
+.viewswitch span { margin-left: 0.6rem; }
+.summary { display: flex; flex-direction: column; gap: 1.5rem; max-width: 1100px; margin-top: 0.75rem; }
+.summary__head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.summary .widget { height: auto; min-height: 120px; }
+.summary .widget__head { cursor: default; }
+.summary .widget__body { overflow: visible; }
+/* The summary is for reading: definitions stay behind the "i", and the print is one clean column. */
+.summary .widget__sub { display: none; }
+@media print { .viewswitch, .summary__head button { display: none; } }
