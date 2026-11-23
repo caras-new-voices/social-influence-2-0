@@ -28,50 +28,50 @@
   },
   {
    "what": "A comment is about the brand or category, or it is not",
-   "agreement": 89.0,
+   "agreement": 89.7,
    "sample": "300 comments",
-   "scope": "Hair removal",
-   "measured": "18 November 2026",
+   "scope": "Hair removal and shaving",
+   "measured": "23 November 2026",
    "key": "about-comment"
   },
   {
    "what": "The right one of the six attributes on a brand comment",
-   "agreement": 87.0,
+   "agreement": 95.3,
    "sample": "150 comments",
-   "scope": "Hair removal",
-   "measured": "18 November 2026",
+   "scope": "Hair removal and shaving",
+   "measured": "23 November 2026",
    "key": "attribute"
   },
   {
    "what": "Comments counted as buying signals are buying signals",
-   "agreement": 92.0,
+   "agreement": 100.0,
    "sample": "150 comments",
-   "scope": "Hair removal",
-   "measured": "18 November 2026",
+   "scope": "Hair removal and shaving",
+   "measured": "23 November 2026",
    "key": "intent"
   },
   {
    "what": "Unanswered questions are about the brand",
-   "agreement": 98.0,
-   "sample": "175 comments",
-   "scope": "Hair removal",
-   "measured": "18 November 2026",
+   "agreement": 93.8,
+   "sample": "177 comments",
+   "scope": "All industries",
+   "measured": "23 November 2026",
    "key": "questions"
   },
   {
    "what": "Earned creators: no disclosure in their captions",
-   "agreement": 94.0,
+   "agreement": 93.5,
    "sample": "108 creators",
-   "scope": "Hair removal",
-   "measured": "18 November 2026",
+   "scope": "All industries",
+   "measured": "23 November 2026",
    "key": "earned"
   },
   {
    "what": "The theme of a post",
-   "agreement": 78.0,
-   "sample": "measured the week before",
-   "scope": "Hair removal",
-   "measured": "18 November 2026",
+   "agreement": 90,
+   "sample": "300 posts",
+   "scope": "Hair removal and shaving",
+   "measured": "23 November 2026",
    "key": "theme"
   },
   {

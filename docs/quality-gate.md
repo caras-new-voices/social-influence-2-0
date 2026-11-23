@@ -167,7 +167,23 @@ Rated again line by line after the white-space build, with the live dashboard ru
 - Lowest parts: the Culture lens (not built), what the data lead is promised (coverage, an API, three readings under 90%), breadth beyond hair removal, and the length of the dashboard for a senior reader.
 - The ratings are the builder's own. Nobody outside the build has rated it.
 
+### One-page summary and the accuracy lift (23 November 2026)
+
+**Summary view.** A dashboard now opens on one page: the eight measures and the box that answers each question, each with a button to the boxes behind it. "Everything" shows the full grid. It loads 7 queries where the full dashboard loads 63, in about two seconds on the test copy. It works on dashboards saved before it existed.
+
+**Accuracy, hair removal.** Three readings were below the 90% mark. Each was read again by a stronger model.
+
+- **Themes: 82% to 90%.** Judged on 300 posts by a blind reviewer (the first figure, 78%, was on 150 of them). The instructions were tuned on 150 posts and scored 94% on the other 150 and 85% on the tuned half in the final run. The second reading changed the theme of about one post in three.
+- **The right attribute on a brand comment: 87% to 95%.** A third reading now has to name the same attribute, or the comment carries none. 975 of 3,586 attributes were dropped, so fewer comments carry an attribute (2,611) and the ones that do are more often right.
+- **A comment is about the brand or not: 89% to 90 or 91%** (three runs: 91, 91, 90). A stronger model now reads every worded comment the first pass called "about the creator" or "other". It brought in 645 brand comments the first pass had missed. This one sits on the mark, not clear of it.
+- **Buying signals: 100% of 150.** A third reading dropped 248 of 1,644. **A fault in the check was found on the way:** it had been sampling the supplier's old buying tag, not the corrected flag the dashboard uses. The earlier 91 to 92% figures measured the wrong thing. Fixed.
+
+**What moved on the dashboard because of it.** Brand comments are 8,299 (7,654 before). Buying signals are 1,396. With better themes the white-space list is two themes, not four: "method comparison" fell under 30 posts and "men's and unisex grooming" is no longer above 1.2 times the norm.
+
+**Checks.** The number check matches in four combinations of brand and market (485 numbers, 293 to 305 inside a market). The template check passes for three brands.
+
 ### Not verified
+- The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
 - The white-space thresholds (1.5 times usual share, half the posts, 15% brand-led, a third unprompted) are mine. Tom has not confirmed them.
 - The switching flows are small (391 comments in all). Most pairs rest on 3 to 20 comments.
 - The product lines are a model's draft with one edit of mine (`docs/product-lines-draft.md`). Nobody who knows the brands has confirmed them.

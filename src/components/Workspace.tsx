@@ -15,7 +15,7 @@ import { FocusView } from "./FocusView";
 import { VoiceAgent } from "./VoiceAgent";
 import type { Row } from "@/lib/chart-data";
 import { ChatPanel } from "./ChatPanel";
-import { DashboardCanvas } from "./DashboardCanvas";
+import { summaryParts, DashboardCanvas } from "./DashboardCanvas";
 import { Shell } from "./Shell";
 import { useToast } from "./Toast";
 import { WidgetEditor } from "./WidgetEditor";
@@ -37,6 +37,28 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const [prefill, setPrefill] = useState<string | undefined>();
   const [ask, setAsk] = useState<{ text: string; instruction: string; nonce: number; kind?: UsageKind } | undefined>();
   const [focusId, setFocusId] = useState<string | null>(null);
+  // The one-page summary: the headline measures and the answer to each question. It is the first thing shown on a
+  // long dashboard that has those answers; "Everything" is one click away, and ?view= keeps the choice in the link.
+  const summary = useMemo(() => summaryParts(widgets), [widgets]);
+  const canSummarise = summary.length >= 3 && widgets.length > 20;
+  // useSearchParams is known on the server too, so the first render matches on both sides.
+  const viewParam = useSearchParams().get("view");
+  const [viewChoice, setViewChoice] = useState<"summary" | "full" | null>(viewParam === "summary" || viewParam === "full" ? viewParam : null);
+  const view = canSummarise ? viewChoice ?? "summary" : "full";
+  const setView = (next: "summary" | "full", scrollTo?: string | null) => {
+    setViewChoice(next);
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", next);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    if (next === "full") {
+      // The grid mounts after this render: go to the section once it is there.
+      window.setTimeout(() => {
+        const el = scrollTo ? document.querySelector(`[data-wid="${CSS.escape(scrollTo)}"]`) : null;
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        else document.querySelector(".ws__canvas")?.scrollTo({ top: 0 });
+      }, 250);
+    }
+  };
   const [voice, setVoice] = useState<{ widget: WidgetSpec; rows: Row[] } | null>(null);
   const [demo, setDemo] = useState(false);
   const [savedAt, setSavedAt] = useState<string>(dashboard.updated_at);
@@ -338,7 +360,16 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
             </div>
           )}
           <PeriodBar counts={periodCounts} />
+          {canSummarise && (
+            <div className="viewswitch" role="tablist" aria-label="How much of the dashboard to show">
+              <button role="tab" aria-selected={view === "summary"} className={view === "summary" ? "is-on" : ""} onClick={() => setView("summary")}>Summary</button>
+              <button role="tab" aria-selected={view === "full"} className={view === "full" ? "is-on" : ""} onClick={() => setView("full")}>Everything ({widgets.filter((w) => w.type !== "section" && w.type !== "text").length} boxes)</button>
+              <span className="im-text-description">{view === "summary" ? "The eight measures and the answer to each question. The detail is one click away." : "Every box, section by section."}</span>
+            </div>
+          )}
           <DashboardCanvas
+            summary={view === "summary" ? summary : null}
+            onSeeDetail={(sectionId) => setView("full", sectionId)}
             widgets={widgets}
             onLayoutChange={onLayoutChange}
             onEdit={(id) => setEditing(widgets.find((w) => w.id === id) ?? null)}
