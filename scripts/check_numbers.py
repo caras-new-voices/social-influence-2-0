@@ -247,6 +247,113 @@ if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")) and "W
             check(f"{title} {a}: comments praising", k, r["comments praising it"], 0)
             if gcm and all_claims: check(f"{title} {a}: gap, points", 100 * k / len(gcm) - 100 * n / all_claims, r["gap, points"], 0.004)
 
+# ---------------------------------------------------------------- the brief's other rules, each worked out again
+# Brief: "Our share in the theme minus our overall share, in points", for themes above the norm.
+if "Where we are missing from winning themes" in got and share is not None:
+    seen = set()
+    for r in got["Where we are missing from winning themes"]:
+        t = r["theme"]; seen.add(t); g = [p for p in cur if p["theme"] == t]
+        check(f"missing {t}: gap pts", 100 * (len(of(g, FOCAL)) / len(g) - share), r["gap pts"], 0.004)
+    expect = set()
+    for t in {p["theme"] for p in cur if p["theme"]}:
+        g = [p for p in cur if p["theme"] == t]; v = vs(g)
+        if len(g) >= 30 and v is not None and v >= 1.2 and len(of(g, FOCAL)) / len(g) < share: expect.add(t)
+    if len(seen) < 12: checks.append((expect == seen, "missing from winning themes: exactly the themes above the norm where we are under our share", sorted(expect - seen)[:3], sorted(seen - expect)[:3]))
+
+# Brief: "Themes ranked by engagement vs norm × purchase intent".
+by_post = defaultdict(list)
+for c in comments: by_post[(c["segment_id"], c["post_id"])].append(c)
+if "Conversations that sell, not just engage" in got:
+    for r in got["Conversations that sell, not just engage"]:
+        g = [p for p in posts if p["theme"] == r["theme"]]
+        cs = [c for p in g for c in by_post.get((p["segment_id"], p["post_id"]), [])]
+        rate = 1000 * sum(c["buying"] for c in cs) / len(cs); v = vs(g)
+        check(f"sells {r['theme']}: brand comments", len(cs), r["brand comments"], 0)
+        check(f"sells {r['theme']}: intent per 1K", rate, r["intent per 1K"], 0.002)
+        check(f"sells {r['theme']}: sell score", rate * (v if v is not None else 1), r["sell score"], 0.01)
+    scores = [r["sell score"] for r in got["Conversations that sell, not just engage"]]
+    checks.append((scores == sorted(scores, reverse=True), "conversations that sell: ranked by the sell score", "descending", scores[:4]))
+
+# Brief: "Months at 2× the 3-month average, the post behind it, and whether it was paid".
+if "What spiked, and why" in got:
+    month = lambda d: (d.year, d.month)
+    eng = defaultdict(float); cnt = defaultdict(int); top = {}
+    for p in posts:
+        if not p["at"]: continue
+        k = (p["brand"], month(p["at"])); eng[k] += p.get("engagement") or 0; cnt[k] += 1
+        if k not in top or (p.get("engagement") or 0) > (top[k].get("engagement") or 0): top[k] = p
+    spikes = {}
+    for b in brands:
+        ms = sorted(m for (bb, m) in eng if bb == b)
+        for i, m in enumerate(ms):
+            if i < 3: continue
+            base = sum(eng[(b, x)] for x in ms[i - 3:i]) / 3
+            if base > 0 and eng[(b, m)] >= 2 * base and cnt[(b, m)] >= 5: spikes[(b, f"{m[0]}-{m[1]:02d}")] = eng[(b, m)] / base
+    rows = got["What spiked, and why"]
+    for r in rows:
+        k = (r["brand"], r["month"])
+        checks.append((k in spikes, f"spike {k}: is a month at twice the three before", k in spikes, True))
+        if k in spikes:
+            check(f"spike {k}: times the usual", spikes[k], r["times the usual"], 0.006)
+            t = top[(r["brand"], (int(r["month"][:4]), int(r["month"][5:])))]
+            kind = "brand-owned" if t["owned"] else "paid" if t["paid"] else "affiliate" if t["affiliate"] else "gifted" if t["gifted"] else "earned"
+            checks.append((kind == r["kind"], f"spike {k}: kind of the post behind it", kind, r["kind"]))
+    if len(rows) < 12: checks.append((len(rows) == len(spikes), "spikes: every spike month is listed", len(spikes), len(rows)))
+
+# Brief: "Frequency × likes on the comment": each objection counts once plus its likes.
+if "Objections that matter most" in got:
+    ours = [c for c in comments if c["brand"] == FOCAL and neg(c)]
+    key = lambda c: (c["attribute"] or "other")
+    for r in got["Objections that matter most"]:
+        a = r["attribute"].split(":")[0].split(" ")[0].lower()
+        g = [c for c in ours if key(c) == a]
+        check(f"objection {a}: objections", len(g), r["objections"], 0)
+        check(f"objection {a}: weight", len(g) + sum(c.get("likes") or 0 for c in g), r["weight"], 0)
+
+# Brief: "Their objection rate minus ours, attribute by attribute".
+if "Where rivals are weak and we are strong" in got:
+    tot = {b: sum(1 for c in comments if c["brand"] == b) for b in brands}
+    def orate(b, a): return 1000 * sum(1 for c in comments if c["brand"] == b and c["attribute"] == a and neg(c)) / tot[b] if tot[b] else None
+    for r in got["Where rivals are weak and we are strong"]:
+        a = r["attribute"].split(":")[0].split(" ")[0].lower()
+        check(f"weak {a}: ours per 1K", orate(FOCAL, a) or 0, r["ours per 1K"], 0.004)
+        check(f"weak {a}: theirs per 1K", orate(r["weakest rival"], a), r["theirs per 1K"], 0.004)
+        rivals = [(orate(b, a), b) for b in brands if b != FOCAL and tot[b] >= 200 and sum(1 for c in comments if c["brand"] == b and c["attribute"] == a) >= 5]
+        checks.append((bool(rivals) and abs(max(rivals)[0] - orate(r["weakest rival"], a)) < 1e-9, f"weak {a}: the rival named is the weakest", max(rivals)[1] if rivals else None, r["weakest rival"]))
+
+# Brief: "The purchase-intent rate in their comments, against the category".
+if "Who drives buying" in got:
+    cat_rate = 1000 * sum(c["buying"] for c in comments) / len(comments)
+    for r in got["Who drives buying"]:
+        ps = [p for p in posts if p["brand"] == FOCAL and p.get("username") == r["creator"] and p.get("platform") == r["platform"] and not p["owned"]]
+        cs = [c for p in ps for c in by_post.get((p["segment_id"], p["post_id"]), []) if c["brand"] == FOCAL]
+        rate = 1000 * sum(c["buying"] for c in cs) / len(cs)
+        check(f"buying {r['creator']}: intent per 1K", rate, r["intent per 1K"], 0.002)
+        check(f"buying {r['creator']}: times the category rate", rate / cat_rate, r["times the category rate"], 0.02)
+
+# Brief: "Creators whose views are growing with engagement vs norm above 1.5".
+if "Rising creators" in got:
+    for r in got["Rising creators"]:
+        now = [p for p in cur if p["brand"] == FOCAL and p.get("username") == r["creator"] and p.get("platform") == r["platform"] and not p["owned"]]
+        was = [p for p in before if p["brand"] == FOCAL and p.get("username") == r["creator"] and p.get("platform") == r["platform"] and not p["owned"]]
+        vn, vb, v = sum(p.get("views") or 0 for p in now), sum(p.get("views") or 0 for p in was), vs(now)
+        check(f"rising {r['creator']}: views now", vn, r["views now"], 0)
+        checks.append((vn > vb and v is not None and v >= 1.5, f"rising {r['creator']}: views up and at 1.5 times the norm", (vn, vb, v), "listed"))
+
+# Brief: purchase intent "per 1,000 comments, against the category".
+if "Buying signals per 1,000 brand comments" in got:
+    for r in got["Buying signals per 1,000 brand comments"]:
+        g = [c for c in comments if c["brand"] == r["brand"]]
+        check(f"buying signals {r['brand']}", 1000 * sum(c["buying"] for c in g) / len(g), r["value"], 0.002)
+
+# Brief: "A topic's share of comments minus its share of posts".
+if "Content gap, in points" in got:
+    themed = [p for p in posts if p["theme"]]
+    tc = sum(p.get("comments") or 0 for p in themed)
+    for r in got["Content gap, in points"]:
+        g = [p for p in themed if p["theme"] == r["theme"]]
+        check(f"content gap {r['theme']}", 100 * sum(p.get("comments") or 0 for p in g) / tc - 100 * len(g) / len(themed), r["value"], 0.006)
+
 # White space: every theme graded again from the posts (all time, like the box).
 title = "Every theme, graded: open, unclaimed, contested or owned"
 if title in got:

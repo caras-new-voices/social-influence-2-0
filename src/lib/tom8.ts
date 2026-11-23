@@ -1099,12 +1099,12 @@ GROUP BY 1 HAVING NOT bool_or(is_paid) AND NOT bool_or(is_gifted) AND NOT bool_o
       {
         type: "table", w: 6, h: 6,
         title: "Who drives buying",
-        subtitle: "Creators of our content ranked by buying signals per 1,000 brand comments under their posts (20+ brand comments)",
+        subtitle: "Creators of our content ranked by buying signals per 1,000 brand comments under their posts (20+ brand comments), against the rate across all tracked brands, as the brief asks: 1.0 is the category rate.",
         when: N_BC,
         sql: `WITH pc AS (SELECT segment_id, post_id, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent FROM brand_comments WHERE brand = focal_brand() GROUP BY 1, 2),
-avg_rate AS MATERIALIZED (SELECT 1000.0 * sum(intent) / NULLIF(sum(n), 0) AS rate FROM pc)
+avg_rate AS MATERIALIZED (SELECT 1000.0 * count(*) FILTER (WHERE ${INTENT}) / NULLIF(count(*), 0) AS rate FROM brand_comments)
 SELECT p.username AS creator, p.platform AS platform, count(DISTINCT p.post_id)::int AS posts, sum(pc.n)::int AS "brand comments",
-       ${r1("1000.0 * sum(pc.intent) / sum(pc.n)")} AS "intent per 1K", ${r1("(1000.0 * sum(pc.intent) / sum(pc.n)) / NULLIF((SELECT rate FROM avg_rate), 0)")} AS "times our average"
+       ${r1("1000.0 * sum(pc.intent) / sum(pc.n)")} AS "intent per 1K", ${r1("(1000.0 * sum(pc.intent) / sum(pc.n)) / NULLIF((SELECT rate FROM avg_rate), 0)")} AS "times the category rate"
 FROM posts p JOIN pc ON pc.segment_id = p.segment_id AND pc.post_id = p.post_id
 WHERE p.brand = focal_brand() AND p.username IS NOT NULL AND NOT p.is_owned GROUP BY 1, 2 HAVING sum(pc.n) >= 20 AND sum(pc.intent) > 0 ORDER BY 5 DESC LIMIT 12`,
         sample: OUR_BC,

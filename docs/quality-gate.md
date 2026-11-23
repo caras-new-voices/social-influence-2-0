@@ -182,7 +182,17 @@ Rated again line by line after the white-space build, with the live dashboard ru
 
 **Checks.** The number check matches in four combinations of brand and market (485 numbers, 293 to 305 inside a market). The template check passes for three brands.
 
+### Testing against the brief (23 November 2026)
+
+A round built on the brief itself: does each answer follow the method the brief states, does it read sensibly, and does the AI analyst give the same answer.
+
+- **The brief's rules, recalculated.** The number check now works out nine more of the brief's rules a second time from the raw files: missing from winning themes (share in the theme minus overall share), conversations that sell (engagement vs norm times purchase intent), spikes (a month at twice the three before, the post behind it and whether it was paid), objections that matter (frequency and likes), where rivals are weak (their objection rate minus ours), who drives buying, rising creators (views up and 1.5 times the norm), buying signals per brand, and content gap. 637 numbers in all, matching in six combinations of brand and market.
+- **One difference from the brief's wording, fixed.** "Who drives buying" compared a creator with our own average. The brief says against the category. It now compares with the rate across all tracked brands.
+- **The five answers read as a client.** Each carries what the brief names as its output. Nothing was changed.
+- **The AI analyst, asked the brief's five questions word for word.** On the first run it disagreed with the dashboard on four of five: different winning themes, "no white space" where the dashboard shows two, the old creator score weights, and a different answer to "what should we fix". The cause: it worked each answer out again its own way. It now has a tool to read any element of the dashboard and is told to read the dashboard's answer first and give it as it stands. After the fix, all five answers match the dashboard item for item.
+
 ### Not verified
+- The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
 - The white-space thresholds (1.5 times usual share, half the posts, 15% brand-led, a third unprompted) are mine. Tom has not confirmed them.
 - The switching flows are small (391 comments in all). Most pairs rest on 3 to 20 comments.
