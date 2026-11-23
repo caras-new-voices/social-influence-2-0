@@ -191,6 +191,16 @@ A round built on the brief itself: does each answer follow the method the brief 
 - **The five answers read as a client.** Each carries what the brief names as its output. Nothing was changed.
 - **The AI analyst, asked the brief's five questions word for word.** On the first run it disagreed with the dashboard on four of five: different winning themes, "no white space" where the dashboard shows two, the old creator score weights, and a different answer to "what should we fix". The cause: it worked each answer out again its own way. It now has a tool to read any element of the dashboard and is told to read the dashboard's answer first and give it as it stands. After the fix, all five answers match the dashboard item for item.
 
+### Third rating against the brief, tested on live (23 November 2026)
+
+Rated again line by line, with every test run on the live site.
+
+- **Live tests, all passing:** every one of the 63 boxes returns data, none empty or under its minimum sample; the number check matches (637 of 637, and 398 of 398 for another brand inside one market); the dashboard builds for three brands; a browser walk of the summary, the full dashboard, the market filter, the Reports page and the Method page; and two of the brief's questions asked of the analyst, both answered with the dashboard's own answer.
+- **Rating:** hair removal about 8.5 out of 10 (8 at the second rating, 6.5 at the first). The other nine industries about 5.5.
+- **What moved it:** the one-page summary, the readings now at or past 90%, and the analyst giving the same answer as the page.
+- **What still holds it back:** the Culture lens; samples, not full coverage; no API for a client's tools; only hair removal has comments and second readings; the summary took 18 seconds to load on live from cold; the thresholds and draft lists are not confirmed by Tom.
+- The ratings are the builder's own.
+
 ### Not verified
 - The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
