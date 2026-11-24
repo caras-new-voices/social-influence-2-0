@@ -354,6 +354,20 @@ if "Content gap, in points" in got:
         g = [p for p in themed if p["theme"] == r["theme"]]
         check(f"content gap {r['theme']}", 100 * sum(p.get("comments") or 0 for p in g) / tc - 100 * len(g) / len(themed), r["value"], 0.006)
 
+# The measures market by market: the brief says markets compare like for like. The norm is the one across all markets in view.
+if "The measures, market by market" in got:
+    for r in got["The measures, market by market"]:
+        m = r["market"]; g = [p for p in cur if p.get("country") == m]; mine = of(g, FOCAL); was = [p for p in before if p.get("country") == m and p["brand"] == FOCAL]
+        check(f"market {m}: our posts", len(mine), r["our posts"], 0)
+        check(f"market {m}: share of voice %", 100 * len(mine) / len(g), r["share of voice %"], 0.004)
+        check(f"market {m}: engagement vs norm", vs(mine), r["engagement vs norm"], 0.01)
+        check(f"market {m}: earned share %", div(100 * sum(p["earned"] for p in mine), len(mine)), r["earned share %"], 0.02)
+        if r["momentum %"] is not None: check(f"market {m}: momentum %", 100 * (len(mine) / len(was) - 1), r["momentum %"], 0.01)
+        cs_ = [c for c in comments if c["brand"] == FOCAL and c["at"] and start <= c["at"] < end and post_country.get((c["segment_id"], c["post_id"])) == m]
+        check(f"market {m}: our brand comments", len(cs_), r["our brand comments"], 0)
+        checks.append(((len(cs_) >= 200) == (r["intent per 1K"] is not None), f"market {m}: comment measures only with 200+ brand comments", len(cs_), r["intent per 1K"]))
+        if r["intent per 1K"] is not None: check(f"market {m}: intent per 1K", 1000 * sum(c["buying"] for c in cs_) / len(cs_), r["intent per 1K"], 0.002)
+
 # White space: every theme graded again from the posts (all time, like the box).
 title = "Every theme, graded: open, unclaimed, contested or owned"
 if title in got:

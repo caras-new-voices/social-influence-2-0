@@ -15,7 +15,8 @@ import { FocusView } from "./FocusView";
 import { VoiceAgent } from "./VoiceAgent";
 import type { Row } from "@/lib/chart-data";
 import { ChatPanel } from "./ChatPanel";
-import { summaryParts, DashboardCanvas } from "./DashboardCanvas";
+import { leaderParts, summaryParts, DashboardCanvas } from "./DashboardCanvas";
+import { LEADER_VIEWS } from "@/lib/tom8";
 import { Shell } from "./Shell";
 import { useToast } from "./Toast";
 import { WidgetEditor } from "./WidgetEditor";
@@ -45,6 +46,18 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const viewParam = useSearchParams().get("view");
   const [viewChoice, setViewChoice] = useState<"summary" | "full" | null>(viewParam === "summary" || viewParam === "full" ? viewParam : null);
   const view = canSummarise ? viewChoice ?? "summary" : "full";
+  // The brief's three buyers each ask something different first: the summary can be read as any of them. ?for= keeps it in the link.
+  const forParam = useSearchParams().get("for");
+  const [leaderId, setLeaderId] = useState<string | null>(LEADER_VIEWS.some((l) => l.id === forParam) ? forParam : null);
+  const leader = LEADER_VIEWS.find((l) => l.id === leaderId) ?? null;
+  const leaderSummary = useMemo(() => (leader ? leaderParts(widgets, leader.asks) : null), [leader, widgets]);
+  const pickLeader = (id: string | null) => {
+    setLeaderId(id);
+    const params = new URLSearchParams(window.location.search);
+    if (id) params.set("for", id); else params.delete("for");
+    const qs = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  };
   const setView = (next: "summary" | "full", scrollTo?: string | null) => {
     setViewChoice(next);
     const params = new URLSearchParams(window.location.search);
@@ -367,8 +380,19 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               <span className="im-text-description">{view === "summary" ? "The eight measures and the answer to each question. The detail is one click away." : "Every box, section by section."}</span>
             </div>
           )}
+          {canSummarise && view === "summary" && (
+            <div className="leaders" role="tablist" aria-label="Whose summary">
+              <button role="tab" aria-selected={!leader} className={!leader ? "is-on" : ""} onClick={() => pickLeader(null)}>The five answers</button>
+              {LEADER_VIEWS.map((l) => (
+                <button key={l.id} role="tab" aria-selected={leader?.id === l.id} className={leader?.id === l.id ? "is-on" : ""} onClick={() => pickLeader(l.id)}>{l.label}</button>
+              ))}
+              {leader && leader.links.map((k) => (
+                <Link key={k.label} className="im-btn im-btn-ghost im-btn-sm" href={k.href === "reports" ? `/dashboard/${dashboard.id}/reports?market=${encodeURIComponent(period.market ?? "")}` : k.href}>{k.label} →</Link>
+              ))}
+            </div>
+          )}
           <DashboardCanvas
-            summary={view === "summary" ? summary : null}
+            summary={view === "summary" ? leaderSummary ?? summary : null}
             onSeeDetail={(sectionId) => setView("full", sectionId)}
             widgets={widgets}
             onLayoutChange={onLayoutChange}

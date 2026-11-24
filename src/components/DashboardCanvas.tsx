@@ -9,28 +9,46 @@ import { WidgetCard } from "./WidgetCard";
 
 export const ROW_HEIGHT = 56;
 
-/** One question of the summary: its section, the box that answers it, and how many boxes sit behind it. */
-export interface SummaryPart { section: WidgetSpec | null; answer: WidgetSpec; behind: number }
+/** One part of a summary: a heading, the boxes under it, how many boxes sit behind it, and the section to open for the detail. */
+export interface SummaryPart { heading: string; sectionId: string | null; boxes: WidgetSpec[]; behind: number }
+
+const ordered = (widgets: WidgetSpec[]) => [...widgets].sort((a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x);
 
 /**
- * The one-page summary of a dashboard: the headline measures, then the one box that answers each
- * section's question. A box answers its section when its title starts with "The answer", and the
- * measures are the first KPI box. Dashboards without such boxes have no summary.
+ * The one-page summary of a dashboard: the outcomes and headline measures, then the one box that
+ * answers each section's question. A box belongs to the summary when its title starts with
+ * "The answer" or "The three outcomes"; the first section also gives its first KPI box.
+ * Dashboards without such boxes have no summary.
  */
 export function summaryParts(widgets: WidgetSpec[]): SummaryPart[] {
-  const ordered = [...widgets].sort((a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x);
   const parts: SummaryPart[] = [];
   let section: WidgetSpec | null = null;
   let group: WidgetSpec[] = [];
   const close = () => {
-    const answer = group.find((w) => /^the answer\b/i.test(w.title)) ?? (parts.length === 0 ? group.find((w) => w.type === "kpi") : undefined);
-    if (answer) parts.push({ section, answer, behind: group.filter((w) => w.id !== answer.id && w.type !== "text").length });
+    const boxes = group.filter((w) => /^the (answer|three outcomes)\b/i.test(w.title));
+    const kpi = parts.length === 0 ? group.find((w) => w.type === "kpi") : undefined;
+    if (kpi) boxes.push(kpi);
+    if (boxes.length) parts.push({ heading: section?.title ?? "The headline numbers", sectionId: section?.id ?? null, boxes, behind: group.filter((w) => !boxes.includes(w) && w.type !== "text").length });
   };
-  for (const w of ordered) {
+  for (const w of ordered(widgets)) {
     if (w.type === "section") { close(); section = w; group = []; } else group.push(w);
   }
   close();
   return parts;
+}
+
+/** A leader's summary: for each question they ask first, the boxes of this dashboard that answer it. */
+export function leaderParts(widgets: WidgetSpec[], asks: Array<{ question: string; titles: string[] }>): SummaryPart[] {
+  const list = ordered(widgets);
+  const sectionOf = (w: WidgetSpec) => {
+    let section: WidgetSpec | null = null;
+    for (const x of list) { if (x.type === "section") section = x; if (x.id === w.id) break; }
+    return section?.id ?? null;
+  };
+  return asks
+    .map((a) => ({ heading: a.question, boxes: a.titles.map((t) => list.find((w) => w.title === t)).filter((w): w is WidgetSpec => !!w) }))
+    .filter((p) => p.boxes.length)
+    .map((p) => ({ ...p, sectionId: sectionOf(p.boxes[0]), behind: 0 }));
 }
 
 export function DashboardCanvas({
@@ -80,14 +98,20 @@ export function DashboardCanvas({
       {summary ? (
         <div className="summary">
           {summary.map((p) => (
-            <section key={p.answer.id} className="summary__part">
+            <section key={p.heading} className="summary__part">
               <div className="summary__head">
-                <h2 className="im-text-header">{p.section?.title ?? "The headline numbers"}</h2>
-                {p.behind > 0 && onSeeDetail && (
-                  <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => onSeeDetail(p.section?.id ?? null)}>See the {p.behind} {p.behind === 1 ? "box" : "boxes"} behind this →</button>
-                )}
+                <h2 className="im-text-header">{p.heading}</h2>
+                {onSeeDetail && (p.behind > 0 ? (
+                  <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => onSeeDetail(p.sectionId)}>See the {p.behind} {p.behind === 1 ? "box" : "boxes"} behind this →</button>
+                ) : p.sectionId ? (
+                  <button className="im-btn im-btn-ghost im-btn-sm" onClick={() => onSeeDetail(p.sectionId)}>See it in the full dashboard →</button>
+                ) : null)}
               </div>
-              <WidgetCard spec={p.answer} onEdit={() => onEdit(p.answer.id)} onRemove={() => onRemove(p.answer.id)} onAsk={() => onAsk(p.answer.id)} onChange={onChange ? () => onChange(p.answer.id) : undefined} onExpand={() => onExpand(p.answer.id)} onVoice={(rows) => onVoice(p.answer.id, rows)} onSetPeriod={(per) => onSetPeriod(p.answer.id, per)} />
+              <div className="summary__boxes">
+                {p.boxes.map((w) => (
+                  <WidgetCard key={w.id} spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onChange={onChange ? () => onChange(w.id) : undefined} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={(per) => onSetPeriod(w.id, per)} />
+                ))}
+              </div>
             </section>
           ))}
         </div>

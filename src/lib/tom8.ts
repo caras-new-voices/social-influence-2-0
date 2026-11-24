@@ -329,6 +329,40 @@ const WS_NOTE = `Open: engagement at 1.2 times the norm or more and no brand own
 export const WHITE_SPACE_SQL = `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}, ${WS()}
 SELECT theme, state, posts::int AS posts, vs, owner, leader FROM ws`;
 
+/**
+ * The brief names three buyers, each asking something different first. A leader's summary is the
+ * boxes that answer their questions, by title; a box a dashboard does not have is left out.
+ */
+export interface LeaderView { id: string; label: string; asks: Array<{ question: string; titles: string[] }>; links: Array<{ label: string; href: "reports" | "/method" | "/data" }> }
+export const LEADER_VIEWS: LeaderView[] = [
+  {
+    id: "brand", label: "Brand lead",
+    asks: [
+      { question: "Where are we losing share in the themes that matter?", titles: ["The three outcomes", "Where we are missing from winning themes"] },
+      { question: "What do people love and hate about us against rivals?", titles: ["The answer: what to amplify, answer and attack"] },
+      { question: "What white space can we own?", titles: ["The white-space map", "Content briefs for the top three themes"] },
+    ],
+    links: [{ label: "Monthly share and reaction tracking", href: "reports" }],
+  },
+  {
+    id: "growth", label: "Growth lead",
+    asks: [
+      { question: "Which conversations and creators drive buying?", titles: ["Conversations that sell, not just engage", "Who drives buying"] },
+      { question: "Where should paid go?", titles: ["The answer: creators to brief first", "Briefs to amplify, answer and attack"] },
+      { question: "Which product fix unlocks growth?", titles: ["The answer: fix, protect, start talking about"] },
+    ],
+    links: [],
+  },
+  {
+    id: "data", label: "Data lead",
+    asks: [
+      { question: "Is the data complete and comparable?", titles: ["The same measures for every tracked brand", "The measures, market by market", "Earned, gifted, affiliate, paid and brand-owned posts"] },
+      { question: "Which measure tracks sales?", titles: ["Our eight measures", "What the eight measures mean"] },
+    ],
+    links: [{ label: "Coverage, accuracy and fixed norms", href: "/method" }, { label: "The data sheet", href: "/data" }],
+  },
+];
+
 /** The measures for the focal brand in the period and the period before: rows of label, value, compare, fmt. */
 export const EIGHT_MEASURES_SQL = `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")}, ${LABEL_TAGS("(SELECT * FROM w WHERE cur)")},
 tot AS MATERIALIZED (SELECT count(*) FILTER (WHERE cur)::float AS cur, count(*) FILTER (WHERE NOT cur)::float AS prev, sum(coalesce(comments, 0)) FILTER (WHERE cur) AS comments FROM w),
@@ -359,6 +393,40 @@ export const TOM8_SECTIONS: StarterSection[] = [
   {
     title: "The eight measures",
     widgets: [
+      {
+        type: "insight", w: 12, h: 4,
+        title: "The three outcomes",
+        subtitle: `What the work is for, in the brief's words: salience (talked about more, by more creators, in more of the conversations that matter), purchase intent (more comments that signal buying) and better products. ${VERSUS}. Purchase intent is per 1,000 brand comments, ours against all tracked brands.`,
+        sql: `WITH ${THEMES}, ${ATTR_RATES}, ${GRID("brand = focal_brand()")},
+sal AS MATERIALIZED (
+  SELECT count(*) FILTER (WHERE cur AND brand = focal_brand())::float AS us, count(*) FILTER (WHERE NOT cur AND brand = focal_brand())::float AS us_prev,
+         count(*) FILTER (WHERE cur)::float AS tot, count(*) FILTER (WHERE NOT cur)::float AS tot_prev,
+         count(DISTINCT influencer_id) FILTER (WHERE cur AND brand = focal_brand()) AS cre, count(DISTINCT influencer_id) FILTER (WHERE NOT cur AND brand = focal_brand()) AS cre_prev,
+         count(*) FILTER (WHERE cur AND brand = focal_brand() AND ${EARNED})::float AS earned
+  FROM w
+), held AS (SELECT count(*) AS n, count(*) FILTER (WHERE ours / posts >= share) AS k FROM c WHERE vs >= 1.2),
+cm AS MATERIALIZED (
+  SELECT count(*) FILTER (WHERE c.brand = focal_brand() AND c.published_at >= b.s)::float AS n, count(*) FILTER (WHERE c.brand = focal_brand() AND c.published_at >= b.s AND ${INTENT})::float AS i,
+         count(*) FILTER (WHERE c.brand = focal_brand() AND c.published_at < b.s)::float AS n_prev, count(*) FILTER (WHERE c.brand = focal_brand() AND c.published_at < b.s AND ${INTENT})::float AS i_prev,
+         count(*) FILTER (WHERE c.published_at >= b.s)::float AS cat_n, count(*) FILTER (WHERE c.published_at >= b.s AND ${INTENT})::float AS cat_i
+  FROM brand_comments_all c, b WHERE c.published_at >= b.ps AND c.published_at < b.e
+), fix AS (SELECT attribute, mentions, net FROM grid WHERE box = 'Fix first' ORDER BY mentions DESC, attribute LIMIT 1),
+wish AS (SELECT feature_request_type AS kind, count(*) AS k FROM brand_comments WHERE brand = focal_brand() AND feature_request_type IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 1)
+SELECT 'Salience, purchase intent, better products' AS headline, '<ul>'
+  || ${li(`'<strong>Salience.</strong> We have ' || coalesce(${r1("100.0 * sal.us / NULLIF(sal.tot, 0)")}::text || '% of the posts', 'no posts in the period')
+       || CASE WHEN sal.tot_prev > 0 THEN ' (' || ${r1("100.0 * sal.us_prev / sal.tot_prev")} || '% the period before)' ELSE '' END
+       || ', from ' || sal.cre || ' creators' || CASE WHEN sal.cre_prev > 0 THEN ' (' || sal.cre_prev || ' before)' ELSE '' END
+       || coalesce(', and ' || ${pct("sal.earned / NULLIF(sal.us, 0)")} || '% of our posts are earned', '')
+       || CASE WHEN held.n > 0 THEN '. We hold at least our share in ' || held.k || ' of the ' || held.n || ' themes above the norm.' ELSE '. No theme is above the norm in the period.' END`)}
+  || ${li(`'<strong>Purchase intent.</strong> ' || CASE WHEN cm.n >= ${COMMENT_MIN} THEN ${r0("1000.0 * cm.i / cm.n")} || ' buying signals per 1,000 brand comments on our content, against ' || ${r0("1000.0 * cm.cat_i / NULLIF(cm.cat_n, 0)")} || ' across all tracked brands'
+       || CASE WHEN cm.n_prev >= ${COMMENT_MIN} THEN ' (ours was ' || ${r0("1000.0 * cm.i_prev / cm.n_prev")} || ' the period before).' ELSE '.' END
+       ELSE 'Not enough brand comments on our content in the period to say (' || cm.n::int || ', and it needs ${COMMENT_MIN}).' END`)}
+  || ${li(`'<strong>Better products.</strong> ' || coalesce((SELECT 'Fix first: ' || lower(${ATTR("fix.attribute")}) || ' (' || fix.mentions::int || ' comments, net sentiment ' || round((100 * fix.net)::numeric, 0) || ').' FROM fix), 'Nothing lands in the fix-first box in the period.')
+       || coalesce((SELECT ' Asked for most: a ' || lower(wish.kind) || ' (' || wish.k || ' requests).' FROM wish), '')`)}
+  || '</ul>' AS body
+FROM sal, held, cm`,
+        rationale: "The brief opens with three outcomes. Everything below is a means to them, so they lead.",
+      },
       {
         type: "kpi", w: 12, h: 3,
         title: "Our eight measures",
@@ -399,6 +467,27 @@ SELECT a.brand, CASE WHEN a.brand = focal_brand() THEN 'us' ELSE 'competitor' EN
        ${r0("100.0 * a.earned / NULLIF(a.posts, 0)")} AS "earned share %"
 FROM a WHERE a.posts > 0 ORDER BY (a.brand = focal_brand()) DESC, a.posts DESC`,
         rationale: "The rival read in one glance, like for like.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "The measures, market by market",
+        subtitle: `The five largest markets in the period, with the same measures for us in each, so markets compare like for like. The norm is the tracked brands' across all markets. Comment measures need ${COMMENT_MIN}+ of our brand comments in the market. Content gap and creator score are per theme and per creator, in sections 2 and 4.`,
+        sql: `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")},
+mk AS MATERIALIZED (SELECT country, count(*) AS n FROM sp WHERE cur AND country IS NOT NULL AND country <> 'Unknown' GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5),
+p AS (
+  SELECT sp.country, count(*) FILTER (WHERE cur)::float AS tot, count(*) FILTER (WHERE cur AND brand = focal_brand())::float AS us, count(*) FILTER (WHERE NOT cur AND brand = focal_brand())::float AS us_prev,
+         count(*) FILTER (WHERE cur AND brand = focal_brand() AND ${EARNED})::float AS earned, ${vs("cur AND brand = focal_brand()")} AS vs
+  FROM sp JOIN mk USING (country) GROUP BY 1
+), cm AS (
+  SELECT c.country, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS i, count(*) FILTER (WHERE ${POSITIVE})::float AS pos, count(*) FILTER (WHERE ${NEGATIVE})::float AS neg
+  FROM brand_comments_all c, b WHERE c.brand = focal_brand() AND c.published_at >= b.s AND c.published_at < b.e GROUP BY 1
+)
+SELECT p.country AS market, p.us::int AS "our posts", ${r1("100.0 * p.us / NULLIF(p.tot, 0)")} AS "share of voice %", ${r2("p.vs")} AS "engagement vs norm",
+       CASE WHEN p.us_prev >= 3 THEN ${r0("100.0 * (p.us / p.us_prev - 1)")} END AS "momentum %", ${r0("100.0 * p.earned / NULLIF(p.us, 0)")} AS "earned share %",
+       coalesce(cm.n, 0)::int AS "our brand comments", CASE WHEN cm.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * cm.i / cm.n")} END AS "intent per 1K",
+       CASE WHEN cm.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * cm.pos / cm.n")} END AS "praise per 1K", CASE WHEN cm.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * cm.neg / cm.n")} END AS "objections per 1K"
+FROM p JOIN mk USING (country) LEFT JOIN cm USING (country) ORDER BY mk.n DESC, p.country`,
+        rationale: "The brief says brands, markets and months compare like for like. Brands and months had a table each. This is the one for markets.",
       },
       {
         type: "table", w: 6, h: 5,
@@ -1039,50 +1128,61 @@ FROM cs ORDER BY score DESC LIMIT 15`,
       {
         type: "table", w: 12, h: 7,
         title: "Who drives each theme",
-        subtitle: `The top 10 creators by views in each of the eight largest themes across the tracked brands (creators with 2+ posts in the theme). Share of the theme's views is a percentage; brand-owned accounts are left out.`,
+        subtitle: `The top 10 creators in each of the eight largest themes, ranked by creator score (creators with 2+ posts in the theme; brand-owned accounts left out). Beside the score are its parts: performance in the theme, theme fit, buying signals, audience match, estimated cost and availability. ${SCORE_NOTE}.`,
         when: N_THEMED,
-        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
+        sql: `WITH ${CREATOR_SCORE}, ${LABEL_TAGS("sp")},
 big AS (SELECT theme, count(*) AS n FROM tags GROUP BY 1 HAVING count(*) >= ${THEME_MIN} ORDER BY 2 DESC LIMIT 8),
 c AS (
   SELECT t.theme, t.username AS creator, t.platform AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views,
          sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs, string_agg(DISTINCT t.brand, ', ') AS brands
   FROM tags t JOIN big USING (theme) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2, 3
 ), tv AS (SELECT theme, sum(views) AS theme_views FROM c GROUP BY 1),
-r AS (SELECT c.*, row_number() OVER (PARTITION BY theme ORDER BY views DESC) AS rk FROM c WHERE posts >= 2)
-SELECT r.theme, r.creator, r.platform, r.posts, ${r0("100.0 * r.views / NULLIF(tv.theme_views, 0)")} AS "share of theme views %", ${r2("r.vs")} AS "engagement vs norm", r.brands AS "posts about"
+r AS (
+  SELECT c.*, cs.score, cs.fit, cs.intent_k, cs.match, cs.fee, cs.avail, row_number() OVER (PARTITION BY c.theme ORDER BY cs.score DESC NULLS LAST, c.views DESC, c.creator) AS rk
+  FROM c LEFT JOIN cs ON cs.creator = c.creator AND cs.platform IS NOT DISTINCT FROM c.platform WHERE c.posts >= 2
+)
+SELECT r.theme, r.creator, r.platform, r.posts AS "posts in theme", ${r0("100.0 * r.views / NULLIF(tv.theme_views, 0)")} AS "share of theme views %", ${r2("r.vs")} AS "engagement vs norm in theme",
+       ${r0("r.score")} AS "creator score", ${r0("100 * r.fit")} AS "theme fit %", ${r1("r.intent_k")} AS "intent per 1K", ${r0("100 * r.match")} AS "audience match %", ${r0("r.fee")} AS "est. fee per post $", r.avail AS availability, r.brands AS "posts about"
 FROM r JOIN big USING (theme) JOIN tv USING (theme) WHERE r.rk <= 10 ORDER BY big.n DESC, r.rk`,
         rationale: "A shortlist per conversation, with who they already work with.",
       },
       {
         type: "table", w: 12, h: 7,
         title: "Who drives each product",
-        subtitle: `The top 10 creators by views for each product line with 20+ posts, ours first (creators with 2+ posts on the line). Share of the line's views is a percentage; brand-owned accounts are left out. ${PRODUCT_NOTE}.`,
+        subtitle: `The top 10 creators by creator score for each product line with 20+ posts, ours first (creators with 2+ posts on the line). Share of the line's views is a percentage; brand-owned accounts are left out. ${PRODUCT_NOTE}.`,
         when: N_PRODUCTS,
-        sql: `WITH ${SCORED("posts")},
+        sql: `WITH ${CREATOR_SCORE},
 big AS (SELECT brand, product, count(*) AS n FROM sp WHERE product IS NOT NULL GROUP BY 1, 2 HAVING count(*) >= 20),
 c AS (
   SELECT t.brand, t.product, t.username AS creator, t.platform AS platform, count(*)::int AS posts, sum(coalesce(t.views, 0)) AS views, sum(t.eng_s) / NULLIF(sum(t.expected), 0) AS vs
   FROM sp t JOIN big USING (brand, product) WHERE t.username IS NOT NULL AND NOT t.is_owned GROUP BY 1, 2, 3, 4
 ), tv AS (SELECT brand, product, sum(views) AS line_views FROM c GROUP BY 1, 2),
-r AS (SELECT c.*, row_number() OVER (PARTITION BY brand, product ORDER BY views DESC, creator) AS rk FROM c WHERE posts >= 2)
-SELECT r.brand, r.product, r.creator, r.platform, r.posts, ${r0("100.0 * r.views / NULLIF(tv.line_views, 0)")} AS "share of line views %", ${r2("r.vs")} AS "engagement vs norm"
+r AS (
+  SELECT c.*, cs.score, cs.fit, cs.intent_k, cs.match, cs.fee, cs.avail, row_number() OVER (PARTITION BY c.brand, c.product ORDER BY cs.score DESC NULLS LAST, c.views DESC, c.creator) AS rk
+  FROM c LEFT JOIN cs ON cs.creator = c.creator AND cs.platform IS NOT DISTINCT FROM c.platform WHERE c.posts >= 2
+)
+SELECT r.brand, r.product, r.creator, r.platform, r.posts AS "posts on the line", ${r0("100.0 * r.views / NULLIF(tv.line_views, 0)")} AS "share of line views %", ${r2("r.vs")} AS "engagement vs norm on the line",
+       ${r0("r.score")} AS "creator score", ${r0("100 * r.fit")} AS "theme fit %", ${r1("r.intent_k")} AS "intent per 1K", ${r0("100 * r.match")} AS "audience match %", ${r0("r.fee")} AS "est. fee per post $", r.avail AS availability
 FROM r JOIN big USING (brand, product) JOIN tv USING (brand, product) WHERE r.rk <= 10 ORDER BY (r.brand = focal_brand()) DESC, r.brand, big.n DESC, r.rk`,
         rationale: "The brief asks for the top creators per product, ours and competitors'.",
       },
       {
         type: "table", w: 12, h: 7,
         title: "Top 10 creators per rival",
-        subtitle: "For each tracked rival, the ten creators whose posts about that rival do best against the norm (2+ posts about it on one platform; brand-owned accounts left out), with whether the rival paid them and whether they also post about us. The best of them are the ones to win over.",
+        subtitle: "For each tracked rival, its ten creators with the highest creator score (2+ posts about it on one platform; brand-owned accounts left out), with the score's parts and whether the rival paid them and whether they also post about us. The best of them are the ones to win over.",
         when: N_COMPETITORS,
-        sql: `WITH ${SCORED("posts")},
+        sql: `WITH ${CREATOR_SCORE},
 c AS (
   SELECT brand, username AS creator, platform, count(*)::int AS posts, sum(coalesce(views, 0)) AS views, sum(eng_s) / NULLIF(sum(expected), 0) AS vs, bool_or(is_paid) AS paid
   FROM sp WHERE brand <> focal_brand() AND username IS NOT NULL AND NOT is_owned GROUP BY 1, 2, 3 HAVING count(*) >= 2
 ), ours AS (SELECT DISTINCT username, platform FROM posts WHERE brand = focal_brand() AND username IS NOT NULL),
 bn AS (SELECT brand, count(*) AS n FROM posts WHERE brand <> focal_brand() GROUP BY 1),
-r AS (SELECT c.*, row_number() OVER (PARTITION BY brand ORDER BY vs DESC, views DESC, creator) AS rk FROM c WHERE vs IS NOT NULL)
-SELECT r.brand AS rival, r.creator, r.platform, r.posts, ${r2("r.vs")} AS "engagement vs norm", CASE WHEN r.paid THEN 'yes' ELSE 'no' END AS "paid by them",
-       CASE WHEN ours.username IS NOT NULL THEN 'yes' ELSE 'no' END AS "also posts about us"
+r AS (
+  SELECT c.*, cs.score, cs.fit, cs.intent_k, cs.match, cs.fee, cs.avail, row_number() OVER (PARTITION BY c.brand ORDER BY cs.score DESC NULLS LAST, c.vs DESC NULLS LAST, c.creator) AS rk
+  FROM c LEFT JOIN cs ON cs.creator = c.creator AND cs.platform IS NOT DISTINCT FROM c.platform
+)
+SELECT r.brand AS rival, r.creator, r.platform, r.posts AS "posts about them", ${r2("r.vs")} AS "engagement vs norm on them", ${r0("r.score")} AS "creator score", ${r0("100 * r.fit")} AS "theme fit %", ${r1("r.intent_k")} AS "intent per 1K", ${r0("100 * r.match")} AS "audience match %", ${r0("r.fee")} AS "est. fee per post $", r.avail AS availability,
+       CASE WHEN r.paid THEN 'yes' ELSE 'no' END AS "paid by them", CASE WHEN ours.username IS NOT NULL THEN 'yes' ELSE 'no' END AS "also posts about us"
 FROM r JOIN bn USING (brand) LEFT JOIN ours ON ours.username = r.creator AND ours.platform IS NOT DISTINCT FROM r.platform WHERE r.rk <= 10 ORDER BY bn.n DESC, r.brand, r.rk`,
         rationale: "The brief asks for a top 10 per competitor: rivals' best performers to win over.",
       },
