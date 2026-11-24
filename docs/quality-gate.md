@@ -211,6 +211,13 @@ From `docs/brief-match-plan.md`: the things the brief promises that the earlier 
 - **Top 10 creator lists ranked by the creator score**, per theme, per product and per rival, with the score's parts beside it. They were ranked by views or engagement.
 - The number check covers the markets table: 673 numbers.
 
+### Closing the last gaps, stage 2 (24 November 2026)
+
+- **The worked example.** The brief's own next step: "run the full set end to end on one live dataset as the worked example". `/dashboard/<id>/example` is one document that follows the brief's headings in order, each with the boxes that carry its answer, for the dashboard's brands, period and market. It runs the dashboard's own queries, so it cannot disagree with it, and prints as a PDF. Which boxes go under which heading is set in `WORKED_EXAMPLE` in `src/lib/tom8.ts`.
+- **Export** now works: the worked example, print or PDF of the current view, and every table as one spreadsheet file.
+- **Share** copies a read-only link to the current view: same period, market and summary, with the chat and every editing control hidden. The proof of concept has no sign-in, so "read-only" hides the controls. It does not lock the dashboard.
+- Checked in a browser on the test copy: the document for Venus in Germany has 8 chapters and 21 boxes with no errors; the spreadsheet has 37 tables; the shared link opens with nothing to edit.
+
 ### Not verified
 - The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.

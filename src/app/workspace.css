@@ -456,3 +456,23 @@
 .leaders button[role="tab"].is-on { border-color: var(--Primary-600); background: var(--Primary-50); color: var(--Primary-950); font-weight: 600; }
 .summary__boxes { display: flex; flex-direction: column; gap: 0.75rem; }
 @media print { .leaders { display: none; } }
+
+/* Export menu */
+.menu { position: relative; display: inline-flex; }
+.menu__pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 280px; background: var(--Base-00); border: 1px solid var(--Base-03); border-radius: 0.75rem; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); padding: 0.3rem; display: flex; flex-direction: column; }
+.menu__pop > * { text-align: left; padding: 0.5rem 0.7rem; border: 0; background: transparent; font: inherit; font-size: 13px; color: inherit; text-decoration: none; border-radius: 0.5rem; cursor: pointer; }
+.menu__pop > *:hover { background: var(--Base-02); }
+/* Read-only (shared) view: nothing to edit, no chat */
+.ws--readonly { grid-template-columns: 1fr !important; }
+.ws--readonly .ws__chat, .ws--readonly .widget__actions, .ws--readonly .widget__ask, .ws--readonly .react-resizable-handle { display: none !important; }
+.ws--readonly .widget__head { cursor: default; }
+.readonly-note { grid-column: 1 / -1; background: var(--Primary-50); border-bottom: 1px solid var(--Primary-100); padding: 0.4rem 1.5rem; font-size: 12.5px; }
+/* Printing a dashboard view: the content only */
+@media print {
+  .sidebar, .topbar, .ws__chat, .period__actions, .toast, .toast-host, .widget__toolbar, .widget__voice, .readonly-note { display: none !important; }
+  .shell, .main, .content, .ws, .ws__canvas { display: block !important; height: auto !important; overflow: visible !important; }
+  .summary .widget, .widget { break-inside: avoid; }
+  body { background: #fff; }
+}
+/* The same in the one-page summary: full names for the measures. */
+.summary .kpi__label { white-space: normal; overflow: visible; }
