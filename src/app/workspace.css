@@ -449,3 +449,10 @@
 /* The summary is for reading: definitions stay behind the "i", and the print is one clean column. */
 .summary .widget__sub { display: none; }
 @media print { .viewswitch, .summary__head button { display: none; } }
+
+/* Whose summary: the five answers, or what one of the brief's three leaders asks first */
+.leaders { display: flex; align-items: center; gap: 0.35rem; margin: 0.6rem 0 0; flex-wrap: wrap; }
+.leaders button[role="tab"] { border: 1px solid var(--Base-04); background: var(--Base-00); border-radius: 999px; padding: 0.25rem 0.8rem; font: inherit; font-size: 12.5px; cursor: pointer; }
+.leaders button[role="tab"].is-on { border-color: var(--Primary-600); background: var(--Primary-50); color: var(--Primary-950); font-weight: 600; }
+.summary__boxes { display: flex; flex-direction: column; gap: 0.75rem; }
+@media print { .leaders { display: none; } }

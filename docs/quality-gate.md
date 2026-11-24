@@ -201,6 +201,16 @@ Rated again line by line, with every test run on the live site.
 - **What still holds it back:** the Culture lens; samples, not full coverage; no API for a client's tools; only hair removal has comments and second readings; the summary took 18 seconds to load on live from cold; the thresholds and draft lists are not confirmed by Tom.
 - The ratings are the builder's own.
 
+### Closing the last gaps, stage 1 (24 November 2026)
+
+From `docs/brief-match-plan.md`: the things the brief promises that the earlier reviews had not counted.
+
+- **The three outcomes lead.** A box above the eight measures states salience, purchase intent (ours against all tracked brands) and better products, each with its direction.
+- **A summary for each leader.** The summary can be read as the brand lead, the growth lead or the data lead: the boxes that answer what the brief says each asks first. Which boxes go under which question is my choice (`LEADER_VIEWS` in `src/lib/tom8.ts`).
+- **The measures market by market**, in one table, with the norm taken across all markets so they compare like for like.
+- **Top 10 creator lists ranked by the creator score**, per theme, per product and per rival, with the score's parts beside it. They were ranked by views or engagement.
+- The number check covers the markets table: 673 numbers.
+
 ### Not verified
 - The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
