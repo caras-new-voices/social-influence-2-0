@@ -88,7 +88,7 @@ for c in gz("comments.json.gz"):
     r = cmeta.get((c["segment_id"], c["comment_id"]))
     about = cl["about"][r[2]] if r else None
     if about is not None and about not in ("brand", "category"): continue   # brand comments only (unclassified ones stay in)
-    comments.append({**c, "at": ts(c.get("published_at")), "attribute": cl["attributes"][r[3]] if r and r[3] > 0 else None,
+    comments.append({**c, "at": ts(c.get("published_at")), "about": about, "attribute": cl["attributes"][r[3]] if r and r[3] > 0 else None,
                      "buying": (r[4] == 1) if r else (c.get("purchase_intent_type") is not None)})
 
 # ---------------------------------------------------------------- the measures, computed here
@@ -246,6 +246,93 @@ if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")) and "W
             check(f"{title} {a}: posts claiming", n, r[col], 0)
             check(f"{title} {a}: comments praising", k, r["comments praising it"], 0)
             if gcm and all_claims: check(f"{title} {a}: gap, points", 100 * k / len(gcm) - 100 * n / all_claims, r["gap, points"], 0.004)
+
+    # Objections by product: is it getting worse? The latest 90 days of comments against the 90 days before.
+    title = "Objections by product, ours and rivals'"
+    if title in got:
+        pc = [c for c in comments if cprod.get((c["segment_id"], c["comment_id"])) and c["at"]]
+        last = max(c["at"] for c in pc)
+        for r in got[title]:
+            g = [c for c in pc if c["brand"] == r["brand"] and cprod[(c["segment_id"], c["comment_id"])] == r["product"]]
+            now = [c for c in g if c["at"] > last - timedelta(days=90)]
+            was = [c for c in g if last - timedelta(days=180) < c["at"] <= last - timedelta(days=90)]
+            name = f"objection trend {r['brand']} {r['product']}"
+            checks.append(((len(now) >= 50) == (r["per 1K, latest 90 days"] is not None), f"{name}: latest shown only with 50+ comments", len(now), r["per 1K, latest 90 days"]))
+            checks.append(((len(was) >= 50) == (r["per 1K, the 90 days before"] is not None), f"{name}: before shown only with 50+ comments", len(was), r["per 1K, the 90 days before"]))
+            rn = sum(neg(c) for c in now) / len(now) if len(now) >= 50 else None
+            rw = sum(neg(c) for c in was) / len(was) if len(was) >= 50 else None
+            if rn is not None: check(f"{name}: latest per 1K", 1000 * rn, r["per 1K, latest 90 days"], 0.002)
+            if rw is not None: check(f"{name}: before per 1K", 1000 * rw, r["per 1K, the 90 days before"], 0.002)
+            d = None if rn is None or rw is None else "getting worse" if rn >= 1.2 * rw and rn > 0 else "getting better" if rn <= 0.8 * rw else "steady"
+            checks.append((d == r["direction"], f"{name}: direction", d, r["direction"]))
+    # What people wish existed, by product: requests counted again, lines with 3+.
+    title = "What people wish existed, by product"
+    if title in got:
+        wish = defaultdict(list)
+        for c in comments:
+            line_c = cprod.get((c["segment_id"], c["comment_id"]))
+            if line_c and c["about"] == "brand" and c.get("feature_request_type"): wish[(c["brand"], line_c)].append(c)
+        expect = {k for k, v in wish.items() if len(v) >= 3}
+        shown = {(r["brand"], r["product"]) for r in got[title]}
+        checks.append((expect == shown, "wishes: lines shown are exactly those with 3+ requests", sorted(expect - shown)[:3], sorted(shown - expect)[:3]))
+        for r in got[title]:
+            g = wish.get((r["brand"], r["product"]), [])
+            kinds = defaultdict(int)
+            for c in g: kinds[c["feature_request_type"]] += 1
+            top = sorted(kinds.items(), key=lambda x: (-x[1], x[0]))[0] if kinds else (None, 0)
+            check(f"wishes {r['brand']} {r['product']}: requests", len(g), r["requests"], 0)
+            check(f"wishes {r['brand']} {r['product']}: likes", sum(c.get("likes") or 0 for c in g), r["likes"], 0)
+            check(f"wishes {r['brand']} {r['product']}: of the top kind", top[1], r["of that kind"], 0)
+            checks.append((top[0] == r["asked for most"], f"wishes {r['brand']} {r['product']}: kind asked for most", top[0], r["asked for most"]))
+
+# Platforms each theme under-uses: a platform's share of the theme against its share of all themed posts.
+title = "Platforms each theme under-uses"
+if title in got:
+    tp = [p for p in posts if p["theme"] and p.get("platform")]
+    for r in got[title]:
+        g = [p for p in tp if p["theme"] == r["theme"]]; gp = [p for p in g if p["platform"] == r["platform"]]
+        allp = sum(1 for p in tp if p["platform"] == r["platform"]) / len(tp)
+        name = f"platform {r['theme']} on {r['platform']}"
+        check(f"{name}: posts", len(gp), r["posts"], 0)
+        check(f"{name}: our posts", len(of(gp, FOCAL)), r["our posts"], 0)
+        check(f"{name}: share of the theme %", 100 * len(gp) / len(g), r["share of the theme's posts %"], 0.02)
+        check(f"{name}: platform's share of all %", 100 * allp, r["platform's share of all themed posts %"], 0.02)
+        check(f"{name}: under-used by", 100 * (allp - len(gp) / len(g)), r["under-used by, points"], 0.02)
+        check(f"{name}: engagement vs norm", vs(gp), r["engagement vs norm"], 0.01)
+        checks.append((len(g) >= 30 and len(gp) >= 5 and (vs(gp) or 0) >= 1.2 and len(gp) / len(g) < allp, f"{name}: passes the rule", True, True))
+    if len(got[title]) < 12:
+        want = set()
+        for t in {p["theme"] for p in tp}:
+            g = [p for p in tp if p["theme"] == t]
+            for pf in {p["platform"] for p in g}:
+                gp = [p for p in g if p["platform"] == pf]
+                if len(g) >= 30 and len(gp) >= 5 and (vs(gp) or 0) >= 1.2 and len(gp) / len(g) < sum(1 for p in tp if p["platform"] == pf) / len(tp): want.add((t, pf))
+        checks.append((want == {(r["theme"], r["platform"]) for r in got[title]}, "platforms: every pair that passes the rule is shown, and no other", len(want), len(got[title])))
+
+# Audiences by age and gender: creators with a known audience, grouped, and each group's share of comments against its share of creators.
+title = "Audiences by age and gender: conversation against creators"
+if title in got:
+    aud = {}
+    for i in gz("influencers.json.gz"):
+        ages = i.get("audience_ages")
+        if i.get("audience_female") is None or not isinstance(ages, dict) or not ages: continue
+        f = i["audience_female"]
+        age = sorted(ages.items(), key=lambda x: (-float(x[1]), x[0]))[0][0]
+        aud[(i["segment_id"], i["influencer_id"])] = ("Mostly women" if f >= 0.6 else "Mostly men" if f <= 0.4 else "Mixed") + ", " + age
+    grp = defaultdict(list)
+    for p in posts:
+        k = aud.get((p["segment_id"], p.get("influencer_id")))
+        if k and not p["owned"]: grp[k].append(p)
+    names = lambda g: {p["username"] for p in g if p.get("username")}
+    tc = sum(len(names(g)) for g in grp.values()); tm = sum(p.get("comments") or 0 for g in grp.values() for p in g)
+    checks.append(({k for k, g in grp.items() if len(names(g)) >= 5} == {r["audience"] for r in got[title]}, "audiences: groups shown are exactly those with 5+ creators", len(grp), len(got[title])))
+    for r in got[title]:
+        g = grp.get(r["audience"], []); cm = sum(p.get("comments") or 0 for p in g)
+        check(f"audience {r['audience']}: creators", len(names(g)), r["creators"], 0)
+        check(f"audience {r['audience']}: our creators", len(names(of(g, FOCAL))), r["our creators"], 0)
+        check(f"audience {r['audience']}: posts", len(g), r["posts"], 0)
+        check(f"audience {r['audience']}: comments per post", cm / len(g) if g else None, r["comments per post"], 0.002)
+        if tm: check(f"audience {r['audience']}: gap, points", 100 * cm / tm - 100 * len(names(g)) / tc, r["gap, points"], 0.02)
 
 # ---------------------------------------------------------------- the brief's other rules, each worked out again
 # Brief: "Our share in the theme minus our overall share, in points", for themes above the norm.

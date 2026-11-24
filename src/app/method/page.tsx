@@ -113,7 +113,7 @@ export default async function MethodPage() {
               </tbody>
             </table>
           </div>
-          <p className="im-text-description">The arithmetic is checked separately: 673 numbers on the default dashboard are worked out a second time from the raw files, without the dashboard&apos;s own queries, and must match.</p>
+          <p className="im-text-description">The arithmetic is checked separately: 841 numbers on the default dashboard are worked out a second time from the raw files, without the dashboard&apos;s own queries, and must match.</p>
         </section>
 
         <section className="ds__section">

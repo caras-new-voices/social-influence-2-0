@@ -47,6 +47,34 @@ function actedLine(a: ActedTheme, prev: string | null): string {
   return `${was(`${n.ours} of our posts`, b ? String(b.ours) : null)}, ${was(`${sharePct(n)} of the theme's posts`, b ? sharePct(b) : null)}, engagement vs norm on ours ${was(vsText(n), b ? vsText(b) : null)}.`;
 }
 
+/** The paid loop for a theme we acted on: what the briefed creators posted this month, and how our paid posts on it did. */
+function loopLines(a: ActedTheme): string[] {
+  const out: string[] = [];
+  for (const c of a.briefed) {
+    out.push(c.posts === 0 ? `@${c.creator}: no posts about us on this theme this month.`
+      : `@${c.creator}: ${c.posts} ${c.posts === 1 ? "post" : "posts"}${c.vs == null ? "" : ` at ${c.vs.toFixed(2)}× the norm`}, ${c.comments ? `${c.intent} buying ${c.intent === 1 ? "signal" : "signals"} in ${c.comments} brand comments` : "no brand comments collected under them"}.`);
+  }
+  if (a.paidMonth) {
+    const p = a.paidMonth;
+    out.push(p.posts === 0 ? `Paid: none of our posts on this theme carried a paid marker this month${p.unpaidPosts ? ` (${p.unpaidPosts} unpaid${p.unpaidVs == null ? "" : ` at ${p.unpaidVs.toFixed(2)}× the norm`})` : ""}.`
+      : `Paid: ${p.posts} of our posts on this theme were paid${p.vs == null ? "" : `, at ${p.vs.toFixed(2)}× the norm`}${p.unpaidPosts ? `. Unpaid: ${p.unpaidPosts}${p.unpaidVs == null ? "" : ` at ${p.unpaidVs.toFixed(2)}×`}` : ""}.`);
+  }
+  return out;
+}
+
+/** Edits what was done with a theme we acted on: the creators briefed and whether paid ran. */
+function LoopEdit({ a, save }: { a: ActedTheme; save: (creators: string, paid: boolean) => void }) {
+  const [creators, setCreators] = useState(a.creators.map((c) => `@${c}`).join(", "));
+  const [paid, setPaid] = useState(a.paid);
+  return (
+    <div className="rep__loop no-print">
+      <input className="im-input rep__loopin" value={creators} onChange={(e) => setCreators(e.target.value)} placeholder="Creators briefed: @handle, @handle" aria-label={`Creators briefed on ${a.theme}`} />
+      <label className="rep__looppaid"><input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} /> Paid ran behind it</label>
+      <button className="im-btn im-btn-secondary im-btn-sm" onClick={() => save(creators, paid)}>Save</button>
+    </div>
+  );
+}
+
 /** The eight measures for the month against the month before, and the three that moved most. */
 function MonthMeasures({ read, month, prev, market, retry }: { read: Read | undefined; month: string; prev: string | null; market: string; retry: () => void }) {
   if (read === "failed") return <p className="im-text-description rep__loading">The eight measures could not be loaded. <button className="im-btn im-btn-ghost im-btn-sm" onClick={retry}>Try again</button></p>;
@@ -135,6 +163,17 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
   }, [dashboard.id, open, market, readKey, reads]);
   const current = rows.find((r) => r.month === open) ?? null;
   const read = reads[readKey];
+  const [editing, setEditing] = useState<string | null>(null);
+  const saveLoop = async (theme: string, creators: string, paid: boolean) => {
+    try {
+      const r = await fetch(`/api/dashboards/${dashboard.id}/actions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme, creators, paid }) });
+      if (!r.ok) throw new Error(((await r.json()) as { error?: string }).error ?? "Could not save");
+      setEditing(null);
+      setReads({});
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
   const retry = () => setReads((x) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== readKey)));
   // Themes the team acted on: the list to pick from, and marking or unmarking one.
   const [themes, setThemes] = useState<string[]>([]);
@@ -271,13 +310,16 @@ export function ReportsView({ dashboard, initial, initialMarket }: { dashboard: 
               </div>
               <h3 className="rep__sub">Themes we acted on{market ? ` in ${market}` : ""}: did they move?</h3>
               <div className="rep__acted">
-                {ok && ok.acted.length === 0 && <p className="im-text-description">None marked yet. When a brief is used, mark its theme here. Each month then shows whether our posts, our share of the theme and our engagement moved.</p>}
+                {ok && ok.acted.length === 0 && <p className="im-text-description">None marked yet. When a brief is used, mark its theme here, then add the creators briefed and whether paid ran. Each month then shows whether our posts, our share of the theme and our engagement moved, what those creators posted, and how the paid posts did.</p>}
                 {ok && ok.acted.length > 0 && (
                   <ul>
                     {ok.acted.map((a) => (
                       <li key={a.theme}>
                         <b>{a.theme}</b> <span className="im-text-description">(acted on {formatDate(a.since)})</span>: {actedLine(a, current.previous ? prevLabel(current.month) : null)}
+                        <button className="im-btn im-btn-ghost im-btn-sm no-print" onClick={() => setEditing(editing === a.theme ? null : a.theme)}>{a.creators.length || a.paid ? "Edit creators and paid" : "Add creators and paid"}</button>
                         <button className="im-btn im-btn-ghost im-btn-sm no-print" onClick={() => void mark(a.theme, true)} aria-label={`Stop following ${a.theme}`} title="Stop following this theme">×</button>
+                        {loopLines(a).length > 0 && <ul className="rep__looplines">{loopLines(a).map((l) => <li key={l}>{l}</li>)}</ul>}
+                        {editing === a.theme && <LoopEdit a={a} save={(creators, paid) => void saveLoop(a.theme, creators, paid)} />}
                       </li>
                     ))}
                   </ul>

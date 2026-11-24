@@ -53,3 +53,7 @@
 .rep__actedadd { display: flex; gap: 0.4rem; align-items: center; }
 .rep__market--wide { max-width: 340px; }
 .rep__tag { margin-left: 0.4rem; font-size: 10.5px; }
+.rep__loop { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.35rem 0 0.5rem; }
+.rep__loopin { flex: 1 1 260px; max-width: 420px; }
+.rep__looppaid { display: inline-flex; gap: 0.3rem; align-items: center; font-size: 13px; }
+.rep__acted .rep__looplines { margin: 0.2rem 0 0.3rem; color: var(--im-text-secondary, inherit); }

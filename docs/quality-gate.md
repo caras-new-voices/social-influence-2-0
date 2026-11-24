@@ -218,6 +218,15 @@ From `docs/brief-match-plan.md`: the things the brief promises that the earlier 
 - **Share** copies a read-only link to the current view: same period, market and summary, with the chat and every editing control hidden. The proof of concept has no sign-in, so "read-only" hides the controls. It does not lock the dashboard.
 - Checked in a browser on the test copy: the document for Venus in Germany has 8 chapters and 21 boxes with no errors; the spreadsheet has 37 tables; the shared link opens with nothing to edit.
 
+### Closing the last gaps, stage 3 (24 November 2026)
+
+- **The paid loop.** On the Reports page, a theme marked as acted on can now carry the creators briefed and whether paid ran. Each month's read then says what those creators posted about us on the theme (posts, engagement vs norm, buying signals under them) and how our paid posts on it did against the unpaid ones.
+- **Half-answered questions closed.** New boxes: platforms each theme under-uses; audiences by age and gender (share of comments against share of creators); what people wish existed by product; variants people ask for. The creator score table shows months active and the positive share of comments. "Objections by product" says whether each line is getting worse (latest 90 days against the 90 before, 50+ comments each).
+- **The audience's own words in each brief**, beside the hashtags: the comment keywords said at least one and a half times as often under the theme as elsewhere. The supplier's keywords are in the commenter's language and some are plain ("razor", "best"), so the line is short for some themes.
+- Sub-questions now: 33 answered, 2 approximations, 4 not possible (`docs/brief-audit.md`).
+- The number check covers the new boxes: 841 of 841 for Venus, 842 of 842 for Philips OneBlade, 495 of 495 for Estrid in Germany, on the test copy.
+- The paid loop was checked through the page in a browser on the test copy: mark, add creators and paid, read the month.
+
 ### Not verified
 - The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
