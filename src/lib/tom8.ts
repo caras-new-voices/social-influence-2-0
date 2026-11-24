@@ -34,7 +34,7 @@ const KIND = (a = "") => `CASE WHEN ${a}is_owned THEN 'Brand-owned' WHEN ${a}is_
 const NEGATIVE = "(sentiment = 'negative' OR objection_category IS NOT NULL)";
 const POSITIVE = "sentiment = 'positive'";
 /** A buying signal: the classifier's reading where there is one, else the supplied tag. */
-const INTENT = "coalesce(buying, purchase_intent_type IS NOT NULL)";
+export const INTENT = "coalesce(buying, purchase_intent_type IS NOT NULL)";
 const ATTR = (col = "attribute") => `CASE ${col} WHEN 'price' THEN 'Price and value' WHEN 'efficacy' THEN 'Efficacy: does it work' WHEN 'ease' THEN 'Ease of use' WHEN 'durability' THEN 'Durability' WHEN 'safety' THEN 'Safety and comfort' WHEN 'service' THEN 'Service and availability' END`;
 
 const ER_NOTE = "Engagement rate is engagements divided by reach (views; followers for Instagram image posts)";
@@ -77,6 +77,26 @@ const PRODUCT_RATE_NOTE = `Only product lines with ${COMMENT_MIN}+ brand comment
  * The words a conversation uses, for paid keyword targeting: kw(theme, tags), the six hashtags most
  * posts of the theme carry (3+ posts), without brand names and platform filler. Needs tp(theme, post columns).
  */
+/** Comment keywords that are the reader's label for the comment, not a word the commenter used. */
+const META_WORDS = ["praise", "question", "emoji", "brand", "recommendation", "desire", "interest", "positive", "negative", "purchase", "heart", "compliment", "request", "product"];
+/**
+ * The audience's own words, for paid keyword targeting: cw(theme, words), the six comment keywords
+ * that most comments under the theme's posts carry (4+ comments) and that are at least one and a
+ * half times as common there as in all brand comments, without brand names. So "love" is listed
+ * only where it is said more than usual. Needs bc(theme, comment_id, keywords).
+ */
+const THEME_WORDS = `cwk AS (
+  SELECT bc.theme, lower(k.w) AS w, count(DISTINCT bc.comment_id)::float AS n FROM bc, unnest(bc.keywords) AS k(w)
+  WHERE k.w ~ '^[[:alpha:]][[:alpha:] -]{3,29}$' GROUP BY 1, 2 HAVING count(DISTINCT bc.comment_id) >= 4
+), cwn AS (SELECT theme, count(DISTINCT comment_id)::float AS n FROM bc GROUP BY 1),
+cwa AS (SELECT lower(k.w) AS w, count(DISTINCT a.comment_id)::float / NULLIF((SELECT count(*) FROM brand_comments), 0) AS rate FROM brand_comments a, unnest(a.keywords) AS k(w) GROUP BY 1),
+cw AS (
+  SELECT theme, string_agg(w, ', ' ORDER BY n DESC, w) AS words FROM (
+    SELECT cwk.theme, cwk.w, cwk.n, row_number() OVER (PARTITION BY cwk.theme ORDER BY cwk.n DESC, cwk.w) AS rk
+    FROM cwk JOIN cwn USING (theme) JOIN cwa USING (w)
+    WHERE cwk.n / cwn.n >= 1.5 * cwa.rate AND cwk.w NOT IN (${META_WORDS.map((m) => `'${m}'`).join(", ")}) AND ${HASH_OK("cwk.w")}
+  ) x WHERE rk <= 6 GROUP BY 1
+)`;
 const THEME_KEYWORDS = `kw AS (
   SELECT theme, string_agg('#' || tag, ' ' ORDER BY n DESC, tag) AS tags FROM (
     SELECT theme, tag, n, row_number() OVER (PARTITION BY theme ORDER BY n DESC, tag) AS rk FROM (
@@ -93,6 +113,7 @@ const N_PAID: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_al
 const N_REQUESTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND feature_request_type IS NOT NULL`, min: 15, what: "brand comments asking for a product change" };
 const N_USE_CASES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND use_case_segment IS NOT NULL`, min: 15, what: "brand comments describing how the product is used" };
 const N_RIVAL_MENTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND competitor_name IS NOT NULL AND ${NOT_SELF("competitor_name")}`, min: 15, what: "brand comments naming another brand" };
+const N_VARIANTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE about = 'brand' AND feature_request_type IN ('variant', 'color', 'size', 'format')`, min: 10, what: "requests for a variant in the brand comments" };
 const N_BLOCKERS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND (purchase_blocker IS NOT NULL OR purchase_intent_type = 'conditional')`, min: 10, what: "brand comments naming what stops a purchase" };
 const N_QUESTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND faq_topic IS NOT NULL`, min: 15, what: "questions about the brand in our comments" };
 
@@ -242,7 +263,7 @@ fmt AS (
   SELECT theme, string_agg(country || ' (' || n || ' posts)', ', ' ORDER BY n DESC) AS markets
   FROM (SELECT theme, country, count(*) AS n, row_number() OVER (PARTITION BY theme ORDER BY count(*) DESC) AS k FROM tp WHERE country IS NOT NULL AND country <> 'Unknown' GROUP BY 1, 2) z WHERE k <= 3 GROUP BY 1
 ), bc AS MATERIALIZED (
-  SELECT tp.theme, (tp.brand = focal_brand()) AS ours, c.text, coalesce(c.likes, 0) AS likes, c.sentiment, c.attribute, c.objection_category
+  SELECT tp.theme, (tp.brand = focal_brand()) AS ours, c.text, coalesce(c.likes, 0) AS likes, c.sentiment, c.attribute, c.objection_category, c.comment_id, c.keywords
   FROM brand_comments c JOIN tp ON tp.segment_id = c.segment_id AND tp.post_id = c.post_id
 ), quote AS (SELECT DISTINCT ON (theme) theme, left(text, 150) AS said FROM bc WHERE ours AND sentiment = 'positive' AND attribute IS NOT NULL AND length(text) >= 25 ORDER BY theme, likes DESC, text),
 obj AS (SELECT DISTINCT ON (theme) theme, attribute, n FROM (SELECT theme, attribute, count(*) AS n FROM bc WHERE attribute IS NOT NULL AND ${NEGATIVE} GROUP BY 1, 2) q WHERE n >= 5 ORDER BY theme, n DESC, attribute),
@@ -263,6 +284,7 @@ ages AS (
         WHERE c.value ->> 'name' IS NOT NULL GROUP BY ai.theme, c.value ->> 'name', an.k) z WHERE rk <= 3 GROUP BY 1
 ),
 ${THEME_KEYWORDS},
+${THEME_WORDS},
 n AS (SELECT count(*) AS k FROM top)
 SELECT CASE WHEN n.k = 0 THEN '${none}' ELSE n.k || CASE WHEN n.k = 1 THEN ' ${noun}' ELSE ' ${noun}s' END END AS headline,
        CASE WHEN n.k = 0 THEN '<p>${noneBody}</p>'
@@ -274,11 +296,11 @@ SELECT CASE WHEN n.k = 0 THEN '${none}' ELSE n.k || CASE WHEN n.k = 1 THEN ' ${n
          || CASE WHEN crr.names IS NOT NULL THEN ${li(`'<strong>Who should tell it:</strong> ' || crr.names || '. The figure is engagement vs norm on their posts in this theme.'`)} ELSE '' END
          || CASE WHEN mk.markets IS NOT NULL THEN ${li(`'<strong>Where:</strong> ' || mk.markets || '.'`)} ELSE '' END
          || CASE WHEN an.k IS NOT NULL THEN ${li(`'<strong>Paid audience:</strong> ' || CASE WHEN an.female >= 0.5 THEN ${pct("an.female")} || '% women' ELSE ${pct("1 - an.female")} || '% men' END || coalesce(', mostly aged ' || ages.bands, '') || coalesce(', in ' || geo.places, '') || '. The average audience of the ' || an.k::int || ' creators behind this theme whose audience is known.'`)} ELSE '' END
-         || CASE WHEN kw.tags IS NOT NULL OR crr.names IS NOT NULL THEN ${li(`'<strong>Paid targeting:</strong> ' || coalesce('keywords from the conversation: ' || kw.tags || '. ', '') || CASE WHEN crr.names IS NOT NULL THEN 'Run partnership ads from the handles of the creators above, and build lookalike audiences from their followers.' ELSE '' END`)} ELSE '' END
+         || CASE WHEN kw.tags IS NOT NULL OR cw.words IS NOT NULL OR crr.names IS NOT NULL THEN ${li(`'<strong>Paid targeting:</strong> ' || coalesce('hashtags from the posts: ' || kw.tags || '. ', '') || coalesce('Words the audience uses here more than elsewhere, as they wrote them: ' || cw.words || '. ', '') || CASE WHEN crr.names IS NOT NULL THEN 'Run partnership ads from the handles of the creators above, and build lookalike audiences from their followers.' ELSE '' END`)} ELSE '' END
          || CASE WHEN quote.said IS NOT NULL THEN ${li(`'<strong>In their words:</strong> “' || quote.said || '”'`)} ELSE '' END
          || CASE WHEN obj.attribute IS NOT NULL THEN ${li(`'<strong>Objection to answer:</strong> ' || lower(coalesce(${ATTR("obj.attribute")}, obj.attribute)) || ' (' || obj.n || ' comments).'`)} ELSE '' END
          || '</ul>', '' ORDER BY top.rk)
-         FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme) LEFT JOIN an USING (theme) LEFT JOIN ages USING (theme) LEFT JOIN geo USING (theme) LEFT JOIN kw USING (theme)) END AS body
+         FROM top LEFT JOIN bh USING (theme) LEFT JOIN fmt USING (theme) LEFT JOIN crr USING (theme) LEFT JOIN mk USING (theme) LEFT JOIN quote USING (theme) LEFT JOIN obj USING (theme) LEFT JOIN an USING (theme) LEFT JOIN ages USING (theme) LEFT JOIN geo USING (theme) LEFT JOIN kw USING (theme) LEFT JOIN cw USING (theme)) END AS body
 FROM n`;
 
 /**
@@ -908,9 +930,45 @@ FROM posts WHERE platform IS NOT NULL GROUP BY 1, 2 ORDER BY 1 DESC, 3 DESC`,
         rationale: "A platform where rivals post and we do not is either a gap or a decision.",
       },
       {
+        type: "table", w: 12, h: 5,
+        title: "Platforms each theme under-uses",
+        subtitle: `Theme and platform pairs where the theme's posts outperform (engagement vs norm of 1.2 or more over 5+ posts) and the platform carries a smaller share of the theme than it carries of all themed posts. Themes with 30+ posts. ${VS_NOTE}.`,
+        when: N_THEMED,
+        sql: `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
+pl AS (SELECT platform, count(*)::float / sum(count(*)) OVER () AS share FROM tags WHERE platform IS NOT NULL GROUP BY 1),
+tn AS (SELECT theme, count(*)::float AS n FROM tags WHERE platform IS NOT NULL GROUP BY 1 HAVING count(*) >= ${THEME_MIN}),
+tpl AS (SELECT theme, platform, count(*)::int AS posts, count(*) FILTER (WHERE brand = focal_brand())::int AS ours, ${vs()} AS vs FROM tags WHERE platform IS NOT NULL GROUP BY 1, 2 HAVING count(*) >= 5)
+SELECT tpl.theme, tpl.platform, tpl.posts, tpl.ours AS "our posts", ${r0("100 * tpl.posts / tn.n")} AS "share of the theme's posts %", ${r0("100 * pl.share")} AS "platform's share of all themed posts %",
+       ${r0("100 * (pl.share - tpl.posts / tn.n)")} AS "under-used by, points", ${r2("tpl.vs")} AS "engagement vs norm"
+FROM tpl JOIN tn USING (theme) JOIN pl USING (platform)
+WHERE tpl.vs >= 1.2 AND tpl.posts / tn.n < pl.share ORDER BY tpl.vs DESC, tpl.theme LIMIT 12`,
+        rationale: "A theme that works on a platform where few tell it is an opening on that platform.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "Audiences by age and gender: conversation against creators",
+        subtitle: "Creators across the tracked brands whose audience is known, grouped by who mostly follows them (60% or more women or men, else mixed) and their largest age band. The gap is the group's share of comments minus its share of creators, in points: above zero, the audience talks back more than its creators' number suggests. Groups with 5+ creators; brand-owned accounts are left out. Only some creators have audience data.",
+        when: N_AUDIENCE,
+        sql: `WITH ia AS (
+  SELECT DISTINCT ON (i.segment_id, i.influencer_id) i.segment_id, i.influencer_id,
+         CASE WHEN i.audience_female >= 0.6 THEN 'Mostly women' WHEN i.audience_female <= 0.4 THEN 'Mostly men' ELSE 'Mixed' END AS gender,
+         (SELECT e.key FROM jsonb_each_text(i.audience_ages) e ORDER BY e.value::float DESC, e.key LIMIT 1) AS age
+  FROM influencers i WHERE i.audience_female IS NOT NULL AND jsonb_typeof(i.audience_ages) = 'object' ORDER BY i.segment_id, i.influencer_id
+), g AS (
+  SELECT ia.gender, ia.age, count(DISTINCT p.username)::int AS creators, count(DISTINCT p.username) FILTER (WHERE p.brand = focal_brand())::int AS ours,
+         count(*)::int AS posts, sum(coalesce(p.comments, 0))::float AS comments
+  FROM posts p JOIN ia ON ia.segment_id = p.segment_id AND ia.influencer_id = p.influencer_id WHERE NOT p.is_owned AND ia.age IS NOT NULL GROUP BY 1, 2
+), t AS (SELECT sum(creators)::float AS creators, sum(comments) AS comments FROM g)
+SELECT g.gender || ', ' || g.age AS audience, g.creators, g.ours AS "our creators", g.posts, ${r1("g.comments / g.posts")} AS "comments per post",
+       ${r0("100 * g.creators / t.creators")} AS "share of creators %", ${r0("100 * g.comments / NULLIF(t.comments, 0)")} AS "share of comments %",
+       ${r0("100 * g.comments / NULLIF(t.comments, 0) - 100 * g.creators / t.creators")} AS "gap, points"
+FROM g, t WHERE g.creators >= 5 ORDER BY 100 * g.comments / NULLIF(t.comments, 0) - 100 * g.creators / t.creators DESC, g.creators DESC`,
+        rationale: "An audience that talks back more than its creators' number suggests is under-served.",
+      },
+      {
         type: "table", w: 7, h: 5,
         title: "Audiences with more demand than creators",
-        subtitle: "Creator countries across the tracked brands, ranked by comments per post, an average (countries with 10+ posts). The data has the creator's country, not the audience's age or gender.",
+        subtitle: "Creator countries across the tracked brands, ranked by comments per post, an average (countries with 10+ posts). This is the creator's country; the box above has the audience's age and gender.",
         sql: `WITH ${SCORED("posts")},
 c AS (
   SELECT country, count(*)::int AS posts, count(DISTINCT influencer_id)::int AS creators, sum(coalesce(comments, 0)) AS comments,
@@ -1168,10 +1226,20 @@ FROM n`,
       {
         type: "table", w: 12, h: 7,
         title: "Creator score: the top creators across the tracked brands",
-        subtitle: `${SCORE_NOTE}. Relation says whether a post of theirs about us was paid or gifted. The fee is the supplier's modelled fee per post in US dollars, an estimate and not a quote.`,
-        sql: `WITH ${CREATOR_SCORE}
-SELECT creator, platform, posts, brands AS "posts about", rel AS "relation to us", ${r2("vs")} AS "engagement vs norm", theme AS "main theme", ${r0("100.0 * fit")} AS "theme fit %", ${r1("intent_k")} AS "intent per 1K", ${r0("100 * match")} AS "audience match %", ${r0("fee")} AS "est. fee per post $", avail AS availability, ${r0("score")} AS "creator score"
-FROM cs ORDER BY score DESC LIMIT 15`,
+        subtitle: `${SCORE_NOTE}. Relation says whether a post of theirs about us was paid or gifted. Two columns speak to credibility and are not in the score: months active is the number of months in which they posted about a tracked brand, and positive comments is the share of the brand comments under their posts that are positive (20+ brand comments). The fee is the supplier's modelled fee per post in US dollars, an estimate and not a quote.`,
+        sql: `WITH ${CREATOR_SCORE},
+cred AS (
+  SELECT cp.username, cp.platform, count(DISTINCT date_trunc('month', cp.published_at))::int AS months
+  FROM cp GROUP BY 1, 2
+), tone AS (
+  SELECT cp.username, cp.platform, count(*)::float AS n, count(*) FILTER (WHERE c.${POSITIVE})::float AS pos
+  FROM cp JOIN brand_comments c ON c.segment_id = cp.segment_id AND c.post_id = cp.post_id GROUP BY 1, 2
+)
+SELECT creator, cs.platform, posts, brands AS "posts about", rel AS "relation to us", ${r2("vs")} AS "engagement vs norm", theme AS "main theme", ${r0("100.0 * fit")} AS "theme fit %", ${r1("intent_k")} AS "intent per 1K", ${r0("100 * match")} AS "audience match %",
+       cred.months AS "months active", CASE WHEN tone.n >= 20 THEN ${r0("100 * tone.pos / tone.n")} END AS "positive comments %", ${r0("fee")} AS "est. fee per post $", avail AS availability, ${r0("score")} AS "creator score"
+FROM cs LEFT JOIN cred ON cred.username = cs.creator AND cred.platform IS NOT DISTINCT FROM cs.platform
+        LEFT JOIN tone ON tone.username = cs.creator AND tone.platform IS NOT DISTINCT FROM cs.platform
+ORDER BY score DESC LIMIT 15`,
         rationale: "The eighth measure: who is worth working with, scored one way for every creator.",
       },
       {
@@ -1373,16 +1441,25 @@ FROM grid LEFT JOIN ex ON ex.brand = grid.brand AND ex.attribute = grid.attribut
       {
         type: "table", w: 12, h: 6,
         title: "Objections by product, ours and rivals'",
-        subtitle: `Product lines with 5+ objections in their brand comments, ours first: objections (a count), per 1,000 of the line's brand comments (a rate, shown with ${COMMENT_MIN}+ of them), the attribute objected to most, and the most-liked objection about that attribute in the commenter's words. ${PRODUCT_NOTE}.`,
+        subtitle: `Product lines with 5+ objections in their brand comments, ours first: objections (a count), per 1,000 of the line's brand comments (a rate, shown with ${COMMENT_MIN}+ of them), the attribute objected to most, and the most-liked objection about that attribute in the commenter's words. The last three columns say whether it is getting worse: the rate in the latest 90 days of comments against the 90 days before (each shown with 50+ brand comments on the line), worse when it rose by a fifth or more, better when it fell by a fifth. ${PRODUCT_NOTE}.`,
         when: N_PRODUCTS,
         sql: `WITH o AS (SELECT brand, product, attribute, text, coalesce(likes, 0) AS likes FROM brand_comments WHERE product IS NOT NULL AND ${NEGATIVE}),
 n AS (SELECT brand, product, count(*)::float AS n FROM brand_comments WHERE product IS NOT NULL GROUP BY 1, 2),
+last AS (SELECT max(published_at) AS at FROM brand_comments WHERE product IS NOT NULL),
+tr AS (
+  SELECT b.brand, b.product,
+         count(*) FILTER (WHERE b.published_at > last.at - interval '90 days')::float AS n_now, count(*) FILTER (WHERE b.published_at > last.at - interval '90 days' AND ${NEGATIVE})::float AS o_now,
+         count(*) FILTER (WHERE b.published_at <= last.at - interval '90 days')::float AS n_was, count(*) FILTER (WHERE b.published_at <= last.at - interval '90 days' AND ${NEGATIVE})::float AS o_was
+  FROM brand_comments b, last WHERE b.product IS NOT NULL AND b.published_at > last.at - interval '180 days' GROUP BY 1, 2
+),
 t AS (SELECT brand, product, count(*)::int AS objections FROM o GROUP BY 1, 2 HAVING count(*) >= 5),
 a AS (SELECT DISTINCT ON (brand, product) brand, product, attribute FROM (SELECT brand, product, attribute, count(*) AS k FROM o WHERE attribute IS NOT NULL GROUP BY 1, 2, 3) x ORDER BY brand, product, k DESC, attribute),
 q AS (SELECT DISTINCT ON (o.brand, o.product) o.brand, o.product, left(o.text, 160) AS said FROM o JOIN a ON a.brand = o.brand AND a.product = o.product AND a.attribute = o.attribute WHERE length(o.text) >= 20 ORDER BY o.brand, o.product, o.likes DESC, o.text)
 SELECT t.brand, t.product, t.objections, n.n::int AS "brand comments", CASE WHEN n.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * t.objections / n.n")} END AS "objections per 1K",
-       ${ATTR("a.attribute")} AS "objected to most", q.said AS "in their words"
-FROM t JOIN n USING (brand, product) LEFT JOIN a USING (brand, product) LEFT JOIN q USING (brand, product)
+       ${ATTR("a.attribute")} AS "objected to most", q.said AS "in their words",
+       CASE WHEN tr.n_now >= 50 THEN ${r1("1000.0 * tr.o_now / tr.n_now")} END AS "per 1K, latest 90 days", CASE WHEN tr.n_was >= 50 THEN ${r1("1000.0 * tr.o_was / tr.n_was")} END AS "per 1K, the 90 days before",
+       CASE WHEN tr.n_now >= 50 AND tr.n_was >= 50 THEN CASE WHEN tr.o_now / tr.n_now >= 1.2 * tr.o_was / tr.n_was AND tr.o_now > 0 THEN 'getting worse' WHEN tr.o_now / tr.n_now <= 0.8 * tr.o_was / tr.n_was THEN 'getting better' ELSE 'steady' END END AS "direction"
+FROM t JOIN n USING (brand, product) LEFT JOIN a USING (brand, product) LEFT JOIN q USING (brand, product) LEFT JOIN tr USING (brand, product)
 ORDER BY (t.brand = focal_brand()) DESC, t.objections DESC`,
         rationale: "The priority grid is per brand. This says which product the objection belongs to, for us and for each rival.",
       },
@@ -1446,6 +1523,29 @@ top AS (SELECT DISTINCT ON (kind) kind, left(said, 160) AS example FROM q ORDER 
 SELECT q.kind AS request, count(*)::int AS comments, sum(q.likes)::int AS likes, top.example AS "most-liked, verbatim" FROM q JOIN top USING (kind) GROUP BY q.kind, top.example ORDER BY 2 DESC`,
         sample: OUR_BC,
         rationale: "The roadmap the audience would write.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "What people wish existed, by product",
+        subtitle: `Requests for a product change in the brand comments across the tracked brands, by product line, ours first: how many, the kind asked for most, and the most-liked request in the commenter's words. Lines with 3+ requests. Requests to the creator are left out. ${PRODUCT_NOTE}.`,
+        when: N_PRODUCT_COMMENTS,
+        sql: `WITH q AS (SELECT brand, product, feature_request_type AS kind, coalesce(feature_request, text) AS said, coalesce(likes, 0) AS likes FROM brand_comments WHERE product IS NOT NULL AND about = 'brand' AND feature_request_type IS NOT NULL),
+t AS (SELECT brand, product, count(*)::int AS requests, sum(likes)::int AS likes FROM q GROUP BY 1, 2 HAVING count(*) >= 3),
+k AS (SELECT DISTINCT ON (brand, product) brand, product, kind, n FROM (SELECT brand, product, kind, count(*)::int AS n FROM q GROUP BY 1, 2, 3) x ORDER BY brand, product, n DESC, kind),
+top AS (SELECT DISTINCT ON (brand, product) brand, product, left(said, 160) AS example FROM q ORDER BY brand, product, likes DESC, said)
+SELECT t.brand, t.product, t.requests, t.likes, k.kind AS "asked for most", k.n AS "of that kind", top.example AS "most-liked, verbatim"
+FROM t JOIN k USING (brand, product) JOIN top USING (brand, product) ORDER BY (t.brand = focal_brand()) DESC, t.requests DESC, t.brand, t.product`,
+        rationale: "A wish belongs to a product. This says which one, for us and for each rival.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "Variants people ask for",
+        subtitle: "Requests for a variant, colour, size or format in the brand comments across the tracked brands, ours first, then by likes: the product line where one is named, the kind, and the request as the reader summarised it. A rival's most-asked variant is one we could make first.",
+        when: N_VARIANTS,
+        sql: `SELECT brand, coalesce(product, 'No line named') AS product, feature_request_type AS kind, left(coalesce(feature_request, text), 160) AS request, coalesce(likes, 0)::int AS likes
+FROM brand_comments WHERE about = 'brand' AND feature_request_type IN ('variant', 'color', 'size', 'format')
+ORDER BY (brand = focal_brand()) DESC, coalesce(likes, 0) DESC, brand, comment_id LIMIT 20`,
+        rationale: "Variants are the cheapest product news: the audience has already said which ones.",
       },
       {
         type: "table", w: 5, h: 6,

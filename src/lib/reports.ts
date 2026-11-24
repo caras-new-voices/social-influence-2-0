@@ -12,7 +12,7 @@ import { runWidgetQuery } from "./query";
 import { datasetDoc } from "./schema-doc";
 import { ensureReady } from "./schema";
 import { isDataWidget, type WidgetSpec } from "./widgets";
-import { EIGHT_MEASURES_SQL, WHITE_SPACE_SQL } from "./tom8";
+import { EIGHT_MEASURES_SQL, INTENT, WHITE_SPACE_SQL } from "./tom8";
 import { LABEL_TAGS, SCORED } from "./tom";
 
 /**
@@ -42,7 +42,10 @@ CREATE TABLE IF NOT EXISTS brief_actions (
   theme text NOT NULL,
   acted_on date NOT NULL DEFAULT current_date,
   PRIMARY KEY (dashboard_id, theme)
-);`;
+);
+-- The paid loop: which creators were briefed on the theme (handles, comma separated), and whether paid ran behind it.
+ALTER TABLE brief_actions ADD COLUMN IF NOT EXISTS creators text NOT NULL DEFAULT '';
+ALTER TABLE brief_actions ADD COLUMN IF NOT EXISTS paid boolean NOT NULL DEFAULT false;`;
 
 let ready: Promise<void> | null = null;
 async function ensureReports() {
@@ -125,7 +128,29 @@ async function themeStates(window: PeriodWindow): Promise<Map<string, { state: s
 }
 /** One side of a theme's month: all tracked brands' posts on it, ours, and how ours did against the norm. */
 export interface ThemeMonth { posts: number; ours: number; vs: number | null }
-export interface ActedTheme { theme: string; since: string; now: ThemeMonth; before: ThemeMonth | null }
+/** A briefed creator's posts about us on the theme in the month: how many, how they did, and the buying signals in the brand comments under them. */
+export interface BriefedCreator { creator: string; posts: number; vs: number | null; comments: number; intent: number }
+/** Our paid posts on the theme in the month against our unpaid ones. */
+export interface PaidMonth { posts: number; vs: number | null; unpaidPosts: number; unpaidVs: number | null }
+export interface ActedTheme { theme: string; since: string; now: ThemeMonth; before: ThemeMonth | null; creators: string[]; paid: boolean; briefed: BriefedCreator[]; paidMonth: PaidMonth | null }
+export interface BriefAction { theme: string; since: string; creators: string[]; paid: boolean }
+
+/** Handles as typed ("@Anna, bea") to a clean list: no @, lower case, no repeats, at most 20. */
+export function cleanHandles(text: string): string[] {
+  return [...new Set(text.split(/[\s,;]+/).map((h) => h.replace(/^@+/, "").toLowerCase()).filter((h) => /^[a-z0-9._-]{1,60}$/.test(h)))].slice(0, 20);
+}
+
+// Our posts on each theme by creator, and paid against unpaid, for the paid loop.
+const THEME_CREATOR_SQL = `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")},
+pc AS (SELECT segment_id, post_id, count(*)::int AS n, count(*) FILTER (WHERE ${INTENT})::int AS intent FROM brand_comments GROUP BY 1, 2)
+SELECT tags.theme, lower(tags.username) AS creator, count(*)::int AS posts, sum(eng_s) / NULLIF(sum(expected), 0) AS vs,
+       coalesce(sum(pc.n), 0)::int AS comments, coalesce(sum(pc.intent), 0)::int AS intent
+FROM tags LEFT JOIN pc ON pc.segment_id = tags.segment_id AND pc.post_id = tags.post_id
+WHERE tags.brand = focal_brand() AND tags.username IS NOT NULL GROUP BY 1, 2`;
+const THEME_PAID_SQL = `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}
+SELECT theme, count(*) FILTER (WHERE is_paid)::int AS posts, ${"sum(eng_s) FILTER (WHERE is_paid) / NULLIF(sum(expected) FILTER (WHERE is_paid), 0)"} AS vs,
+       count(*) FILTER (WHERE NOT is_paid)::int AS unpaid_posts, sum(eng_s) FILTER (WHERE NOT is_paid) / NULLIF(sum(expected) FILTER (WHERE NOT is_paid), 0) AS unpaid_vs
+FROM tags WHERE brand = focal_brand() GROUP BY 1`;
 
 const THEME_MONTH_SQL = `WITH ${SCORED("posts")}, ${LABEL_TAGS("sp")}
 SELECT theme, count(*)::int AS posts, count(*) FILTER (WHERE brand = focal_brand())::int AS ours,
@@ -139,10 +164,11 @@ async function themeMonths(window: PeriodWindow): Promise<Map<string, ThemeMonth
 }
 
 /** The themes a dashboard's team acted on, oldest first. */
-export async function listActions(dashboardId: string): Promise<Array<{ theme: string; since: string }>> {
+export async function listActions(dashboardId: string): Promise<BriefAction[]> {
   await ensureReports();
   const db = await getDb();
-  return db.query<{ theme: string; since: string }>(`SELECT theme, to_char(acted_on, 'YYYY-MM-DD') AS since FROM brief_actions WHERE dashboard_id = $1 ORDER BY acted_on, theme`, [dashboardId]);
+  const rows = await db.query<{ theme: string; since: string; creators: string; paid: boolean }>(`SELECT theme, to_char(acted_on, 'YYYY-MM-DD') AS since, creators, paid FROM brief_actions WHERE dashboard_id = $1 ORDER BY acted_on, theme`, [dashboardId]);
+  return rows.map((r) => ({ theme: r.theme, since: r.since, creators: r.creators ? r.creators.split(",") : [], paid: !!r.paid }));
 }
 
 /** The themes the dashboard's brands have posts on, for the picker. */
@@ -151,6 +177,16 @@ export async function themeOptions(dashboardId: string): Promise<string[]> {
     const res = await runWidgetQuery(`SELECT theme, count(*) AS n FROM post_themes WHERE is_primary AND theme NOT IN ('Other', 'Unknown') GROUP BY 1 ORDER BY 2 DESC`, 200);
     return res.ok ? res.rows.map((r) => String(r.theme)) : [];
   });
+}
+
+/** Records what was done with a theme already marked: the creators briefed on it, and whether paid ran behind it. */
+export async function setActionDetail(dashboardId: string, theme: string, detail: { creators?: string; paid?: boolean }): Promise<void> {
+  await ensureReports();
+  const db = await getDb();
+  const found = await db.query<{ theme: string }>(`SELECT theme FROM brief_actions WHERE dashboard_id = $1 AND theme = $2`, [dashboardId, theme]);
+  if (!found.length) throw new Error("Mark the theme as acted on first");
+  if (detail.creators !== undefined) await db.query(`UPDATE brief_actions SET creators = $3 WHERE dashboard_id = $1 AND theme = $2`, [dashboardId, theme, cleanHandles(detail.creators).join(",")]);
+  if (detail.paid !== undefined) await db.query(`UPDATE brief_actions SET paid = $3 WHERE dashboard_id = $1 AND theme = $2`, [dashboardId, theme, detail.paid]);
 }
 
 /** Marks a theme as acted on (it must be one of the dashboard's themes), or with `remove` takes the mark away. */
@@ -197,7 +233,25 @@ export async function getMonthRead(dashboardId: string, month: string, market?: 
     if (actions.length) {
       const was = hasPrev ? await themeMonths(prevWindow) : null;
       const none: ThemeMonth = { posts: 0, ours: 0, vs: null };
-      acted = actions.map((a) => ({ theme: a.theme, since: a.since, now: now.get(a.theme) ?? none, before: was ? was.get(a.theme) ?? none : null }));
+      const numOrNull = (v: unknown) => (v == null ? null : Number(v));
+      // The paid loop: the briefed creators' posts about us on the theme this month, and our paid posts on it against the unpaid.
+      const byCreator = new Map<string, BriefedCreator>();
+      if (actions.some((a) => a.creators.length)) {
+        const res = await runWidgetQuery(THEME_CREATOR_SQL, 5000, window);
+        if (!res.ok) throw new Error(res.error);
+        for (const r of res.rows) byCreator.set(`${r.theme}\n${r.creator}`, { creator: String(r.creator), posts: Number(r.posts) || 0, vs: numOrNull(r.vs), comments: Number(r.comments) || 0, intent: Number(r.intent) || 0 });
+      }
+      const paidBy = new Map<string, PaidMonth>();
+      if (actions.some((a) => a.paid)) {
+        const res = await runWidgetQuery(THEME_PAID_SQL, 200, window);
+        if (!res.ok) throw new Error(res.error);
+        for (const r of res.rows) paidBy.set(String(r.theme), { posts: Number(r.posts) || 0, vs: numOrNull(r.vs), unpaidPosts: Number(r.unpaid_posts) || 0, unpaidVs: numOrNull(r.unpaid_vs) });
+      }
+      acted = actions.map((a) => ({
+        theme: a.theme, since: a.since, now: now.get(a.theme) ?? none, before: was ? was.get(a.theme) ?? none : null, creators: a.creators, paid: a.paid,
+        briefed: a.creators.map((c) => byCreator.get(`${a.theme}\n${c}`) ?? { creator: c, posts: 0, vs: null, comments: 0, intent: 0 }),
+        paidMonth: a.paid ? paidBy.get(a.theme) ?? { posts: 0, vs: null, unpaidPosts: 0, unpaidVs: null } : null,
+      }));
     }
     // A market can have nothing in the month before even when the brands as a whole do.
     return { measures, kpis: await kpisFor(window), previous: before && (before.posts > 0 || before.comments > 0) ? before : null, review: await getStoredReport(dashboardId, month, market), acted, whiteSpace };

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { ISO_DATE } from "@/lib/period";
 import { runWidgetQuery } from "@/lib/query";
 import { ensureReady } from "@/lib/schema";
-import { resolveScope, runInScope } from "@/lib/scope";
+import { cacheGet, cacheKey, cachePut } from "@/lib/query-cache";
+import { resolveScope, runInScope, scopeSettings } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -31,17 +32,27 @@ export async function POST(req: Request) {
 
 type Window = z.infer<typeof WindowSchema>;
 async function run(sql: string, window: Window, compare: Window, sampleSql?: string) {
+  // The same box for the same brands, period and market is answered from the store until the data changes.
+  const key = cacheKey({ sql, window: window ?? null, compare: compare ?? null, sampleSql: sampleSql ?? null, scope: scopeSettings() });
+  const stored = await cacheGet<Record<string, unknown>>(key);
+  if (stored) return NextResponse.json(stored, { headers: { "x-cache": "hit" } });
   const result = await runWidgetQuery(sql, undefined, window ?? undefined);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+  let complete = true;
   let compareRows: typeof result.rows | undefined;
   if (compare) {
     const c = await runWidgetQuery(sql, undefined, compare);
     compareRows = c.ok ? c.rows : [];
+    if (!c.ok) complete = false;
   }
   let sample: number | undefined;
   if (sampleSql) {
     const s = await runWidgetQuery(sampleSql, 1, window ?? undefined);
     if (s.ok) sample = Number(s.rows[0]?.n ?? 0) || 0;
+    else complete = false;
   }
-  return NextResponse.json({ rows: result.rows, columns: result.columns, truncated: result.truncated, compareRows, sample });
+  const body = { rows: result.rows, columns: result.columns, truncated: result.truncated, compareRows, sample };
+  // Only a complete answer is stored: a comparison that failed is tried again next time.
+  if (complete) await cachePut(key, body);
+  return NextResponse.json(body);
 }

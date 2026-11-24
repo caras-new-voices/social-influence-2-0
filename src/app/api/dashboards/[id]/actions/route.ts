@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDashboard } from "@/lib/dashboards";
-import { listActions, setAction, themeOptions } from "@/lib/reports";
+import { listActions, setAction, setActionDetail, themeOptions } from "@/lib/reports";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
@@ -17,16 +17,18 @@ export async function GET(_req: Request, ctx: Ctx) {
   }
 }
 
-const Body = z.object({ theme: z.string().min(1).max(200), remove: z.boolean().optional() });
+const Body = z.object({ theme: z.string().min(1).max(200), remove: z.boolean().optional(), creators: z.string().max(2000).optional(), paid: z.boolean().optional() });
 
-/** Marks a theme as acted on, or with remove: true takes the mark away. */
+/** Marks a theme as acted on, or with remove: true takes the mark away. With creators or paid, records what was done with a marked theme. */
 export async function POST(req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   if (!(await getDashboard(id))) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request" }, { status: 400 });
   try {
-    await setAction(id, parsed.data.theme, parsed.data.remove);
+    const { theme, remove, creators, paid } = parsed.data;
+    if (creators !== undefined || paid !== undefined) await setActionDetail(id, theme, { creators, paid });
+    else await setAction(id, theme, remove);
     return NextResponse.json({ actions: await listActions(id) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

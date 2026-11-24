@@ -8,7 +8,7 @@ Each line has one of three results:
 - **Approximation:** built, with a stated difference.
 - **Not possible yet:** the data does not hold what it needs. Nothing is faked.
 
-Totals for the 39 sub-questions, counted strictly against the brief's wording on 19 November 2026: 29 answered, 6 approximations, 4 not possible yet. "Answered" means built as the brief describes it on the data we hold; several rest on thin samples, which each line says. By question: 1 has 7 of 7 answered, 2 has 4 of 7, 3 has 7 of 7, 4 has 7 of 9, 5 has 4 of 9.
+Totals for the 39 sub-questions, counted strictly against the brief's wording, last on 24 November 2026: 33 answered, 2 approximations, 4 not possible yet. "Answered" means built as the brief describes it on the data we hold; several rest on thin samples, which each line says. By question: 1 has 7 of 7 answered, 2 has 6 of 7, 3 has 7 of 7, 4 has 8 of 9, 5 has 5 of 9.
 
 ## The eight measures
 
@@ -53,8 +53,8 @@ Output in the brief: an "own it" list with the theme, proof, who is absent and t
 2. **What do consumers ask about that creators don't cover? Answered.** "Content gap, in points".
 3. **Which questions go unanswered? Answered.** "Questions about the brand that nobody answered", grouped by what they ask about. Questions about the creator are now left out.
 4. **Which benefits does nobody claim? Answered.** "Benefits nobody claims": each attribute's share of the benefits claimed in captions against its share of the praise in brand comments. Captions are read by a model for the benefit they claim (hair removal only so far).
-5. **Which audiences are under-served? Approximation.** By creator country only. The data has no audience age or gender per post.
-6. **Which platforms are under-served? Approximation.** Share of posts by platform against rivals, not theme by platform.
+5. **Which audiences are under-served? Answered.** "Audiences by age and gender: conversation against creators": creators grouped by who mostly follows them and their largest age band, with each group's share of comments against its share of creators. It rests on the creators whose audience is known (a minority). The country table stays beside it.
+6. **Which platforms are under-served? Answered.** "Platforms each theme under-uses": theme and platform pairs where the theme outperforms and the platform carries less of the theme than of all themed posts.
 7. **Which culture is open to us? Not possible yet.** Culture lens.
 
 ## 3. What do people say about us, our rivals and our products?
@@ -77,7 +77,7 @@ Output in the brief: a top 10 per theme, product and competitor. **Built:** "Who
 
 1. **Who drives each theme? Answered.** "Who drives each theme".
 2. **Who drives buying? Answered.** "Who drives buying".
-3. **Who is credible on the topic? Approximation.** Theme fit is in the creator score. Months active and comment tone are not.
+3. **Who is credible on the topic? Answered.** Theme fit is in the creator score. Months active and the positive share of the comments under their posts stand beside it in the score table. They are shown, not scored.
 4. **Who works with competitors? Answered.** "Who works with competitors", with whether a rival paid them.
 5. **Who reaches our buyer? Answered.** The target audience set under Brands (gender, ages, markets) is matched against each creator's audience and shown as "audience match %" in the creator score. Cities are not in the data.
 6. **Does performance hold when paid? Answered.** Now on corrected paid, gifted and earned posts.
@@ -91,13 +91,13 @@ Also added, because Tom called it out: "Earned creators: posting about us, never
 
 Output in the brief: the product priority grid. **Built:** "The answer: fix, protect, start talking about" and "Product priority grid".
 
-1. **What do people wish existed? Approximation.** "What people wish existed", grouped by kind of request. The brief asks for it by product and attribute. Requests to the creator are left out.
+1. **What do people wish existed? Approximation.** "What people wish existed" by kind of request, and "What people wish existed, by product" for us and each rival. The brief also asks for it by attribute; requests are not tagged with one. Requests to the creator are left out. Counts are small (3 to 23 per line).
 2. **What is breaking, and is it getting worse? Answered.** By attribute over time, and "What is breaking, by product" by product line over time.
 3. **How do people actually use it? Answered.** "How people actually use it".
 4. **What should we fix, protect or start talking about? Answered.** The grid.
 5. **Where are competitor products weak? Answered.** "Where competitor products are weak" per rival brand, and "Priority grid by product, ours and rivals'" per product line with 200 or more brand comments.
 6. **How do people judge price and value? Approximation.** Price praise against price objections per brand. The prices people compare against are not extracted.
-7. **Which variants do people want? Approximation.** Inside "What people wish existed" as the "variant" kind, not its own element.
+7. **Which variants do people want? Answered.** "Variants people ask for": each request for a variant, colour, size or format, with its product line and likes, ours first.
 8. **How did a launch land? Not possible yet.** The data has no launch dates.
 9. **What should we make next? Not possible yet.** It needs what is growing in culture, which is the culture lens.
 
