@@ -363,6 +363,55 @@ export const LEADER_VIEWS: LeaderView[] = [
   },
 ];
 
+/**
+ * The worked example: the brief run end to end on this dashboard's data, as one document. Each
+ * chapter follows a heading of the brief and shows the boxes that carry its answer, by title; a
+ * box a dashboard does not have is left out, and a chapter with none is skipped.
+ */
+export interface ExampleChapter { heading: string; text: string; titles: string[] }
+export const WORKED_EXAMPLE: ExampleChapter[] = [
+  {
+    heading: "The idea in one page",
+    text: "We use the whole social conversation to tell a brand what to say, who should say it and what to build next. Every piece of content is aimed at three outcomes: salience, purchase intent and better products. This is where the brand stands on each.",
+    titles: ["The three outcomes"],
+  },
+  {
+    heading: "How we measure: eight numbers",
+    text: "The same eight measures sit under every answer. They are calculated the same way every month, so brands, markets and months compare like for like.",
+    titles: ["Our eight measures", "The same measures for every tracked brand", "The measures, market by market"],
+  },
+  {
+    heading: "1. Which conversations are winning?",
+    text: "Content should ride what is already growing and performing. We find it by crossing momentum with engagement vs norm, theme by theme. The output: three to five themes to build content around, with the format that works and our gap in each, and a brief for the first three.",
+    titles: ["The answer: themes to build content around", "Themes: momentum and engagement vs norm", "Content briefs for the top three themes"],
+  },
+  {
+    heading: "2. Where is the white space?",
+    text: "White space is where the audience rewards content but no brand has moved in. It is the cheapest place to build salience. The output: an \"own it\" list with the theme, proof the audience rewards it, who is absent and the first brief.",
+    titles: ["The white-space map", "The answer: the \"own it\" list", "Every theme, graded: open, unclaimed, contested or owned"],
+  },
+  {
+    heading: "3. What do people say about us, our rivals and our products?",
+    text: "Comments are the consumer's own voice. Reading them tells a brand what to amplify, what to answer and what to attack, in words it can use, and who to put paid behind.",
+    titles: ["The answer: what to amplify, answer and attack", "Briefs to amplify, answer and attack", "Amplify, answer and attack, by product", "Who switches to whom"],
+  },
+  {
+    heading: "4. Which creators win in each conversation?",
+    text: "The best creator for a brand is one who already wins its conversation, with the right audience. Every creator is scored the same way on performance, buying signals, theme fit, audience match, cost and availability.",
+    titles: ["The answer: creators to brief first", "Creator score: the top creators across the tracked brands"],
+  },
+  {
+    heading: "5. What should we build or fix?",
+    text: "The comments that brief content also brief the product team: what people wish existed, what breaks, and what they would pay for. Every product attribute lands in one box of the grid.",
+    titles: ["The answer: fix, protect, start talking about", "Product priority grid", "Where competitor products are weak: their \"fix first\" box", "What people wish existed"],
+  },
+  {
+    heading: "Limits we state up front",
+    text: "None of these block the approach, but each shapes what we promise.",
+    titles: ["Reading it every month, and what it cannot show yet"],
+  },
+];
+
 /** The measures for the focal brand in the period and the period before: rows of label, value, compare, fmt. */
 export const EIGHT_MEASURES_SQL = `WITH ${BOUNDS}, ${WINDOW_POSTS}, ${SCORED("w")}, ${LABEL_TAGS("(SELECT * FROM w WHERE cur)")},
 tot AS MATERIALIZED (SELECT count(*) FILTER (WHERE cur)::float AS cur, count(*) FILTER (WHERE NOT cur)::float AS prev, sum(coalesce(comments, 0)) FILTER (WHERE cur) AS comments FROM w),

@@ -46,6 +46,8 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
   const viewParam = useSearchParams().get("view");
   const [viewChoice, setViewChoice] = useState<"summary" | "full" | null>(viewParam === "summary" || viewParam === "full" ? viewParam : null);
   const view = canSummarise ? viewChoice ?? "summary" : "full";
+  // A shared link opens read-only: the same view, with the chat and every editing control hidden.
+  const readOnly = useSearchParams().get("readonly") === "1";
   // The brief's three buyers each ask something different first: the summary can be read as any of them. ?for= keeps it in the link.
   const forParam = useSearchParams().get("for");
   const [leaderId, setLeaderId] = useState<string | null>(LEADER_VIEWS.some((l) => l.id === forParam) ? forParam : null);
@@ -295,7 +297,25 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     }
   };
 
-  const comingSoon = (feature: string) => toast(`${feature} will be available in a future version.`);
+  const [exportOpen, setExportOpen] = useState(false);
+  /** The period and market of this view, as a query string for a link. */
+  const linkQuery = () => {
+    const q = new URLSearchParams(Object.entries(periodToParams(period)).filter(([k, v]) => !(k === "period" && v === "all"))).toString();
+    return q ? `?${q}` : "";
+  };
+  /** A link that opens this view (period, market, summary or everything, whose summary) with nothing to edit. */
+  const share = async () => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("readonly", "1");
+    params.set("view", view);
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Read-only link copied");
+    } catch {
+      window.prompt("Copy this read-only link", url);
+    }
+  };
   const focusWidget = focusId ? widgets.find((w) => w.id === focusId) ?? null : null;
 
   const widgetSummaries = useMemo(() => widgets, [widgets]);
@@ -347,13 +367,23 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           <button className="im-btn im-btn-secondary" onClick={() => setBrandDraft(currentScope)} title="Choose the company and competitors this dashboard shows">Brands</button>
           <button className="im-btn im-btn-secondary" onClick={() => setAdding(true)}>+ Add element</button>
           <Link className="im-btn im-btn-secondary" href={`/dashboard/${dashboard.id}/reports?market=${encodeURIComponent(period.market ?? "")}`} title="Month-by-month reports and the month in review">Reports</Link>
-          <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Export")}>Export</button>
-          <button className="im-btn im-btn-secondary" onClick={() => comingSoon("Sharing")}>Share</button>
+          <span className="menu">
+            <button className="im-btn im-btn-secondary" onClick={() => setExportOpen((v) => !v)} aria-haspopup="menu" aria-expanded={exportOpen}>Export</button>
+            {exportOpen && (
+              <span className="menu__pop" role="menu" onClick={() => setExportOpen(false)}>
+                <Link role="menuitem" href={`/dashboard/${dashboard.id}/example${linkQuery()}`}>The worked example, as a document</Link>
+                <button role="menuitem" onClick={() => window.print()}>Print this view or save it as a PDF</button>
+                <a role="menuitem" href={`/api/dashboards/${dashboard.id}/export${linkQuery()}`}>Every table, as a spreadsheet (CSV)</a>
+              </span>
+            )}
+          </span>
+          <button className="im-btn im-btn-secondary" onClick={() => void share()} title="Copy a read-only link to this view">Share</button>
           <button className="im-btn im-btn-primary" onClick={() => void save()} disabled={saving || !dirty}>{saving ? "Saving…" : "Save"}</button>
         </>
       }
     >
-      <div className="ws">
+      <div className={`ws ${readOnly ? "ws--readonly" : ""}`}>
+        {readOnly && <div className="readonly-note" role="status">Read-only view. <Link href={`/dashboard/${dashboard.id}`}>Open the dashboard to edit it</Link>.</div>}
         <ChatPanel
           dashboardId={dashboard.id}
           widgets={widgetSummaries}
