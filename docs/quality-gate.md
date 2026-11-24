@@ -227,6 +227,13 @@ From `docs/brief-match-plan.md`: the things the brief promises that the earlier 
 - The number check covers the new boxes: 841 of 841 for Venus, 842 of 842 for Philips OneBlade, 495 of 495 for Estrid in Germany, on the test copy.
 - The paid loop was checked through the page in a browser on the test copy: mark, add creators and paid, read the month.
 
+### Closing the last gaps, stage 4 (24 November 2026)
+
+- **Speed.** Each box's answer is now stored under its query, brands, period and market, and reused until the data changes (an import, a seed pack, corrected labels or rebuilt views all clear it). On the test copy the 65 boxes of a dashboard took 2.7 seconds the first time and 0.1 seconds the second, with the same answers. The first person to open a view after the data changes still waits for the queries.
+- **A second theme read for hair care: tried, not shipped.** The stricter read that lifted hair removal was run over hair care's 3,000 posts. Against the 150 posts the judge had read, agreement went from 82% to 85%: 14 posts fixed, 9 broken. That is inside the noise for 150 posts and under the 90% mark, and it would have changed a third of the labels. The labels are left as they were. Lifting another industry needs what hair removal had: a second judged sample to tune the instructions on.
+- The embedded database was run again: number check 841 of 841, stored answers and the paid loop both work on it.
+- **On the live site** after the merge: number check 841 of 841 for Venus; the four new boxes return rows; the paid loop saves and reads back; a summary nobody had opened took 14.7 seconds the first time and 1.1 seconds the second. The live check was run for one brand and not walked in a browser.
+
 ### Not verified
 - The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
