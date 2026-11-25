@@ -153,6 +153,30 @@
    "sample": "150 comments",
    "scope": "Hair removal and shaving",
    "measured": "19 November 2026"
+  },
+  {
+   "key": "wish-attribute",
+   "what": "What a product wish is about (or that the comment is not one)",
+   "agreement": 91,
+   "sample": "124 comments",
+   "scope": "Hair removal and shaving",
+   "measured": "25 November 2026"
+  },
+  {
+   "key": "price-view",
+   "what": "How a comment judges the price: too expensive, good value or a question",
+   "agreement": 86,
+   "sample": "300 comments",
+   "scope": "Hair removal and shaving",
+   "measured": "25 November 2026"
+  },
+  {
+   "key": "price-versus",
+   "what": "What a comment measures the price against",
+   "agreement": 88,
+   "sample": "300 comments",
+   "scope": "Hair removal and shaving",
+   "measured": "25 November 2026"
   }
  ]
 }

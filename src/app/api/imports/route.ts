@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { Row } from "@/lib/db";
 import { importBatch, isAuthorized, listImports } from "@/lib/imports";
 
@@ -57,6 +57,9 @@ export async function POST(req: Request) {
       comments: body.comments,
       influencers: body.influencers,
     });
+    // New posts and comments are read by the model, and the saved dashboards warmed, after the answer is sent.
+    const auth = req.headers.get("authorization");
+    after(() => fetch(new URL("/api/cron/upkeep", req.url), { method: "POST", headers: auth ? { authorization: auth } : {}, signal: AbortSignal.timeout(10_000) }).catch(() => {}));
     return NextResponse.json(result, { status: 201 });
   } catch (e) {
     const msg = (e as Error).message;

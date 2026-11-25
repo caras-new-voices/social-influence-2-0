@@ -285,6 +285,46 @@ if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")) and "W
             check(f"wishes {r['brand']} {r['product']}: of the top kind", top[1], r["of that kind"], 0)
             checks.append((top[0] == r["asked for most"], f"wishes {r['brand']} {r['product']}: kind asked for most", top[0], r["asked for most"]))
 
+# Price and wishes, read a second time (scripts/classify_extras.py): counted again from the file.
+if os.path.exists(os.path.join(SEED, "extra_labels", IND + ".json.gz")):
+    ex = gz("extra_labels", IND + ".json.gz")
+    pview = {(r[0], r[1]): (r[2], r[3] or None) for r in ex["prices"]}
+    wish = {(r[0], r[1]): r[2] for r in ex["wishes"]}
+    priced = [c for c in comments if c["attribute"] == "price" and (c["segment_id"], c["comment_id"]) in pview]
+    view = lambda c: pview[(c["segment_id"], c["comment_id"])][0]
+    versus = lambda c: pview[(c["segment_id"], c["comment_id"])][1]
+    title = "How each brand's price is judged"
+    if title in got:
+        checks.append(({b for b in brands if len(of(priced, b)) >= 10} == {r["brand"] for r in got[title]}, "price: brands shown are exactly those with 10+ price comments", None, len(got[title])))
+        for r in got[title]:
+            g = of(priced, r["brand"])
+            check(f"price {r['brand']}: price comments", len(g), r["price comments"], 0)
+            for col, v in (("too expensive %", "expensive"), ("good value %", "good"), ("asks the price %", "asks"), ("other %", "other")):
+                check(f"price {r['brand']}: {col}", 100 * sum(view(c) == v for c in g) / len(g) if g else None, r[col], 0.02)
+    title = "What people measure the price against"
+    if title in got:
+        pairs = defaultdict(list)
+        for c in priced:
+            if versus(c): pairs[(c["brand"], versus(c))].append(c)
+        for r in got[title]:
+            g = pairs.get((r["brand"], r["measured against"]), [])
+            name = f"price of {r['brand']} against {r['measured against']}"
+            check(f"{name}: comments", len(g), r["comments"], 0)
+            check(f"{name}: say too expensive", sum(view(c) == "expensive" for c in g), r["say too expensive"], 0)
+            check(f"{name}: say good value", sum(view(c) == "good" for c in g), r["say good value"], 0)
+        big = {k for k, v in pairs.items() if len(v) >= 2}
+        if len(got[title]) < 20: checks.append((big == {(r["brand"], r["measured against"]) for r in got[title]}, "price: pairs shown are exactly those with 2+ comments", len(big), len(got[title])))
+    title = "What people wish existed, by attribute"
+    if title in got:
+        real = [c for c in comments if c["about"] == "brand" and c.get("feature_request_type") and (c["segment_id"], c["comment_id"]) in wish]
+        key = lambda label: {"Look,": "design", "Something": "other"}.get(label.split(" ")[0], label.split(":")[0].split(" ")[0].lower())
+        check("wishes by attribute: all of them are in the table", len(real), sum(r["our comments"] + r["rivals' comments"] for r in got[title]), 0)
+        for r in got[title]:
+            g = [c for c in real if wish[(c["segment_id"], c["comment_id"])] == key(r["the wish is about"])]
+            check(f"wish about {key(r['the wish is about'])}: our comments", len(of(g, FOCAL)), r["our comments"], 0)
+            check(f"wish about {key(r['the wish is about'])}: rivals' comments", len(g) - len(of(g, FOCAL)), r["rivals' comments"], 0)
+            check(f"wish about {key(r['the wish is about'])}: likes", sum(c.get("likes") or 0 for c in g), r["likes"], 0)
+
 # Platforms each theme under-uses: a platform's share of the theme against its share of all themed posts.
 title = "Platforms each theme under-uses"
 if title in got:

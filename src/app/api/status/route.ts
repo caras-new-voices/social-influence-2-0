@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { ensureReady } from "@/lib/schema";
 import { hasWorkspaceHeader, llmMode, llmModel } from "@/lib/claude";
+import { liveReadingEnabled, pendingReads } from "@/lib/live-classify";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,8 @@ export async function GET() {
       llm: llmMode(),
       model: llmModel(),
       workspaceHeader: hasWorkspaceHeader(),
+      // New posts and comments waiting for the model's reading (run /api/cron/upkeep), and whether it can read them.
+      newRows: { reader: liveReadingEnabled(), waiting: await pendingReads(db).catch(() => []) },
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });

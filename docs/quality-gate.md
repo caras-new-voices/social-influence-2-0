@@ -234,7 +234,23 @@ From `docs/brief-match-plan.md`: the things the brief promises that the earlier 
 - The embedded database was run again: number check 841 of 841, stored answers and the paid loop both work on it.
 - **On the live site** after the merge: number check 841 of 841 for Venus; the four new boxes return rows; the paid loop saves and reads back; a summary nobody had opened took 14.7 seconds the first time and 1.1 seconds the second. The live check was run for one brand and not walked in a browser.
 
+### New imports, the last two approximations, and warm answers (25 November 2026)
+
+- **New imports are read by the model.** Until now a later import fell back to the old word rules. The app now reads new posts and comments itself, with the same instructions the first data was read with, and applies the results like the first labels.
+  - Tested with a real import on the test copy: 80 posts and 273 comments were read in about a minute and a half without anyone starting it, for about 43 cents at list prices, and showed on the dashboards.
+  - Measured on rows whose labels are known (`npm run check:reader`, 300 posts and 600 comments): about the brand 94%, paid or gifted 95%, buying signal 95%, comment about the brand 96%, product line of a post 86%, attribute 83%, product line of a comment 80%, theme 86% (same theme, or one the other reading also lists).
+  - Against the independent judge's 300 posts the new reader's themes are right 89% of the time. The first labels score 90%.
+  - The first version gave attributes more freely than the first labels did, which would have made new months look different from old ones. It now takes a second look at every attribute, as the first labels had. After that the counts per attribute match in both directions.
+  - **The hook is unreliable, and always was.** The same model with the same instructions gives the same hook only 63% of the time. That is a property of the hook label, not of new imports. The Method page now says to treat hook figures as rough.
+- **The last two approximations are closed.** Product wishes are grouped by attribute, and price comments say how the price is judged and against what. Sub-questions: 35 answered, 4 not possible on this data. The judge agrees with the wish reading 91% of the time, the price view 86% and what the price is measured against 88%. The two price figures are under the 90% mark and are shown on the Method page as they are.
+- **Warm answers.** After the data changes, the upkeep job works out the saved dashboards' boxes before anyone opens them. On the test copy a browser opening a warmed dashboard got 44 of 45 boxes from the store. It covers the 12 most recently changed saved dashboards with their saved period and market. A brand-new dashboard, or a period nobody saved, is still worked out on first view.
+- The number check covers the new boxes: 946 of 946 for Venus, 947 of 947 for Philips OneBlade, 570 of 570 for Estrid in Germany. Template check passes for Venus (74 boxes) and the hair care brands. The embedded database passes the number check too.
+- One comment in the seed had never been read ("Igen"). It is now read (noise), so nothing waits on the live site at the start.
+
 ### Not verified
+- The import reader was tested on hair removal only. The other nine industries have no product lines or comment labels to compare with.
+- The import reader has not run on the live site. It needs the OpenAI key there, and the daily cron or an import through the API.
+- Wishes by attribute rest on 35 comments.
 - The analyst was tested on five questions on a test copy. Other phrasings, and questions the dashboard only half answers, were not tested.
 - The new product-line and switching reads for the 645 added brand comments were not judged again; the earlier figures (93% and 91%) are assumed to hold.
 - The white-space thresholds (1.5 times usual share, half the posts, 15% brand-led, a third unprompted) are mine. Tom has not confirmed them.
