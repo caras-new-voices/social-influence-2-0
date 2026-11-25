@@ -110,6 +110,8 @@ const THEME_KEYWORDS = `kw AS (
 const OUR_BC = { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE brand = focal_brand()`, min: COMMENT_MIN, unit: "brand comments on our content" };
 const N_BC: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand()`, min: COMMENT_MIN, what: "comments about the brand on our content" };
 const N_PAID: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE brand = focal_brand() AND is_paid`, min: 20, what: "posts with a paid disclosure" };
+const N_WISHES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE about = 'brand' AND feature_request_type IS NOT NULL AND wish_attribute IS NOT NULL`, min: 10, what: "requests for a product change, read a second time" };
+const N_PRICE_VERSUS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE price_versus IS NOT NULL`, min: 15, what: "price comments that name what the price is measured against" };
 const N_REQUESTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND feature_request_type IS NOT NULL`, min: 15, what: "brand comments asking for a product change" };
 const N_USE_CASES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND use_case_segment IS NOT NULL`, min: 15, what: "brand comments describing how the product is used" };
 const N_RIVAL_MENTIONS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND competitor_name IS NOT NULL AND ${NOT_SELF("competitor_name")}`, min: 15, what: "brand comments naming another brand" };
@@ -1514,6 +1516,28 @@ FROM brand_comments WHERE attribute = 'price' GROUP BY brand HAVING count(*) >= 
         rationale: "Whether price is a reason to buy or a reason not to, against rivals.",
       },
       {
+        type: "table", w: 12, h: 6,
+        title: "What people measure the price against",
+        subtitle: "Brand comments about price that name what the price is compared with, across the tracked brands, ours first: another tracked brand, the brand's own parts, refills or earlier price (\"Its own ...\"), or something else such as a shop's own label. For each: how many comments, how many of them call that brand's price too expensive or good value, and the most-liked one in the commenter's words. Pairs with 2+ comments. Read from each comment by a model; most price comments name nothing and are not here.",
+        when: N_PRICE_VERSUS,
+        sql: `WITH q AS (SELECT brand, price_versus AS versus, price_view, text, coalesce(likes, 0) AS likes FROM brand_comments WHERE attribute = 'price' AND price_versus IS NOT NULL),
+t AS (SELECT brand, versus, count(*)::int AS n, count(*) FILTER (WHERE price_view = 'expensive')::int AS expensive, count(*) FILTER (WHERE price_view = 'good')::int AS good FROM q GROUP BY 1, 2 HAVING count(*) >= 2),
+top AS (SELECT DISTINCT ON (brand, versus) brand, versus, left(text, 160) AS said FROM q ORDER BY brand, versus, likes DESC, text)
+SELECT t.brand, t.versus AS "measured against", t.n AS comments, t.expensive AS "say too expensive", t.good AS "say good value", top.said AS "most-liked, verbatim"
+FROM t JOIN top USING (brand, versus) ORDER BY (t.brand = focal_brand()) DESC, t.n DESC, t.brand, t.versus LIMIT 20`,
+        rationale: "Price is always judged against something. This says what, for us and for each rival.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "How each brand's price is judged",
+        subtitle: "Brand comments about price, per brand, by how the commenter judges it: too expensive (including parts that cost too much and \"I would buy if it cost less\"), good value, or a question about the price with no judgement. Shares of the brand's price comments, in percent (brands with 10+). Read from each comment by a model.",
+        when: N_PRICE_VERSUS,
+        sql: `SELECT brand, count(*)::int AS "price comments", ${r0("100.0 * count(*) FILTER (WHERE price_view = 'expensive') / count(*)")} AS "too expensive %", ${r0("100.0 * count(*) FILTER (WHERE price_view = 'good') / count(*)")} AS "good value %",
+       ${r0("100.0 * count(*) FILTER (WHERE price_view = 'asks') / count(*)")} AS "asks the price %", ${r0("100.0 * count(*) FILTER (WHERE price_view = 'other') / count(*)")} AS "other %"
+FROM brand_comments WHERE attribute = 'price' AND price_view IS NOT NULL GROUP BY brand HAVING count(*) >= 10 ORDER BY (brand = focal_brand()) DESC, count(*) DESC`,
+        rationale: "A question about the price is interest, not an objection. This separates the two.",
+      },
+      {
         type: "table", w: 7, h: 6,
         title: "What people wish existed",
         subtitle: "Requests for a product change in our brand comments by kind (feature, variant, format), with the most-liked one verbatim. Requests to the creator (\"do a tutorial\") are left out.",
@@ -1536,6 +1560,18 @@ top AS (SELECT DISTINCT ON (brand, product) brand, product, left(said, 160) AS e
 SELECT t.brand, t.product, t.requests, t.likes, k.kind AS "asked for most", k.n AS "of that kind", top.example AS "most-liked, verbatim"
 FROM t JOIN k USING (brand, product) JOIN top USING (brand, product) ORDER BY (t.brand = focal_brand()) DESC, t.requests DESC, t.brand, t.product`,
         rationale: "A wish belongs to a product. This says which one, for us and for each rival.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "What people wish existed, by attribute",
+        subtitle: "The comments tagged as product requests were read a second time. Many are plain wanting (\"I need this\") and are left out here. The rest are grouped by what the requested change is about: one of the six product attributes, or how it looks and smells, which is not one of the six. Ours against the tracked rivals', with the most-liked request verbatim. The counts are small.",
+        when: N_WISHES,
+        sql: `WITH q AS (SELECT brand, wish_attribute AS a, coalesce(feature_request, text) AS said, coalesce(likes, 0) AS likes FROM brand_comments WHERE about = 'brand' AND feature_request_type IS NOT NULL AND wish_attribute IS NOT NULL),
+top AS (SELECT DISTINCT ON (a) a, left(said, 160) AS example FROM q ORDER BY a, likes DESC, said)
+SELECT coalesce(${ATTR("q.a")}, CASE q.a WHEN 'design' THEN 'Look, colour and scent (not one of the six)' ELSE 'Something else' END) AS "the wish is about",
+       count(*) FILTER (WHERE q.brand = focal_brand())::int AS "our comments", count(*) FILTER (WHERE q.brand <> focal_brand())::int AS "rivals' comments", sum(q.likes)::int AS likes, top.example AS "most-liked, verbatim"
+FROM q JOIN top USING (a) GROUP BY q.a, top.example ORDER BY count(*) DESC, q.a`,
+        rationale: "The brief asks for wishes by attribute: what a product change would have to improve.",
       },
       {
         type: "table", w: 12, h: 5,

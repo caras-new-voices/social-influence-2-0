@@ -72,6 +72,8 @@ interface DisclosureFile { values: string[]; rows: Array<[number, number, number
 interface ProductLabelsFile { products: string[]; attributes: string[]; posts: Array<[number, number, number, number]>; comments: Array<[number, number, number]> }
 interface SwitchLabelsFile { rows: Array<[number, number, string, string, string]> }
 interface CommentLabelsFile { about: string[]; attributes: string[]; rows: Array<[number, number, number, number, number?]> }
+/** scripts/classify_extras.py: what a product wish is about, and how a price comment judges the price and against what. */
+interface ExtraLabelsFile { wishes: Array<[number, number, string]>; prices: Array<[number, number, string, string]> }
 
 function readGz<T>(folder: string, industry: string): { file: T; hash: string } | null {
   const p = path.join(seedDir(), folder, `${industry}.json.gz`);
@@ -120,8 +122,12 @@ const GIFTED_MARKERS = ["#gifted", "\\mgifted\\M", "#giftedby", "pr sample", "#p
  *  - comments: `about` and `attribute` from the comment classifier.
  *  - product and claims: the product line a post or a brand comment is about, and the benefits a
  *    caption claims (scripts/classify_products.py). Codes 0 and 1 in the file mean none and several.
+ *  - wish_attribute, price_view and price_versus on comments (scripts/classify_extras.py).
+ * After each file, the readings the app made itself for later arrivals (live_post_labels and
+ * live_comment_labels, see live-classify.ts) are applied the same way.
  */
-async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile | null, comments: CommentLabelsFile | null, products: ProductLabelsFile | null, switching: SwitchLabelsFile | null) {
+async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile | null, comments: CommentLabelsFile | null, products: ProductLabelsFile | null, switching: SwitchLabelsFile | null, extras: ExtraLabelsFile | null) {
+  const liveSeg = `l.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`;
   const seg = `segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`;
   await db.query(`UPDATE posts_raw SET is_paid_source = coalesce(is_paid, false) WHERE is_paid_source IS NULL AND ${seg}`, [industry]);
   await db.query(`UPDATE posts_raw SET disclosure = NULL, is_gifted = false, is_owned = false, is_affiliate = false, paid_basis = NULL, about = NULL WHERE ${seg}`, [industry]);
@@ -135,6 +141,7 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
       );
     }
   }
+  await db.query(`UPDATE posts_raw p SET disclosure = l.disclosure FROM live_post_labels l WHERE l.segment_id = p.segment_id AND l.post_id = p.post_id AND l.disclosure IN ('paid', 'gifted') AND ${liveSeg}`, [industry]);
   await db.query(`UPDATE posts_raw SET disclosure = 'paid' WHERE ${seg} AND text IS NOT NULL AND lower(text) ~ $2`, [industry, PAID_MARKERS]);
   await db.query(`UPDATE posts_raw SET disclosure = NULL WHERE ${seg} AND disclosure = 'paid' AND lower(text) ~ $2`, [industry, NOT_PAID_MARKERS]);
   await db.query(`UPDATE posts_raw SET disclosure = 'gifted' WHERE ${seg} AND disclosure IS NULL AND text IS NOT NULL AND lower(text) ~ $2`, [industry, GIFTED_MARKERS]);
@@ -187,6 +194,11 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
       );
     }
   }
+  await db.query(
+    `UPDATE comments_raw c SET about = l.about, attribute = l.attribute, buying = l.buying FROM live_comment_labels l
+      WHERE l.segment_id = c.segment_id AND l.comment_id = c.comment_id AND c.about IS NULL AND l.about IS NOT NULL AND ${liveSeg}`,
+    [industry],
+  );
   await db.query(`UPDATE posts_raw SET product = NULL, claims = NULL WHERE ${seg} AND (product IS NOT NULL OR claims IS NOT NULL)`, [industry]);
   await db.query(`UPDATE comments_raw SET product = NULL WHERE ${seg} AND product IS NOT NULL`, [industry]);
   // Who moved from which brand to which, or says one is better (scripts/classify_switching.py).
@@ -223,6 +235,92 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
       );
     }
   }
+  await db.query(`UPDATE comments_raw SET wish_attribute = NULL, price_view = NULL, price_versus = NULL WHERE ${seg} AND (wish_attribute IS NOT NULL OR price_view IS NOT NULL OR price_versus IS NOT NULL)`, [industry]);
+  if (extras) {
+    const wishes = extras.wishes.map(([segment_id, comment_id, wish]) => ({ segment_id, comment_id, wish }));
+    for (let at = 0; at < wishes.length; at += CHUNK) {
+      await db.query(
+        `UPDATE comments_raw c SET wish_attribute = t.wish FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, wish text)
+          WHERE c.segment_id = t.segment_id AND c.comment_id = t.comment_id`,
+        [JSON.stringify(wishes.slice(at, at + CHUNK))],
+      );
+    }
+    const prices = extras.prices.map(([segment_id, comment_id, view, versus]) => ({ segment_id, comment_id, view, versus: versus || null }));
+    for (let at = 0; at < prices.length; at += CHUNK) {
+      await db.query(
+        `UPDATE comments_raw c SET price_view = t.view, price_versus = t.versus FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, view text, versus text)
+          WHERE c.segment_id = t.segment_id AND c.comment_id = t.comment_id`,
+        [JSON.stringify(prices.slice(at, at + CHUNK))],
+      );
+    }
+  }
+  // The app's own readings of later arrivals: product lines, claims, switching, wishes and price.
+  await db.query(`UPDATE posts_raw p SET product = l.product, claims = l.claims FROM live_post_labels l WHERE l.segment_id = p.segment_id AND l.post_id = p.post_id AND p.product IS NULL AND p.claims IS NULL AND (l.product IS NOT NULL OR l.claims IS NOT NULL) AND ${liveSeg}`, [industry]);
+  await db.query(
+    `UPDATE comments_raw c SET product = coalesce(c.product, l.product), switch_kind = coalesce(c.switch_kind, l.switch_kind), switch_from = coalesce(c.switch_from, l.switch_from), switch_to = coalesce(c.switch_to, l.switch_to),
+            wish_attribute = coalesce(c.wish_attribute, l.wish_attribute), price_view = coalesce(c.price_view, l.price_view), price_versus = coalesce(c.price_versus, l.price_versus)
+       FROM live_comment_labels l WHERE l.segment_id = c.segment_id AND l.comment_id = c.comment_id AND ${liveSeg}`,
+    [industry],
+  );
+}
+
+/** post_labels_raw rows for the app's own readings of an industry's posts, leaving out posts the seed file covers. */
+async function liveLabelRows(db: Db, industry: string, covered: Set<string>): Promise<ReturnType<typeof labelRows>> {
+  const rows = await db.query<{ segment_id: number; post_id: number | string; theme: string | null; also: string[] | null; hook: string | null; about: string | null }>(
+    `SELECT l.segment_id, l.post_id, l.theme, l.also, l.hook, l.about FROM live_post_labels l WHERE l.segment_id IN (SELECT id FROM segments_raw WHERE industry = $1)`,
+    [industry],
+  );
+  const out: ReturnType<typeof labelRows> = [];
+  for (const r of rows) {
+    const post_id = Number(r.post_id);
+    if (covered.has(`${r.segment_id}:${post_id}`)) continue;
+    if (r.theme) out.push({ segment_id: r.segment_id, post_id, kind: "theme", label: r.theme, rank: 1 });
+    for (const a of Array.isArray(r.also) ? r.also : []) if (a && a !== r.theme) out.push({ segment_id: r.segment_id, post_id, kind: "theme", label: a, rank: 2 });
+    if (r.hook) out.push({ segment_id: r.segment_id, post_id, kind: "hook", label: r.hook, rank: 1 });
+    if (r.about) out.push({ segment_id: r.segment_id, post_id, kind: "about", label: r.about, rank: 1 });
+  }
+  return out;
+}
+
+/**
+ * Stores one batch of the app's own post readings as labels right away, in place of the word
+ * rules' labels for those posts. The corrections that depend on them run when the industry's
+ * flags key is cleared (markFlagsStale).
+ */
+export async function applyLivePostLabels(db: Db, rows: Array<{ segment_id: number; post_id: number; theme: string | null; also: string[]; hook: string | null; about: string | null }>) {
+  if (!rows.length) return;
+  const keys = rows.map((r) => ({ segment_id: r.segment_id, post_id: r.post_id }));
+  await db.query(
+    `DELETE FROM post_labels_raw l USING jsonb_to_recordset($1::jsonb) AS t(segment_id integer, post_id bigint) WHERE l.segment_id = t.segment_id AND l.post_id = t.post_id`,
+    [JSON.stringify(keys)],
+  );
+  const labels: ReturnType<typeof labelRows> = [];
+  for (const r of rows) {
+    if (r.theme) labels.push({ segment_id: r.segment_id, post_id: r.post_id, kind: "theme", label: r.theme, rank: 1 });
+    for (const a of r.also) if (a && a !== r.theme) labels.push({ segment_id: r.segment_id, post_id: r.post_id, kind: "theme", label: a, rank: 2 });
+    if (r.hook) labels.push({ segment_id: r.segment_id, post_id: r.post_id, kind: "hook", label: r.hook, rank: 1 });
+    if (r.about) labels.push({ segment_id: r.segment_id, post_id: r.post_id, kind: "about", label: r.about, rank: 1 });
+  }
+  await db.query(
+    `INSERT INTO post_labels_raw (segment_id, post_id, brand, kind, label, rank, source)
+     SELECT t.segment_id, t.post_id, p.brand, t.kind, t.label, t.rank, 'model'
+       FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, post_id bigint, kind text, label text, rank smallint)
+       JOIN posts_raw p ON p.segment_id = t.segment_id AND p.post_id = t.post_id
+     ON CONFLICT DO NOTHING`,
+    [JSON.stringify(labels)],
+  );
+}
+
+/** Makes the next classifyPosts run apply the corrections for an industry again (new live readings to apply). */
+export async function markFlagsStale(db: Db, industry: string) {
+  await db.query(`UPDATE app_meta SET value = '' WHERE key = $1 AND value NOT LIKE 'running:%'`, [`flags:${industry}`]);
+}
+
+/** True when an industry's labels and corrections are fully applied, so anything still unlabelled is genuinely new. */
+export async function industrySettled(db: Db, industry: string): Promise<boolean> {
+  const t = (await getMeta(db, `themes:${industry}`)) ?? "";
+  const f = (await getMeta(db, `flags:${industry}`)) ?? "";
+  return t.endsWith("|done") && f !== "" && !f.startsWith("running:");
 }
 interface RulesFile {
   version?: number;
@@ -283,11 +381,12 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     const commentLabels = readGz<CommentLabelsFile>("comment_labels", ind.industry);
     const productLabels = readGz<ProductLabelsFile>("product_labels", ind.industry);
     const switchLabels = readGz<SwitchLabelsFile>("switch_labels", ind.industry);
+    const extraLabels = readGz<ExtraLabelsFile>("extra_labels", ind.industry);
     const handles = await db.query<{ h: string }>(`SELECT md5(coalesce(string_agg(brand || ':' || coalesce(handles::text, ''), '|' ORDER BY brand), '')) AS h FROM segments_raw WHERE industry = $1`, [ind.industry]);
     const base = `${rules.hash}:${model?.hash ?? "rules"}:${ind.posts}`;
     // The corrections have their own state, so a new disclosure or comment file does not redo the labels.
     const flagsKey = `flags:${ind.industry}`;
-    const flagsBase = `${base}:f9:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${productLabels?.hash ?? "-"}:${switchLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
+    const flagsBase = `${base}:f10:${disclosure?.hash ?? "-"}:${commentLabels?.hash ?? "-"}:${productLabels?.hash ?? "-"}:${switchLabels?.hash ?? "-"}:${extraLabels?.hash ?? "-"}:${handles[0]?.h.slice(0, 8) ?? "-"}`;
     const applyFlagsIfNeeded = async (): Promise<boolean> => {
       // An import that re-sends posts overwrites is_paid and clears is_paid_source (imports.ts): the corrections must run again.
       const stale = await db.query<{ n: number }>(
@@ -312,7 +411,7 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
       );
       if (!claim.length) return false;
       const t0 = Date.now();
-      await applyFlags(db, ind.industry, disclosure?.file ?? null, commentLabels?.file ?? null, productLabels?.file ?? null, switchLabels?.file ?? null);
+      await applyFlags(db, ind.industry, disclosure?.file ?? null, commentLabels?.file ?? null, productLabels?.file ?? null, switchLabels?.file ?? null, extraLabels?.file ?? null);
       await setMeta(db, flagsKey, flagsBase);
       log(`${ind.industry}: paid, brand-owned, comment and product corrections applied in ${Date.now() - t0} ms`);
       return true;
@@ -338,7 +437,9 @@ export async function classifyPosts(db: Db, budgetMs: number, log: (m: string) =
     }
     let stopped = false;
     if (step === "model") {
+      // The seed file's labels, then the app's own readings of posts that arrived after it was written.
       const rows = model ? labelRows(model.file) : [];
+      rows.push(...(await liveLabelRows(db, ind.industry, new Set((model?.file.rows ?? []).map((r) => `${r[0]}:${r[1]}`)))));
       while (at < rows.length) {
         if (spent()) {
           stopped = true;

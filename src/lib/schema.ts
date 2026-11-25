@@ -152,6 +152,22 @@ CREATE TABLE IF NOT EXISTS token_ledger (
   note text,
   balance_after bigint NOT NULL
 );
+-- Readings made by the app itself for posts and comments that arrived after the seed labels were
+-- written (src/lib/live-classify.ts). Kept apart from the raw tables so they survive a re-application.
+CREATE TABLE IF NOT EXISTS live_post_labels (
+  segment_id integer NOT NULL, post_id bigint NOT NULL,
+  theme text, also jsonb, hook text, about text, disclosure text, product text, claims text[],
+  model text, read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (segment_id, post_id)
+);
+CREATE TABLE IF NOT EXISTS live_comment_labels (
+  segment_id integer NOT NULL, comment_id bigint NOT NULL,
+  about text, attribute text, buying boolean, product text,
+  switch_kind text, switch_from text, switch_to text,
+  wish_attribute text, price_view text, price_versus text,
+  model text, read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (segment_id, comment_id)
+);
 CREATE TABLE IF NOT EXISTS period_events (
   id bigserial PRIMARY KEY,
   kind text NOT NULL,
@@ -219,7 +235,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-9";
+const VIEWS_VERSION = "scoped-10";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -250,6 +266,9 @@ ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS product text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_kind text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_from text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_to text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS wish_attribute text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS price_view text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS price_versus text;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */

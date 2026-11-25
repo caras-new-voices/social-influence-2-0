@@ -16,7 +16,8 @@
     "check:accuracy": "python3 -I scripts/check_accuracy.py",
     "check:sessions": "python3 -I scripts/check_sessions.py",
     "check:verticals": "python3 -I scripts/check_verticals.py",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:reader": "python3 -I scripts/check_live_reader.py"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

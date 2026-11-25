@@ -5,11 +5,13 @@ import { getDb } from "./db";
  * A stored answer for a box's query, so a dashboard opened a second time (by anyone, on any server
  * instance) does not run its queries again. An answer is kept under the query, its brands, period
  * and market, and is used only while the data stamp is the same: the stamp changes whenever data
- * is imported, a seed pack loads, the labels are corrected or the views are rebuilt.
+ * is imported, a seed pack loads, the labels are corrected, the views are rebuilt or the app reads
+ * new posts and comments itself.
  */
 const DDL = `CREATE TABLE IF NOT EXISTS query_cache (key text PRIMARY KEY, stamp text NOT NULL, body text NOT NULL, at timestamptz NOT NULL DEFAULT now())`;
 const STAMP_SQL = `SELECT md5(coalesce((SELECT string_agg(key || '=' || coalesce(value, ''), ';' ORDER BY key) FROM app_meta), '')
-  || '|' || coalesce((SELECT max(id)::text || ':' || count(*) FILTER (WHERE finished_at IS NOT NULL)::text FROM imports), '')) AS stamp`;
+  || '|' || coalesce((SELECT max(id)::text || ':' || count(*) FILTER (WHERE finished_at IS NOT NULL)::text FROM imports), '')
+  || '|' || (SELECT count(*)::text FROM live_post_labels) || ':' || (SELECT count(*)::text FROM live_comment_labels)) AS stamp`;
 
 const g = globalThis as unknown as { __siQueryCache?: { ready?: Promise<void>; stamp?: { value: string; at: number } } };
 const state = (g.__siQueryCache ??= {});

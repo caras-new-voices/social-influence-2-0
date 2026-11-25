@@ -65,4 +65,5 @@ export const LIMITS: string[] = [
   "The list of brand-owned accounts and the product lines are drafts that nobody who knows the brands has confirmed.",
   "Creator fees are the supplier's model, not quotes.",
   "The Culture lens of the brief is not built: it needs a query beyond brand mentions.",
+  "Posts and comments that arrive later are read by the app itself, in fewer readings than the first data had. On a sample of the first data its themes matched an independent judge as often as the original labels did (89% against 90%), and its paid, about-the-brand and buying readings matched the original labels 94% to 96% of the time. The way a post is told (the hook) matched only 63% of the time, whichever way it is read: treat hook figures as rough.",
 ];

@@ -1,6 +1,6 @@
 /** Token usage: the types and constants shared by the server and the browser. */
 
-export const USAGE_KINDS = ["chat", "ask_element", "explain_change", "scan", "wizard_step", "wizard_discuss", "month_review", "sql_assist", "voice"] as const;
+export const USAGE_KINDS = ["chat", "ask_element", "explain_change", "scan", "wizard_step", "wizard_discuss", "month_review", "sql_assist", "voice", "classify"] as const;
 export type UsageKind = (typeof USAGE_KINDS)[number];
 
 export const KIND_LABELS: Record<UsageKind, string> = {
@@ -13,6 +13,7 @@ export const KIND_LABELS: Record<UsageKind, string> = {
   month_review: "Month in review",
   sql_assist: "Query assistant",
   voice: "Voice",
+  classify: "Reading new posts and comments",
 };
 
 /** What one interaction used, as shown under the answer. */

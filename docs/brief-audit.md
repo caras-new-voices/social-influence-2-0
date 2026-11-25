@@ -8,7 +8,7 @@ Each line has one of three results:
 - **Approximation:** built, with a stated difference.
 - **Not possible yet:** the data does not hold what it needs. Nothing is faked.
 
-Totals for the 39 sub-questions, counted strictly against the brief's wording, last on 24 November 2026: 33 answered, 2 approximations, 4 not possible yet. "Answered" means built as the brief describes it on the data we hold; several rest on thin samples, which each line says. By question: 1 has 7 of 7 answered, 2 has 6 of 7, 3 has 7 of 7, 4 has 8 of 9, 5 has 5 of 9.
+Totals for the 39 sub-questions, counted strictly against the brief's wording, last on 25 November 2026: 35 answered, 0 approximations, 4 not possible yet. "Answered" means built as the brief describes it on the data we hold; several rest on thin samples, which each line says. By question: 1 has 7 of 7 answered, 2 has 6 of 7, 3 has 7 of 7, 4 has 8 of 9, 5 has 7 of 9.
 
 ## The eight measures
 
@@ -91,12 +91,12 @@ Also added, because Tom called it out: "Earned creators: posting about us, never
 
 Output in the brief: the product priority grid. **Built:** "The answer: fix, protect, start talking about" and "Product priority grid".
 
-1. **What do people wish existed? Approximation.** "What people wish existed" by kind of request, and "What people wish existed, by product" for us and each rival. The brief also asks for it by attribute; requests are not tagged with one. Requests to the creator are left out. Counts are small (3 to 23 per line).
+1. **What do people wish existed? Answered.** "What people wish existed" by kind of request, "by product" for us and each rival, and "by attribute": the tagged requests were read a second time, plain wanting was left out, and the rest grouped by which of the six attributes the change is about (or look, colour and scent, which is not one of the six). The counts are small: 35 real wishes among 124 tagged comments, 2 of them ours. The judge agrees with the reading 91% of the time.
 2. **What is breaking, and is it getting worse? Answered.** By attribute over time, and "What is breaking, by product" by product line over time.
 3. **How do people actually use it? Answered.** "How people actually use it".
 4. **What should we fix, protect or start talking about? Answered.** The grid.
 5. **Where are competitor products weak? Answered.** "Where competitor products are weak" per rival brand, and "Priority grid by product, ours and rivals'" per product line with 200 or more brand comments.
-6. **How do people judge price and value? Approximation.** Price praise against price objections per brand. The prices people compare against are not extracted.
+6. **How do people judge price and value? Answered.** "How each brand's price is judged" splits price comments into too expensive, good value and a question with no judgement. "What people measure the price against" names what the price is compared with: the brand's own blades, refills or earlier price, another brand, a shop's own label, another method. 132 of 460 price comments name something. The judge agrees on the view 86% of the time and on what it is measured against 88%, both under the 90% mark.
 7. **Which variants do people want? Answered.** "Variants people ask for": each request for a variant, colour, size or format, with its product line and likes, ours first.
 8. **How did a launch land? Not possible yet.** The data has no launch dates.
 9. **What should we make next? Not possible yet.** It needs what is growing in culture, which is the culture lens.
