@@ -249,7 +249,19 @@ From `docs/brief-match-plan.md`: the things the brief promises that the earlier 
 - The live site has no import token set, so the import and upkeep addresses are open to anyone who knows them. The preview address, which spends model tokens on request, refuses to run there until a token is set.
 - One comment in the seed had never been read ("Igen"). It is now read (noise), so nothing waits on the live site at the start.
 
+### Loading, saving, sharing and updating (26 November 2026)
+
+- **The timeout on a new dashboard.** The owner saw "canceling statement due to statement timeout" on a brief. Alone that box takes 2.3 seconds on the live site. The page asked for all 81 boxes at once and they slowed each other past the 8 second limit. Boxes now load six at a time, the limit is 20 seconds, a box that runs out of time is tried once more by itself, and a failed box says so in plain words with a Try again button.
+- **Loading is visible.** Each box shows a moving placeholder and says what it is doing: waiting its turn, working, still working, trying once more. The page shows how many boxes are ready.
+- **Saving was broken, and is fixed.** A dashboard made from the default template could not be saved once its boxes were sent (moving a box, removing one): the save refused any box description longer than 240 characters, and the template's are longer. Changing the period still saved, which hid it. The limit is now 2,000 and the template check fails if any box could not be saved.
+- **Share links that are a real lock.** A link has its own key, opens one dashboard for one period and market, and can read only that dashboard's boxes. Checked in a browser: the shared page called no other address, the dashboard's id was not in the page, a different query through the link was refused, and switching the link off stopped it at once.
+- **Passcode.** With `SITE_PASSCODE` set, every page and address refused without it (pages, saving, deleting, data), share links kept working, and the right passcode opened the site. It is not set on the live site: that is the owner's step in Vercel.
+- **Bring a dashboard up to date.** Checked on a dashboard with seven boxes removed, two changed and one of its own: the update offered exactly those, placed the seven where the template has them with nothing overlapping, kept the changed box's own period, left the owner's box alone, and a second check found nothing left to do.
+- Number check 946 of 946, template check for Venus, hair care and one spirits brand, and the embedded database all pass.
+
 ### Not verified
+- Share links and the passcode were tested on the test copy. On the live site the passcode cannot be tested until it is set.
+- A share link shows the dashboard as it is now, not as it was when the link was made. Only the period, market and view are fixed.
 - The import reader was tested on hair removal only. The other nine industries have no product lines or comment labels to compare with.
 - The import reader has not run on the live site. It needs the OpenAI key there, and the daily cron or an import through the API.
 - Wishes by attribute rest on 35 comments.

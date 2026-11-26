@@ -64,8 +64,11 @@ export function DashboardCanvas({
   onSetPeriod,
   summary,
   onSeeDetail,
+  fixed,
 }: {
-  onSetPeriod: (id: string, p: WidgetPeriod) => void;
+  /** A page with nothing to change (a shared link): boxes cannot be moved or resized. */
+  fixed?: boolean;
+  onSetPeriod?: (id: string, p: WidgetPeriod) => void;
   /** When set, the summary is shown in place of the grid: one answer per section. */
   summary?: SummaryPart[] | null;
   /** Opens the full dashboard at a section (or at the top when the answer has no section). */
@@ -110,7 +113,7 @@ export function DashboardCanvas({
               </div>
               <div className="summary__boxes">
                 {p.boxes.map((w) => (
-                  <WidgetCard key={w.id} spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onChange={onChange ? () => onChange(w.id) : undefined} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={(per) => onSetPeriod(w.id, per)} />
+                  <WidgetCard key={w.id} spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onChange={onChange ? () => onChange(w.id) : undefined} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={onSetPeriod ? (per) => onSetPeriod(w.id, per) : undefined} />
                 ))}
               </div>
             </section>
@@ -128,13 +131,13 @@ export function DashboardCanvas({
             layout={layout}
             width={width}
             gridConfig={{ cols: 12, rowHeight: ROW_HEIGHT, margin: [12, 12], containerPadding: [0, 0] }}
-            dragConfig={{ handle: ".drag-handle", cancel: ".no-drag" }}
-            resizeConfig={{ handles: ["se"] }}
+            dragConfig={{ enabled: !fixed, handle: ".drag-handle", cancel: ".no-drag" }}
+            resizeConfig={{ enabled: !fixed, handles: ["se"] }}
             onLayoutChange={onLayoutChange}
           >
             {widgets.map((w) => (
               <div key={w.id} data-wid={w.id}>
-                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onChange={onChange ? () => onChange(w.id) : undefined} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={(p) => onSetPeriod(w.id, p)} />
+                <WidgetCard spec={w} onEdit={() => onEdit(w.id)} onRemove={() => onRemove(w.id)} onAsk={() => onAsk(w.id)} onChange={onChange ? () => onChange(w.id) : undefined} onExpand={() => onExpand(w.id)} onVoice={(rows) => onVoice(w.id, rows)} onSetPeriod={onSetPeriod ? (p) => onSetPeriod(w.id, p) : undefined} />
               </div>
             ))}
           </GridLayout>

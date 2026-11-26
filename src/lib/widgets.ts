@@ -20,7 +20,8 @@ export const WidgetSpecSchema = z.object({
   id: z.string().min(1),
   type: z.enum(WIDGET_TYPES),
   title: z.string().min(1).max(120),
-  subtitle: z.string().max(240).optional(),
+  // Long enough for the template's fullest descriptions: a shorter limit made a dashboard with them impossible to save.
+  subtitle: z.string().max(2000).optional(),
   /** Read-only SQL (Postgres) returning the rows to render. Required for data widgets. */
   sql: z.string().max(20000).optional(),
   /** Column used for the x axis / category (bar, line, stacked_bar, segmented). */
@@ -39,7 +40,7 @@ export const WidgetSpecSchema = z.object({
   /** Free text (notes, section headers, insight cards). Simple markdown: **bold**, bullet lines starting with "- ". */
   content: z.string().max(8000).optional(),
   /** Why this widget was proposed; shown in the proposal card. */
-  rationale: z.string().max(600).optional(),
+  rationale: z.string().max(1200).optional(),
   /** Time window: inherit the dashboard period (default), ignore it ("all"), or a fixed window. */
   period: WidgetPeriodSchema.optional(),
   /**
