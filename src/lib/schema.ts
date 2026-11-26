@@ -235,7 +235,7 @@ CREATE VIEW comments AS ${PERIOD_FILTER("comments_all")};
 CREATE VIEW brand_comments_all AS SELECT * FROM comments_all WHERE about IS NULL OR about IN ('brand', 'category');
 CREATE VIEW brand_comments AS ${PERIOD_FILTER("brand_comments_all")};
 `;
-const VIEWS_VERSION = "scoped-10";
+const VIEWS_VERSION = "scoped-11";
 
 /** Columns added to the raw tables after their first version (run before the views are built). */
 const RAW_COLUMNS = `
@@ -269,6 +269,10 @@ ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS switch_to text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS wish_attribute text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS price_view text;
 ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS price_versus text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS ad_view text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS loyalty text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS safety_issue text;
+ALTER TABLE comments_raw ADD COLUMN IF NOT EXISTS safety_own boolean;
 `;
 
 /** Idempotent changes applied to databases created by earlier versions. */
@@ -278,6 +282,10 @@ ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS period jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS onboarding jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS scope jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS template text;
+ALTER TABLE live_comment_labels ADD COLUMN IF NOT EXISTS ad_view text;
+ALTER TABLE live_comment_labels ADD COLUMN IF NOT EXISTS loyalty text;
+ALTER TABLE live_comment_labels ADD COLUMN IF NOT EXISTS safety_issue text;
+ALTER TABLE live_comment_labels ADD COLUMN IF NOT EXISTS safety_own boolean;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS usage jsonb;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS influencers_updated integer NOT NULL DEFAULT 0;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS segments_upserted integer NOT NULL DEFAULT 0;

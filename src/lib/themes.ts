@@ -73,7 +73,11 @@ interface ProductLabelsFile { products: string[]; attributes: string[]; posts: A
 interface SwitchLabelsFile { rows: Array<[number, number, string, string, string]> }
 interface CommentLabelsFile { about: string[]; attributes: string[]; rows: Array<[number, number, number, number, number?]> }
 /** scripts/classify_extras.py: what a product wish is about, and how a price comment judges the price and against what. */
-interface ExtraLabelsFile { wishes: Array<[number, number, string]>; prices: Array<[number, number, string, string]> }
+interface ExtraLabelsFile {
+  wishes: Array<[number, number, string]>; prices: Array<[number, number, string, string]>;
+  /** How a comment takes a post being paid (trusts, points_out, distrusts); loyalty (long_term, buys_again, recommends); a harm or safety worry, and whether it is about the post's own brand. */
+  ads?: Array<[number, number, string]>; loyalty?: Array<[number, number, string]>; safety?: Array<[number, number, string, boolean]>;
+}
 
 function readGz<T>(folder: string, industry: string): { file: T; hash: string } | null {
   const p = path.join(seedDir(), folder, `${industry}.json.gz`);
@@ -236,6 +240,18 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
     }
   }
   await db.query(`UPDATE comments_raw SET wish_attribute = NULL, price_view = NULL, price_versus = NULL WHERE ${seg} AND (wish_attribute IS NOT NULL OR price_view IS NOT NULL OR price_versus IS NOT NULL)`, [industry]);
+  await db.query(`UPDATE comments_raw SET ad_view = NULL, loyalty = NULL, safety_issue = NULL, safety_own = NULL WHERE ${seg} AND (ad_view IS NOT NULL OR loyalty IS NOT NULL OR safety_issue IS NOT NULL)`, [industry]);
+  for (const [col, rows] of [["ad_view", extras?.ads], ["loyalty", extras?.loyalty], ["safety_issue", extras?.safety]] as const) {
+    if (!rows?.length) continue;
+    const list = rows.map((r) => ({ segment_id: r[0], comment_id: r[1], v: r[2], own: r[3] ?? null }));
+    for (let at = 0; at < list.length; at += CHUNK) {
+      await db.query(
+        `UPDATE comments_raw c SET ${col} = t.v${col === "safety_issue" ? ", safety_own = t.own" : ""} FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, v text, own boolean)
+          WHERE c.segment_id = t.segment_id AND c.comment_id = t.comment_id`,
+        [JSON.stringify(list.slice(at, at + CHUNK))],
+      );
+    }
+  }
   if (extras) {
     const wishes = extras.wishes.map(([segment_id, comment_id, wish]) => ({ segment_id, comment_id, wish }));
     for (let at = 0; at < wishes.length; at += CHUNK) {
@@ -258,7 +274,8 @@ async function applyFlags(db: Db, industry: string, disclosure: DisclosureFile |
   await db.query(`UPDATE posts_raw p SET product = l.product, claims = l.claims FROM live_post_labels l WHERE l.segment_id = p.segment_id AND l.post_id = p.post_id AND p.product IS NULL AND p.claims IS NULL AND (l.product IS NOT NULL OR l.claims IS NOT NULL) AND ${liveSeg}`, [industry]);
   await db.query(
     `UPDATE comments_raw c SET product = coalesce(c.product, l.product), switch_kind = coalesce(c.switch_kind, l.switch_kind), switch_from = coalesce(c.switch_from, l.switch_from), switch_to = coalesce(c.switch_to, l.switch_to),
-            wish_attribute = coalesce(c.wish_attribute, l.wish_attribute), price_view = coalesce(c.price_view, l.price_view), price_versus = coalesce(c.price_versus, l.price_versus)
+            wish_attribute = coalesce(c.wish_attribute, l.wish_attribute), price_view = coalesce(c.price_view, l.price_view), price_versus = coalesce(c.price_versus, l.price_versus),
+            ad_view = coalesce(c.ad_view, l.ad_view), loyalty = coalesce(c.loyalty, l.loyalty), safety_issue = coalesce(c.safety_issue, l.safety_issue), safety_own = coalesce(c.safety_own, l.safety_own)
        FROM live_comment_labels l WHERE l.segment_id = c.segment_id AND l.comment_id = c.comment_id AND ${liveSeg}`,
     [industry],
   );
