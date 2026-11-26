@@ -47,7 +47,8 @@ export async function runWidgetQuery(sql: string, limit = MAX_ROWS, window?: Per
     // opts.focal makes focal_brand() return another tracked brand for this query (template checks, per-dashboard focus).
     const settings = { ...scopeSettings(), ...periodSettings(window) };
     if (opts?.focal) settings["app.focal_brand"] = opts.focal;
-    const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1), 8000, settings);
+    // 20 seconds: a brief takes two or three alone, and several times that when a whole dashboard loads at once.
+    const rows = await db.queryReadOnly<Row>(capRows(guarded.sql, limit + 1), 20000, settings);
     const truncated = rows.length > limit;
     const sliced = rows
       .slice(0, limit)

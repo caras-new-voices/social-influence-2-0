@@ -31,6 +31,7 @@ function rowToRecord(r: Record<string, unknown>): DashboardRecord {
     period: parsePeriod(r.period),
     onboarding: parseOnboarding(r.onboarding),
     scope: normalizeScope(r.scope),
+    template: (r.template as string | null) ?? null,
     created_at: new Date(r.created_at as string).toISOString(),
     updated_at: new Date(r.updated_at as string).toISOString(),
   };
@@ -59,8 +60,8 @@ export async function createDashboard(input: { name: string; description?: strin
   const built = await runInScope(scope, () => buildTemplateForWorkspace(input.template));
   const widgets = built.widgets;
   const rows = await db.query(
-    `INSERT INTO dashboards (id, name, description, widgets, scope) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb) RETURNING *`,
-    [id, input.name, input.description ?? null, JSON.stringify(widgets), scope ? JSON.stringify(scope) : null],
+    `INSERT INTO dashboards (id, name, description, widgets, scope, template) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6) RETURNING *`,
+    [id, input.name, input.description ?? null, JSON.stringify(widgets), scope ? JSON.stringify(scope) : null, input.template],
   );
   const note = skippedNote(built.skipped);
   if (note) {
@@ -126,8 +127,8 @@ export async function duplicateDashboard(id: string): Promise<DashboardRecord | 
   const copyId = newId("d");
   const widgets = src.widgets.map((w) => ({ ...w, id: newId() }));
   const rows = await db.query(
-    `INSERT INTO dashboards (id, name, description, widgets, period, scope) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb) RETURNING *`,
-    [copyId, `${src.name} (copy)`, src.description, JSON.stringify(widgets), src.period ? JSON.stringify(src.period) : null, src.scope ? JSON.stringify(src.scope) : null],
+    `INSERT INTO dashboards (id, name, description, widgets, period, scope, template) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7) RETURNING *`,
+    [copyId, `${src.name} (copy)`, src.description, JSON.stringify(widgets), src.period ? JSON.stringify(src.period) : null, src.scope ? JSON.stringify(src.scope) : null, src.template ?? null],
   );
   return rowToRecord(rows[0]);
 }

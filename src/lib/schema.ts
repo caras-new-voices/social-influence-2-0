@@ -277,6 +277,7 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS followups jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS period jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS onboarding jsonb;
 ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS scope jsonb;
+ALTER TABLE dashboards ADD COLUMN IF NOT EXISTS template text;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS usage jsonb;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS influencers_updated integer NOT NULL DEFAULT 0;
 ALTER TABLE imports ADD COLUMN IF NOT EXISTS segments_upserted integer NOT NULL DEFAULT 0;
