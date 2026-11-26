@@ -258,6 +258,7 @@ From `docs/brief-match-plan.md`: the things the brief promises that the earlier 
 - **Passcode.** With `SITE_PASSCODE` set, every page and address refused without it (pages, saving, deleting, data), share links kept working, and the right passcode opened the site. It is not set on the live site: that is the owner's step in Vercel.
 - **Bring a dashboard up to date.** Checked on a dashboard with seven boxes removed, two changed and one of its own: the update offered exactly those, placed the seven where the template has them with nothing overlapping, kept the changed box's own period, left the owner's box alone, and a second check found nothing left to do.
 - Number check 946 of 946, template check for Venus, hair care and one spirits brand, and the embedded database all pass.
+- **On the live site**, in a real browser, after the merge: a new dashboard opened on a period nobody had viewed loaded all 81 boxes with none failing and never more than six requests at once. It took 61 seconds, with the count showing throughout; the summary is the default view and loads seven boxes. Saving the boxes worked. A share link opened using only its own address, refused a foreign query, and stopped when switched off. The two dashboards from 17 and 18 November are each offered 51 new boxes and 24 refreshed ones; 16 of their boxes are no longer in the template and stay as they are.
 
 ### Not verified
 - Share links and the passcode were tested on the test copy. On the live site the passcode cannot be tested until it is set.
