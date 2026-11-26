@@ -115,6 +115,8 @@ export interface DashboardRecord {
   onboarding?: import("./wizard").OnboardingState | null;
   /** The brands the dashboard looks at; null means the default selection of the live industry. */
   scope?: import("./scope-shared").DashboardScope | null;
+  /** The template the dashboard was made from, when it was recorded (dashboards made before that have none). */
+  template?: string | null;
   created_at: string;
   updated_at: string;
 }

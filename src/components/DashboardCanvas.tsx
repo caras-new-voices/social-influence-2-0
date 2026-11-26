@@ -5,7 +5,7 @@ import { useWorkspace } from "./WorkspaceProvider";
 import type { Row } from "@/lib/chart-data";
 import type { WidgetPeriod } from "@/lib/period";
 import type { WidgetSpec } from "@/lib/widgets";
-import { WidgetCard } from "./WidgetCard";
+import { LoadBar, WidgetCard } from "./WidgetCard";
 
 export const ROW_HEIGHT = 56;
 
@@ -90,6 +90,7 @@ export function DashboardCanvas({
 
   return (
     <div ref={containerRef}>
+      <LoadBar />
       <div className="canvas__legend" style={{ marginBottom: "0.75rem" }}>
         {brands.map((b) => (
           <span key={b.name}><i className="dot" style={{ background: b.color }} />{b.name}{b.role === "focal" ? " (you)" : ""}</span>

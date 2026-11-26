@@ -30,6 +30,8 @@ export interface Workspace {
   scope?: DashboardScope | null;
   /** False when none of the brands has audience comments (posts-only data). */
   hasComments?: boolean;
+  /** Set on a shared, read-only page: boxes are asked for through the share link, which can read nothing else. */
+  shareToken?: string;
 }
 
 /**
