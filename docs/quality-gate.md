@@ -269,6 +269,7 @@ Three kinds of information the supplier collects and the dashboard did not show.
 - **Seven new boxes.** How the audience takes paid posts (per brand, by kind of post, by creator); loyalty per brand and per product, beside buying signals; a safety watch by product with the latest 90 days against the 90 before, and the kinds of harm against rivals.
 - **What they say for Venus, all time:** 91 comments react to its posts being paid; 40% trust it, 29% distrust it. Loyalty is 41.6 per 1,000 brand comments against 55.2 for Estrid. Harm reports about Venus's intimate line: 8, against 51 for the rival's.
 - **The import reader fills the same three for new comments.** Against the readings above it agrees 86%, 87% and 89% of the time and keeps about the same number of comments.
+- **On the live site** after the merge: the labels re-applied and the number check matches 1,131 of 1,131 for Venus, which covers all seven new boxes. They were not walked in a browser there.
 - Number check 1,131 of 1,131 for Venus, 1,132 of 1,132 for Philips OneBlade, 682 of 682 for Estrid in Germany. Template check for Venus, Veet and the hair care brands. Browser walk with no failed boxes.
 
 ### Not verified
