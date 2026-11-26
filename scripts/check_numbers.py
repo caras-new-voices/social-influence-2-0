@@ -83,8 +83,10 @@ cl = gz("comment_labels", IND + ".json.gz")
 kept_posts = {(p["segment_id"], p["post_id"]) for p in posts}
 cmeta = {(r[0], r[1]): r for r in cl["rows"]}
 comments = []
+all_comments = []   # every comment in view, whatever it is about (reactions to paid posts are counted on all of them)
 for c in gz("comments.json.gz"):
     if MARKET and post_country.get((c["segment_id"], c["post_id"])) != MARKET: continue   # a comment takes its post's market
+    all_comments.append(c)
     r = cmeta.get((c["segment_id"], c["comment_id"]))
     about = cl["about"][r[2]] if r else None
     if about is not None and about not in ("brand", "category"): continue   # brand comments only (unclassified ones stay in)
@@ -324,6 +326,92 @@ if os.path.exists(os.path.join(SEED, "extra_labels", IND + ".json.gz")):
             check(f"wish about {key(r['the wish is about'])}: our comments", len(of(g, FOCAL)), r["our comments"], 0)
             check(f"wish about {key(r['the wish is about'])}: rivals' comments", len(g) - len(of(g, FOCAL)), r["rivals' comments"], 0)
             check(f"wish about {key(r['the wish is about'])}: likes", sum(c.get("likes") or 0 for c in g), r["likes"], 0)
+
+# Paid posts, loyalty and safety, read a second time (scripts/classify_extras.py): counted again from the file.
+if os.path.exists(os.path.join(SEED, "extra_labels", IND + ".json.gz")):
+    ex = gz("extra_labels", IND + ".json.gz")
+    adv = {(r[0], r[1]): r[2] for r in ex.get("ads", [])}
+    loy = {(r[0], r[1]): r[2] for r in ex.get("loyalty", [])}
+    saf = {(r[0], r[1]): r[2] for r in ex.get("safety", []) if r[3]}
+    ck = lambda c: (c["segment_id"], c["comment_id"])
+    cline2 = {}
+    if os.path.exists(os.path.join(SEED, "product_labels", IND + ".json.gz")):
+        _pl = gz("product_labels", IND + ".json.gz"); cline2 = {(r[0], r[1]): _pl["products"][r[2]] for r in _pl["comments"] if r[2] >= 2}
+    title = "How the audience takes paid posts"
+    if title in got:
+        react = [c for c in all_comments if ck(c) in adv]
+        checks.append(({b for b in brands if len(of(react, b)) >= 10} == {r["brand"] for r in got[title]}, "paid reactions: brands shown are exactly those with 10+", None, len(got[title])))
+        for r in got[title]:
+            g = of(react, r["brand"])
+            check(f"paid reactions {r['brand']}: comments", len(g), r["comments"], 0)
+            for col, v in (("trust it %", "trusts"), ("point it out %", "points_out"), ("distrust it %", "distrusts")):
+                check(f"paid reactions {r['brand']}: {col}", 100 * sum(adv[ck(c)] == v for c in g) / len(g) if g else None, r[col], 0.02)
+    title = "Where the doubt lands: reactions by kind of post"
+    if title in got:
+        pk = {(p["segment_id"], p["post_id"]): ("Brand-owned" if p["owned"] else "Paid: platform label only" if p["paid"] and p["flag_only"] else "Paid: disclosed in the caption" if p["paid"] else "Affiliate or shop" if p["affiliate"] else "Gifted" if p["gifted"] else "Earned") for p in posts}
+        under = defaultdict(list)
+        for c in all_comments:
+            k = pk.get((c["segment_id"], c["post_id"]))
+            if k: under[k].append(c)
+        checks.append(({k for k, g in under.items() if any(ck(c) in adv for c in g)} == {r["kind of post"] for r in got[title]}, "paid reactions by kind: every kind with a reaction is shown", None, len(got[title])))
+        for r in got[title]:
+            g = under.get(r["kind of post"], []); rr = [c for c in g if ck(c) in adv]
+            check(f"reactions under {r['kind of post']}: comments", len(g), r["comments under them"], 0)
+            check(f"reactions under {r['kind of post']}: reactions", len(rr), r["reactions"], 0)
+            check(f"reactions under {r['kind of post']}: per 1K", 1000 * len(rr) / len(g) if g else None, r["reactions per 1K comments"], 0.002)
+            checks.append(((len(rr) >= 10) == (r["distrust it %"] is not None), f"reactions under {r['kind of post']}: shares only with 10+", len(rr), r["distrust it %"]))
+            if len(rr) >= 10: check(f"reactions under {r['kind of post']}: distrust %", 100 * sum(adv[ck(c)] == "distrusts" for c in rr) / len(rr), r["distrust it %"], 0.02)
+    title = "Loyalty: who stays, per brand"
+    if title in got:
+        for r in got[title]:
+            g = of(comments, r["brand"]); l = [c for c in g if ck(c) in loy]
+            check(f"loyalty {r['brand']}: brand comments", len(g), r["brand comments"], 0)
+            check(f"loyalty {r['brand']}: loyalty comments", len(l), r["loyalty comments"], 0)
+            for col, v in (("long-term use", "long_term"), ("buys again", "buys_again"), ("recommends it", "recommends")):
+                check(f"loyalty {r['brand']}: {col}", sum(loy[ck(c)] == v for c in l), r[col], 0)
+            checks.append(((len(g) >= 200) == (r["loyalty per 1K"] is not None), f"loyalty {r['brand']}: rate only with 200+ brand comments", len(g), r["loyalty per 1K"]))
+            if len(g) >= 200:
+                check(f"loyalty {r['brand']}: per 1K", 1000 * len(l) / len(g), r["loyalty per 1K"], 0.002)
+                check(f"loyalty {r['brand']}: buying signals per 1K", 1000 * sum(c["buying"] for c in g) / len(g), r["buying signals per 1K"], 0.002)
+    title = "Loyalty by product"
+    if title in got and cline2:
+        for r in got[title]:
+            g = [c for c in comments if c["brand"] == r["brand"] and cline2.get(ck(c)) == r["product"]]; l = [c for c in g if ck(c) in loy]
+            check(f"loyalty {r['brand']} {r['product']}: brand comments", len(g), r["brand comments"], 0)
+            check(f"loyalty {r['brand']} {r['product']}: loyalty comments", len(l), r["loyalty comments"], 0)
+            if len(g) >= 200: check(f"loyalty {r['brand']} {r['product']}: per 1K", 1000 * len(l) / len(g), r["loyalty per 1K"], 0.002)
+        lines_ = defaultdict(int)
+        for c in comments:
+            if ck(c) in loy and cline2.get(ck(c)): lines_[(c["brand"], cline2[ck(c)])] += 1
+        checks.append(({k for k, n in lines_.items() if n >= 3} == {(r["brand"], r["product"]) for r in got[title]}, "loyalty by product: lines shown are exactly those with 3+", None, len(got[title])))
+    title = "Safety watch, by product"
+    if title in got:
+        sc = [c for c in comments if ck(c) in saf and c["at"]]
+        line_of = lambda c: cline2.get(ck(c)) or "No line named"
+        last = max(c["at"] for c in comments if c["at"])
+        groups = defaultdict(list)
+        for c in [c for c in comments if ck(c) in saf]: groups[(c["brand"], line_of(c))].append(c)
+        checks.append(({k for k, g in groups.items() if len(g) >= 3} == {(r["brand"], r["product"]) for r in got[title]}, "safety: lines shown are exactly those with 3+ comments", None, len(got[title])))
+        for r in got[title]:
+            g = groups.get((r["brand"], r["product"]), []); harm = [c for c in g if saf[ck(c)] != "worry"]
+            n = sum(1 for c in comments if c["brand"] == r["brand"] and line_of(c) == r["product"])
+            name = f"safety {r['brand']} {r['product']}"
+            check(f"{name}: harm reports", len(harm), r["harm reports"], 0)
+            check(f"{name}: worries", len(g) - len(harm), r["worries"], 0)
+            checks.append(((n >= 200) == (r["harm reports per 1K"] is not None), f"{name}: rate only with 200+ brand comments", n, r["harm reports per 1K"]))
+            if n >= 200: check(f"{name}: per 1K", 1000 * len(harm) / n, r["harm reports per 1K"], 0.002)
+            check(f"{name}: latest 90 days", sum(1 for c in harm if c["at"] and c["at"] > last - timedelta(days=90)), r["latest 90 days"], 0)
+            check(f"{name}: the 90 days before", sum(1 for c in harm if c["at"] and last - timedelta(days=180) < c["at"] <= last - timedelta(days=90)), r["the 90 days before"], 0)
+    title = "What kind of harm, us against rivals"
+    if title in got:
+        label = {"Irritation or a reaction": "irritation", "Injury": "injury", "Pain": "pain", "Allergy": "allergy", "A worry, no harm reported": "worry", "Another harm": "other"}
+        n_us, n_them = len(of(comments, FOCAL)), len(comments) - len(of(comments, FOCAL))
+        for r in got[title]:
+            g = [c for c in comments if saf.get(ck(c)) == label[r["kind"]]]
+            check(f"harm {r['kind']}: our comments", len(of(g, FOCAL)), r["our comments"], 0)
+            check(f"harm {r['kind']}: rivals' comments", len(g) - len(of(g, FOCAL)), r["rivals' comments"], 0)
+            if n_us >= 200: check(f"harm {r['kind']}: ours per 1K", 1000 * len(of(g, FOCAL)) / n_us, r["ours per 1K"], 0.002)
+            if n_them >= 200: check(f"harm {r['kind']}: rivals' per 1K", 1000 * (len(g) - len(of(g, FOCAL))) / n_them, r["rivals' per 1K"], 0.002)
 
 # Platforms each theme under-uses: a platform's share of the theme against its share of all themed posts.
 title = "Platforms each theme under-uses"

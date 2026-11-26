@@ -110,6 +110,12 @@ const THEME_KEYWORDS = `kw AS (
 const OUR_BC = { sql: `SELECT count(*)::int AS n FROM brand_comments WHERE brand = focal_brand()`, min: COMMENT_MIN, unit: "brand comments on our content" };
 const N_BC: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand()`, min: COMMENT_MIN, what: "comments about the brand on our content" };
 const N_PAID: StarterCondition = { sql: `SELECT count(*)::int AS n FROM posts_all WHERE brand = focal_brand() AND is_paid`, min: 20, what: "posts with a paid disclosure" };
+const N_AD_VIEWS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM comments_all WHERE ad_view IS NOT NULL`, min: 30, what: "comments reacting to a post being paid" };
+const N_LOYALTY: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND loyalty IS NOT NULL`, min: 20, what: "comments showing loyalty to our brand" };
+const N_SAFETY: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE safety_issue IS NOT NULL AND safety_own`, min: 20, what: "comments reporting a harm or a safety worry" };
+/** Read a second time from the comments the supplier tagged. Comments it did not tag are not counted, so the true figure is higher. */
+const SECOND_READ_NOTE = "Read a second time from the comments the supplier tagged; a comment it did not tag is not counted, so the true figure is higher";
+const SAFETY_KIND = (col: string) => `CASE ${col} WHEN 'irritation' THEN 'Irritation or a reaction' WHEN 'injury' THEN 'Injury' WHEN 'pain' THEN 'Pain' WHEN 'allergy' THEN 'Allergy' WHEN 'worry' THEN 'A worry, no harm reported' ELSE 'Another harm' END`;
 const N_WISHES: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE about = 'brand' AND feature_request_type IS NOT NULL AND wish_attribute IS NOT NULL`, min: 10, what: "requests for a product change, read a second time" };
 const N_PRICE_VERSUS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE price_versus IS NOT NULL`, min: 15, what: "price comments that name what the price is measured against" };
 const N_REQUESTS: StarterCondition = { sql: `SELECT count(*)::int AS n FROM brand_comments_all WHERE brand = focal_brand() AND feature_request_type IS NOT NULL`, min: 15, what: "brand comments asking for a product change" };
@@ -1087,6 +1093,34 @@ FROM brand_comments GROUP BY brand HAVING count(*) >= ${COMMENT_MIN} OR brand = 
         rationale: "Whether our conversation converts better or worse than theirs.",
       },
       {
+        type: "table", w: 12, h: 5,
+        title: "Loyalty: who stays, per brand",
+        subtitle: `Brand comments in which the commenter shows loyalty to the brand: has used it for a long time, buys it again (a reorder, a subscription, a second one), or recommends it from their own experience. Comments (counts) and per 1,000 brand comments (a rate, brands with ${COMMENT_MIN}+), beside buying signals: intent is who might buy, loyalty is who stays. ${SECOND_READ_NOTE}.`,
+        when: N_LOYALTY,
+        sql: `WITH b AS (SELECT brand, count(*)::float AS n, count(*) FILTER (WHERE ${INTENT})::float AS intent,
+       count(*) FILTER (WHERE loyalty IS NOT NULL)::int AS loyal, count(*) FILTER (WHERE loyalty = 'long_term')::int AS long_term,
+       count(*) FILTER (WHERE loyalty = 'buys_again')::int AS again, count(*) FILTER (WHERE loyalty = 'recommends')::int AS recommends FROM brand_comments GROUP BY 1),
+top AS (SELECT DISTINCT ON (brand) brand, left(text, 160) AS said FROM brand_comments WHERE loyalty IS NOT NULL AND length(text) >= 20 ORDER BY brand, coalesce(likes, 0) DESC, text)
+SELECT b.brand, b.n::int AS "brand comments", b.loyal AS "loyalty comments", CASE WHEN b.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * b.loyal / b.n")} END AS "loyalty per 1K",
+       CASE WHEN b.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * b.intent / b.n")} END AS "buying signals per 1K",
+       b.long_term AS "long-term use", b.again AS "buys again", b.recommends AS "recommends it", top.said AS "most-liked, verbatim"
+FROM b LEFT JOIN top USING (brand) WHERE b.loyal > 0 OR b.brand = focal_brand() ORDER BY (b.brand = focal_brand()) DESC, b.loyal DESC, b.brand`,
+        rationale: "A brand with many would-be buyers and few who stay has a product problem; the other way round, a reach problem.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "Loyalty by product",
+        subtitle: `The same loyalty comments by product line, ours first: comments (a count) and per 1,000 of the line's brand comments (a rate, lines with ${COMMENT_MIN}+), with the kind seen most. Lines with 3+ loyalty comments. ${PRODUCT_NOTE}.`,
+        when: N_LOYALTY,
+        sql: `WITH b AS (SELECT brand, product, count(*)::float AS n, count(*) FILTER (WHERE loyalty IS NOT NULL)::int AS loyal FROM brand_comments WHERE product IS NOT NULL GROUP BY 1, 2 HAVING count(*) FILTER (WHERE loyalty IS NOT NULL) >= 3),
+k AS (SELECT DISTINCT ON (brand, product) brand, product, loyalty, n FROM (SELECT brand, product, loyalty, count(*)::int AS n FROM brand_comments WHERE product IS NOT NULL AND loyalty IS NOT NULL GROUP BY 1, 2, 3) x ORDER BY brand, product, n DESC, loyalty),
+top AS (SELECT DISTINCT ON (brand, product) brand, product, left(text, 160) AS said FROM brand_comments WHERE product IS NOT NULL AND loyalty IS NOT NULL AND length(text) >= 20 ORDER BY brand, product, coalesce(likes, 0) DESC, text)
+SELECT b.brand, b.product, b.n::int AS "brand comments", b.loyal AS "loyalty comments", CASE WHEN b.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * b.loyal / b.n")} END AS "loyalty per 1K",
+       CASE k.loyalty WHEN 'long_term' THEN 'Long-term use' WHEN 'buys_again' THEN 'Buys again' ELSE 'Recommends it' END AS "seen most", top.said AS "most-liked, verbatim"
+FROM b JOIN k USING (brand, product) LEFT JOIN top USING (brand, product) ORDER BY (b.brand = focal_brand()) DESC, b.loyal DESC, b.brand, b.product`,
+        rationale: "Which product keeps its buyers, for us and for each rival.",
+      },
+      {
         type: "table", w: 7, h: 6,
         title: "Objections that matter most",
         subtitle: "Objections in our brand comments by attribute. Weight is the number of objections plus the likes they collected: a liked objection means others agree. With the most-liked one, verbatim.",
@@ -1357,6 +1391,42 @@ FROM sp WHERE expected IS NOT NULL AND NOT is_owned GROUP BY 1 ORDER BY 1`,
         rationale: "If paid posts fall below the norm, the audience can tell.",
       },
       {
+        type: "table", w: 7, h: 6,
+        title: "How the audience takes paid posts",
+        subtitle: `Comments that react to a post being an advert, sponsored or gifted, per brand: how many (a count), and the share that trust it (welcome the partnership, believe the creator), merely point it out, or distrust it (the creator only says it for money). Brands with 10+ such comments. All comments under the brand's posts, not only brand comments. ${SECOND_READ_NOTE}.`,
+        when: N_AD_VIEWS,
+        sql: `WITH q AS (SELECT brand, ad_view, text, coalesce(likes, 0) AS likes FROM comments WHERE ad_view IS NOT NULL),
+t AS (SELECT brand, count(*)::int AS n, count(*) FILTER (WHERE ad_view = 'trusts')::float AS trusts, count(*) FILTER (WHERE ad_view = 'points_out')::float AS points, count(*) FILTER (WHERE ad_view = 'distrusts')::float AS distrusts FROM q GROUP BY 1 HAVING count(*) >= 10),
+top AS (SELECT DISTINCT ON (brand) brand, left(text, 140) AS said FROM q WHERE ad_view = 'distrusts' ORDER BY brand, likes DESC, text)
+SELECT t.brand, t.n AS comments, ${r0("100 * t.trusts / t.n")} AS "trust it %", ${r0("100 * t.points / t.n")} AS "point it out %", ${r0("100 * t.distrusts / t.n")} AS "distrust it %", top.said AS "most-liked distrust, verbatim"
+FROM t LEFT JOIN top USING (brand) ORDER BY (t.brand = focal_brand()) DESC, t.n DESC`,
+        rationale: "Engagement says a paid post was seen. This says whether it was believed.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "Where the doubt lands: reactions by kind of post",
+        subtitle: "The same reactions across the tracked brands, by what the post is: paid with a disclosure, paid by the platform's label only, gifted, affiliate or shop, earned, or the brand's own. Reactions (a count), per 1,000 comments under posts of that kind (a rate), and the shares that trust or distrust. A reaction under a post we count as earned means the audience took it for an advert: the partnership may be undisclosed.",
+        when: N_AD_VIEWS,
+        sql: `WITH c AS (SELECT ${KIND("p.")} AS kind, c.ad_view FROM comments c JOIN posts_all p ON p.segment_id = c.segment_id AND p.post_id = c.post_id),
+t AS (SELECT kind, count(*)::float AS n, count(*) FILTER (WHERE ad_view IS NOT NULL)::float AS r, count(*) FILTER (WHERE ad_view = 'trusts')::float AS trusts, count(*) FILTER (WHERE ad_view = 'distrusts')::float AS distrusts FROM c GROUP BY 1)
+SELECT kind AS "kind of post", n::int AS "comments under them", r::int AS reactions, ${r1("1000 * r / n")} AS "reactions per 1K comments",
+       CASE WHEN r >= 10 THEN ${r0("100 * trusts / r")} END AS "trust it %", CASE WHEN r >= 10 THEN ${r0("100 * distrusts / r")} END AS "distrust it %"
+FROM t WHERE r > 0 ORDER BY r DESC, kind`,
+        rationale: "Doubt under a disclosed advert is the price of paying. Doubt under an earned post is a different problem.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "Creators whose paid posts are believed, and doubted",
+        subtitle: "Creators across the tracked brands with 3+ comments reacting to their post being paid or promotional: how many trust it, point it out or distrust it, with the most-liked reaction verbatim. Brand-owned accounts are left out. The counts are small: read the comment before acting on a row.",
+        when: N_AD_VIEWS,
+        sql: `WITH q AS (SELECT p.username AS creator, p.brand, c.ad_view, c.text, coalesce(c.likes, 0) AS likes FROM comments c JOIN posts_all p ON p.segment_id = c.segment_id AND p.post_id = c.post_id WHERE c.ad_view IS NOT NULL AND p.username IS NOT NULL AND NOT p.is_owned),
+t AS (SELECT creator, string_agg(DISTINCT brand, ', ') AS brands, count(*)::int AS n, count(*) FILTER (WHERE ad_view = 'trusts')::int AS trusts, count(*) FILTER (WHERE ad_view = 'points_out')::int AS points, count(*) FILTER (WHERE ad_view = 'distrusts')::int AS distrusts FROM q GROUP BY 1 HAVING count(*) >= 3),
+top AS (SELECT DISTINCT ON (creator) creator, left(text, 140) AS said FROM q ORDER BY creator, likes DESC, text)
+SELECT t.creator, t.brands AS "posts about", t.n AS reactions, t.trusts AS "trust it", t.points AS "point it out", t.distrusts AS "distrust it", top.said AS "most-liked, verbatim"
+FROM t JOIN top USING (creator) ORDER BY (t.brands LIKE '%' || focal_brand() || '%') DESC, t.n DESC, t.creator LIMIT 15`,
+        rationale: "A creator the audience believes when paid is worth more than one who only performs.",
+      },
+      {
         type: "table", w: 6, h: 5,
         title: "Rising creators",
         subtitle: `Creators of our content whose views grew, with engagement at 1.5 times the norm or more now. Views are counts. ${VERSUS}.`,
@@ -1491,6 +1561,40 @@ FROM g JOIN gb USING (brand, product) ORDER BY (g.brand = focal_brand()) DESC, g
 SELECT month, product, ${r1("1000.0 * neg / n")} AS value FROM m ORDER BY 1, 2`,
         x: "month", y: "value", series: "product", format: "decimal", unit: "Objections per 1,000 brand comments (a rate)",
         rationale: "The brief asks for objections by product over time, to catch a defect early.",
+      },
+      {
+        type: "table", w: 12, h: 6,
+        title: "Safety watch, by product",
+        subtitle: `Brand comments that report a harm from the brand's own product (irritation, an injury, pain, an allergy) or a safety worry with no harm, by product line, ours first. Harm reports and worries are counts; per 1,000 is harm reports against the line's brand comments (a rate, lines with ${COMMENT_MIN}+). The last two columns compare harm reports in the latest 90 days of comments with the 90 before. Lines with 3+ such comments. ${SECOND_READ_NOTE}. ${PRODUCT_NOTE}.`,
+        when: N_SAFETY,
+        sql: `WITH last AS (SELECT max(published_at) AS at FROM brand_comments),
+s AS (SELECT brand, coalesce(product, 'No line named') AS product, safety_issue, text, coalesce(likes, 0) AS likes, published_at FROM brand_comments WHERE safety_issue IS NOT NULL AND safety_own),
+n AS (SELECT brand, coalesce(product, 'No line named') AS product, count(*)::float AS n FROM brand_comments GROUP BY 1, 2),
+t AS (SELECT s.brand, s.product, count(*) FILTER (WHERE s.safety_issue <> 'worry')::int AS harm, count(*) FILTER (WHERE s.safety_issue = 'worry')::int AS worry,
+             count(*) FILTER (WHERE s.safety_issue <> 'worry' AND s.published_at > last.at - interval '90 days')::int AS now_n,
+             count(*) FILTER (WHERE s.safety_issue <> 'worry' AND s.published_at <= last.at - interval '90 days' AND s.published_at > last.at - interval '180 days')::int AS was_n
+      FROM s, last GROUP BY 1, 2 HAVING count(*) >= 3),
+k AS (SELECT DISTINCT ON (brand, product) brand, product, safety_issue FROM (SELECT brand, product, safety_issue, count(*) AS c FROM s WHERE safety_issue <> 'worry' GROUP BY 1, 2, 3) x ORDER BY brand, product, c DESC, safety_issue),
+top AS (SELECT DISTINCT ON (brand, product) brand, product, left(text, 150) AS said FROM s WHERE safety_issue <> 'worry' AND length(text) >= 20 ORDER BY brand, product, likes DESC, text)
+SELECT t.brand, t.product, t.harm AS "harm reports", t.worry AS worries, CASE WHEN n.n >= ${COMMENT_MIN} THEN ${r1("1000.0 * t.harm / n.n")} END AS "harm reports per 1K",
+       ${SAFETY_KIND("k.safety_issue")} AS "reported most", top.said AS "most-liked report, verbatim", t.now_n AS "latest 90 days", t.was_n AS "the 90 days before"
+FROM t JOIN n USING (brand, product) LEFT JOIN k USING (brand, product) LEFT JOIN top USING (brand, product)
+ORDER BY (t.brand = focal_brand()) DESC, t.harm DESC, t.brand, t.product`,
+        rationale: "A harm report is the complaint that cannot wait for the monthly review.",
+      },
+      {
+        type: "table", w: 12, h: 5,
+        title: "What kind of harm, us against rivals",
+        subtitle: `The same comments by kind: ours (a count, and per 1,000 of our brand comments), the tracked rivals' (per 1,000 of theirs), and the most-liked one about us verbatim. A worry is a fear or a question with no harm reported. ${SECOND_READ_NOTE}.`,
+        when: N_SAFETY,
+        sql: `WITH n AS (SELECT count(*) FILTER (WHERE brand = focal_brand())::float AS ours, count(*) FILTER (WHERE brand <> focal_brand())::float AS theirs FROM brand_comments),
+s AS (SELECT brand, safety_issue, text, coalesce(likes, 0) AS likes FROM brand_comments WHERE safety_issue IS NOT NULL AND safety_own),
+t AS (SELECT safety_issue, count(*) FILTER (WHERE brand = focal_brand())::int AS ours, count(*) FILTER (WHERE brand <> focal_brand())::int AS theirs FROM s GROUP BY 1),
+top AS (SELECT DISTINCT ON (safety_issue) safety_issue, left(text, 150) AS said FROM s WHERE brand = focal_brand() AND length(text) >= 20 ORDER BY safety_issue, likes DESC, text)
+SELECT ${SAFETY_KIND("t.safety_issue")} AS kind, t.ours AS "our comments", CASE WHEN n.ours >= ${COMMENT_MIN} THEN ${r1("1000.0 * t.ours / n.ours")} END AS "ours per 1K",
+       t.theirs AS "rivals' comments", CASE WHEN n.theirs >= ${COMMENT_MIN} THEN ${r1("1000.0 * t.theirs / n.theirs")} END AS "rivals' per 1K", top.said AS "most-liked about us, verbatim"
+FROM t LEFT JOIN top USING (safety_issue), n ORDER BY (t.safety_issue = 'worry'), t.ours + t.theirs DESC, t.safety_issue`,
+        rationale: "Whether the harm people report is ours in particular or the category's.",
       },
       {
         type: "line", w: 7, h: 6,

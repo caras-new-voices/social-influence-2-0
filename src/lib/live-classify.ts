@@ -184,7 +184,11 @@ ${l.lines ? `- product: for a "brand" or "category" comment, the product line of
 - wish: "none" unless the comment asks the brand for a product that does not exist or for a change to a product. Plain wanting or buying, a question, praise, a complaint with no change asked for, and a request to the creator are "none". Otherwise the ONE thing the requested change is about: "price" (cheaper, better value, cheaper parts), "efficacy" (a better result), "ease" (easier or more convenient to use, carry or store), "durability" (lasting longer), "safety" (gentler or safer, a version for sensitive users), "service" (sold in their country or shop, back in stock, bring back a discontinued product or edition), "design" (a colour, a scent, a look, with no effect on how it works), or "other". Asking to bring back or restock a particular colour or scent is "service".
 - price_view: "none" unless attribute is "price". Then how the commenter judges the price of the post's brand: "expensive" (too expensive, not worth it, the price went up, parts cost too much, would buy if it cost less), "good" (cheap, affordable, worth the money, a good deal), "asks" (asks what it costs or for a discount, with no judgement), "other" (anything else).
 - price_versus: what the price is measured against, when the comment names or plainly means something: a tracked brand written exactly as in the list (not the post's own brand); "own" for the brand's own other products, parts, refills, a bundle or its earlier price; "other" for anything else (an untracked brand, a shop's own label, another method); "none" when nothing is named or attribute is not "price".
-- price_name: when price_versus is "own" or "other", what it is in one to three words, in English. Empty otherwise.${l.lines ? `\n\nThe product lines of each brand:\n${lineListing(l.lines)}` : ""}`;
+- price_name: when price_versus is "own" or "other", what it is in one to three words, in English. Empty otherwise.
+- ad: whether the comment reacts to the post being an advert, sponsored, gifted or promotional. "none" for anything else, including ordinary praise or questions about the product, a reply by the brand's own account or the creator, an offer to collaborate, a shared code or link, a giveaway entry. "trusts": it refers to the partnership or advert and welcomes it or believes the creator. "points_out": it notes or asks whether the post is an advert, with no clear judgement. "distrusts": it doubts or dismisses the post BECAUSE it is paid or promotional. Disliking the product is not distrust of the advert.
+- loyalty: loyalty to the post's brand. "buys_again": bought it again, on a subscription, restocks it, owns several, will buy again. "long_term": has used it for a long time or keeps using it. "recommends": tells others to buy or use it from their own experience, or bought it for someone. "none": everything else, including a first purchase, wanting it, praise with no sign of continued use, and loyalty to a different brand. When two apply choose the first in this order: buys_again, long_term, recommends.
+- safety: whether the commenter reports or fears harm to a person from using a product of this category. "irritation": a reaction that is not an injury (redness, itching, a rash, bumps, burning, soreness). "injury": damage to the body (a cut, bleeding, a burn that damaged the skin, a scar). "pain": it hurts to use, with no injury or reaction described. "allergy": an allergic reaction or intolerance. "worry": a fear or question about safety with no harm reported. "other": a harm to a person that fits none of these. "none": no harm and no worry, including a product that breaks or does not work, and praise that it does NOT irritate.
+- safety_own: true when that harm or worry is about the post's brand or its product, false when it is about another brand, another method or the category in general, or when safety is "none".${l.lines ? `\n\nThe product lines of each brand:\n${lineListing(l.lines)}` : ""}`;
 }
 
 type Json = Record<string, unknown>;
@@ -211,6 +215,8 @@ function commentSchema(l: Lists) {
     switch: str(["none", "switched_to", "switched_from", "prefers_this", "prefers_other"]), switch_other: str([...l.brands, "other", "none"]), switch_name: str(),
     wish: str(["none", ...ATTRIBUTES, "design", "other"]),
     price_view: str(["none", "expensive", "good", "asks", "other"]), price_versus: str([...l.brands, "own", "other", "none"]), price_name: str(),
+    ad: str(["none", "trusts", "points_out", "distrusts"]), loyalty: str(["none", "long_term", "buys_again", "recommends"]),
+    safety: str(["none", "irritation", "injury", "pain", "allergy", "worry", "other"]), safety_own: { type: "boolean" },
   });
 }
 
@@ -270,10 +276,11 @@ async function readPosts(client: OpenAI, ind: Industry, l: Lists, batch: PostRow
   return out;
 }
 
-type CommentRow = { segment_id: number; comment_id: number | string; post_id: number | string; brand: string; text: string; caption: string | null; post_product: string | null; tagged_wish: boolean };
+type CommentRow = { segment_id: number; comment_id: number | string; post_id: number | string; brand: string; text: string; caption: string | null; post_product: string | null; tagged_wish: boolean; tagged_ad: boolean; tagged_loyalty: boolean; tagged_safety: boolean };
 export interface CommentReading {
   segment_id: number; comment_id: number; about: string; attribute: string | null; buying: boolean; product: string | null;
   switch_kind: string | null; switch_from: string | null; switch_to: string | null; wish_attribute: string | null; price_view: string | null; price_versus: string | null;
+  ad_view: string | null; loyalty: string | null; safety_issue: string | null; safety_own: boolean | null;
 }
 
 async function readComments(client: OpenAI, ind: Industry, l: Lists, batch: CommentRow[], spend: Spend): Promise<CommentReading[]> {
@@ -327,6 +334,10 @@ async function readComments(client: OpenAI, ind: Industry, l: Lists, batch: Comm
       // A wish is kept only on a comment the supplier tagged as a request, like the offline reading.
       wish_attribute: subject === "brand" && c.tagged_wish && wish !== "none" && [...ATTRIBUTES, "design", "other"].includes(wish) ? wish : null,
       price_view, price_versus,
+      // Like the offline readings: only on comments the supplier tagged, and a reaction to a paid post whatever the comment is otherwise about.
+      ad_view: c.tagged_ad && ["trusts", "points_out", "distrusts"].includes(String(a.ad)) ? String(a.ad) : null,
+      loyalty: onBrand && c.tagged_loyalty && ["long_term", "buys_again", "recommends"].includes(String(a.loyalty)) ? String(a.loyalty) : null,
+      ...(onBrand && c.tagged_safety && ["irritation", "injury", "pain", "allergy", "worry", "other"].includes(String(a.safety)) ? { safety_issue: String(a.safety), safety_own: a.safety_own === true } : { safety_issue: null, safety_own: null }),
     });
   }
   return out;
@@ -381,9 +392,9 @@ async function storePosts(db: Db, rows: PostReading[], model: string) {
 async function storeComments(db: Db, rows: CommentReading[], model: string) {
   if (!rows.length) return;
   await db.query(
-    `INSERT INTO live_comment_labels (segment_id, comment_id, about, attribute, buying, product, switch_kind, switch_from, switch_to, wish_attribute, price_view, price_versus, model)
-     SELECT t.segment_id, t.comment_id, t.about, t.attribute, t.buying, t.product, t.switch_kind, t.switch_from, t.switch_to, t.wish_attribute, t.price_view, t.price_versus, $2
-       FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, about text, attribute text, buying boolean, product text, switch_kind text, switch_from text, switch_to text, wish_attribute text, price_view text, price_versus text)
+    `INSERT INTO live_comment_labels (segment_id, comment_id, about, attribute, buying, product, switch_kind, switch_from, switch_to, wish_attribute, price_view, price_versus, ad_view, loyalty, safety_issue, safety_own, model)
+     SELECT t.segment_id, t.comment_id, t.about, t.attribute, t.buying, t.product, t.switch_kind, t.switch_from, t.switch_to, t.wish_attribute, t.price_view, t.price_versus, t.ad_view, t.loyalty, t.safety_issue, t.safety_own, $2
+       FROM jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint, about text, attribute text, buying boolean, product text, switch_kind text, switch_from text, switch_to text, wish_attribute text, price_view text, price_versus text, ad_view text, loyalty text, safety_issue text, safety_own boolean)
      ON CONFLICT (segment_id, comment_id) DO NOTHING`,
     [JSON.stringify(rows), model],
   );
@@ -438,7 +449,7 @@ export async function readNewRows(db: Db, budgetMs: number, log: (m: string) => 
     // Comments only once the industry's posts are read.
     while (!Number(postsLeft.n) && left() > 20_000 && allowance > 0) {
       const rows = await db.query<CommentRow>(
-        `SELECT c.segment_id, c.comment_id, c.post_id, c.brand, left(c.text, 400) AS text, (c.feature_request_type IS NOT NULL) AS tagged_wish,
+        `SELECT c.segment_id, c.comment_id, c.post_id, c.brand, left(c.text, 400) AS text, (c.feature_request_type IS NOT NULL) AS tagged_wish, (c.partnership_perception IS NOT NULL) AS tagged_ad, (c.loyalty_type IS NOT NULL) AS tagged_loyalty, (c.safety_complaint_type IS NOT NULL) AS tagged_safety,
                 (SELECT left(p.text, 300) FROM posts_raw p WHERE p.segment_id = c.segment_id AND p.post_id = c.post_id) AS caption,
                 (SELECT coalesce(p.product, lp.product) FROM posts_raw p LEFT JOIN live_post_labels lp ON lp.segment_id = p.segment_id AND lp.post_id = p.post_id WHERE p.segment_id = c.segment_id AND p.post_id = c.post_id) AS post_product
          ${PENDING_COMMENTS} ORDER BY c.segment_id, c.post_id, c.comment_id LIMIT $2`,
@@ -489,7 +500,7 @@ export async function previewReading(db: Db, industryId: string, posts: Array<{ 
   }
   if (comments.length) {
     const rows = await db.query<CommentRow>(
-      `SELECT c.segment_id, c.comment_id, c.post_id, c.brand, left(coalesce(c.text, ''), 400) AS text, (c.feature_request_type IS NOT NULL) AS tagged_wish, left(p.text, 300) AS caption, p.product AS post_product
+      `SELECT c.segment_id, c.comment_id, c.post_id, c.brand, left(coalesce(c.text, ''), 400) AS text, (c.feature_request_type IS NOT NULL) AS tagged_wish, (c.partnership_perception IS NOT NULL) AS tagged_ad, (c.loyalty_type IS NOT NULL) AS tagged_loyalty, (c.safety_complaint_type IS NOT NULL) AS tagged_safety, left(p.text, 300) AS caption, p.product AS post_product
          FROM comments_raw c JOIN jsonb_to_recordset($1::jsonb) AS t(segment_id integer, comment_id bigint) ON t.segment_id = c.segment_id AND t.comment_id = c.comment_id
          LEFT JOIN posts_raw p ON p.segment_id = c.segment_id AND p.post_id = c.post_id ORDER BY c.segment_id, c.post_id, c.comment_id`,
       [JSON.stringify(comments)],
