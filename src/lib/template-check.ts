@@ -7,6 +7,7 @@ import { ensureReady } from "./schema";
 import { runInScope } from "./scope";
 import { buildTemplateForWorkspace } from "./template-build";
 import type { TemplateId } from "./templates";
+import { WidgetSpecSchema } from "./widgets";
 
 /**
  * The rotation test behind "works for any brand": in every industry, every brand takes a turn as
@@ -88,6 +89,9 @@ export async function checkTemplate(template: TemplateId, opts: { months?: boole
           if (w.type === "section") section = w.title;
           const text = [w.title, w.subtitle, w.rationale, w.sql, w.content].filter(Boolean).join(" \n ").toLowerCase();
           for (const { word, re } of words) if (re.test(text)) neutrality.add(`"${word}" in "${w.title}"`);
+          // A box the save route would refuse makes the whole dashboard impossible to save.
+          const valid = WidgetSpecSchema.safeParse(w);
+          if (!valid.success) failures.push({ industry: ind.id, focal: brand.name, window: "any", element: w.title, problem: `cannot be saved: ${valid.error.issues[0]?.path.join(".")} ${valid.error.issues[0]?.message}` });
           if (!w.sql) continue;
           for (const win of windows) {
             const window = w.period === "all" ? null : win.window;

@@ -29,7 +29,13 @@ const key = (title: string) => title.replace(/^\d+\.\s+/, "").trim().toLowerCase
 function definition(w: WidgetSpec): string {
   const { id: _id, layout: _layout, period: _period, title, ...rest } = w;
   void _id; void _layout; void _period;
-  return JSON.stringify({ title: key(title), ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b))) });
+  return canonical({ title: key(title), ...rest });
+}
+/** JSON with every object's keys in one order: the database hands stored boxes back with their keys rearranged. */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== undefined && x !== null).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`).join(",")}}`;
+  return JSON.stringify(v);
 }
 const overlap = (dashboard: WidgetSpec[], template: WidgetSpec[]) => {
   const have = new Set(dashboard.map((w) => key(w.title)));

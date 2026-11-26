@@ -24,6 +24,8 @@ import { BrandPicker } from "./BrandPicker";
 import { TargetAudience } from "./TargetAudience";
 import { useConfirm } from "./Confirm";
 import { useWorkspace } from "./WorkspaceProvider";
+import { ShareDialog } from "./ShareDialog";
+import { TemplateUpdate } from "./TemplateUpdate";
 import { scopeKey, type DashboardScope } from "@/lib/scope-shared";
 
 export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
@@ -303,19 +305,8 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
     const q = new URLSearchParams(Object.entries(periodToParams(period)).filter(([k, v]) => !(k === "period" && v === "all"))).toString();
     return q ? `?${q}` : "";
   };
-  /** A link that opens this view (period, market, summary or everything, whose summary) with nothing to edit. */
-  const share = async () => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("readonly", "1");
-    params.set("view", view);
-    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast("Read-only link copied");
-    } catch {
-      window.prompt("Copy this read-only link", url);
-    }
-  };
+  // Sharing: a link with its own key that opens this view and can change nothing (ShareDialog).
+  const [sharing, setSharing] = useState(false);
   const focusWidget = focusId ? widgets.find((w) => w.id === focusId) ?? null : null;
 
   const widgetSummaries = useMemo(() => widgets, [widgets]);
@@ -377,7 +368,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               </span>
             )}
           </span>
-          <button className="im-btn im-btn-secondary" onClick={() => void share()} title="Copy a read-only link to this view">Share</button>
+          <button className="im-btn im-btn-secondary" onClick={() => setSharing(true)} title="A link that opens this view and can change nothing">Share</button>
           <button className="im-btn im-btn-primary" onClick={() => void save()} disabled={saving || !dirty}>{saving ? "Saving…" : "Save"}</button>
         </>
       }
@@ -402,6 +393,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
               <Link className="im-btn im-btn-primary im-btn-sm" href={`/dashboard/new/guided?dashboard=${dashboard.id}`}>Resume setup</Link>
             </div>
           )}
+          {!readOnly && <TemplateUpdate dashboardId={dashboard.id} widgets={widgets} apply={(next, summary) => { mutate(() => next); toast(`Dashboard updated (${summary}). Press Save to keep it, or Undo to go back.`); }} />}
           <PeriodBar counts={periodCounts} />
           {canSummarise && (
             <div className="viewswitch" role="tablist" aria-label="How much of the dashboard to show">
@@ -482,6 +474,7 @@ export function Workspace({ dashboard }: { dashboard: DashboardRecord }) {
           </div>
         </div>
       )}
+      {sharing && <ShareDialog dashboardId={dashboard.id} period={period} view={view} leader={leaderId} onClose={() => setSharing(false)} />}
       {adding && <AddWidgetDrawer onAdd={addFromTemplate} onClose={() => setAdding(false)} />}
       {voice && <VoiceAgent key={voice.widget.id} dashboardId={dashboard.id} widget={voice.widget} rows={voice.rows} onClose={() => setVoice(null)} />}
       {focusWidget && (

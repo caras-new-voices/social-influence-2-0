@@ -44,6 +44,8 @@ export function PeriodProvider({ state, onChange, children }: { state: PeriodSta
   const market = state.market ?? null;
   useEffect(() => {
     // The dates, the totals and the month picker follow the market; the last answer stays on screen until the new one arrives.
+    // A shared page shows a fixed period and may ask for its own boxes only: it has no coverage to fetch.
+    if (getWorkspace().shareToken) return;
     let live = true;
     const show = (c: Coverage) => { if (live) setCoverage(c); };
     fetchCoverage(false, market).then(show).catch(() => {});
